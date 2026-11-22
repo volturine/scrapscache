@@ -183,11 +183,12 @@ export function syncOutcome(result: { success: boolean; refused?: boolean }): Sy
 	return result.refused ? 'refused' : 'failed';
 }
 
-/**
- * The workspace a sync runs for: the one open in this window, or one this device
- * holds that is not open here and is synced from what its database holds.
- */
-type SyncTarget = { account: SyncAccount; pid: string; open: boolean };
+/** The workspace a sync runs for, and the account it syncs with. */
+type SyncTarget = { account: SyncAccount; pid: string };
+
+/** Shown when a sync settled but left out photos this device could not read. */
+const UNREADABLE_ATTACHMENTS =
+	'Synced, but some photos could not be prepared for upload. They will retry on the next sync.';
 
 /**
  * Applies what a flight pulled. The workspace is handed over with it: a flight
@@ -195,7 +196,7 @@ type SyncTarget = { account: SyncAccount; pid: string; open: boolean };
  * another one by the time the bytes are decrypted. `readEnvelopes` counts the
  * envelopes this flight decrypted, whatever records they held.
  */
-type ApplyPulled = (
+export type ApplyPulled = (
 	snapshot: SyncSnapshot,
 	pid: string,
 	pulled: PulledRelayState
@@ -253,7 +254,6 @@ export class SyncStore {
 	/** Empty until the keyring names a workspace for this window. */
 	activeId = $state('');
 	private profilesReady: Promise<void> | null = null;
-	private bootstrapRequested = false;
 	private pendingOutboxWrites: Promise<void> = Promise.resolve();
 	private backgroundSessions = new Map<string, { accessToken: string; expiresAt: number }>();
 	private session: { accountId: string; accessToken: string; expiresAt: number } | null = null;
@@ -277,7 +277,7 @@ export class SyncStore {
 	onAccountChange: (() => void) | null = null;
 	/** Registered by the central data store so board edits share its debounced sync. */
 	onLocalDataChange: (() => void) | null = null;
-	/** Called when a workspace that is not open here has something new to send. */
+	/** Called when a workspace other than the open one has something new to send. */
 	onWorkspaceOwes: ((pid: string) => void) | null = null;
 
 	constructor() {
@@ -519,7 +519,6 @@ export class SyncStore {
 		this.authenticationGeneration += 1;
 		this.pendingSessions.clear();
 		this.session = null;
-		this.bootstrapRequested = false;
 		this.account = null;
 		this.activeId = id;
 		this.lastError = null;
@@ -533,11 +532,9 @@ export class SyncStore {
 	}
 
 	private activateAccount(account: SyncAccount): void {
-		this.authenticationGeneration += 1;
-		this.pendingSessions.clear();
+		// A sign-in under way for this account is kept: its sync runs whichever
+		// workspace this window shows, and is not cut short by opening it.
 		this.session = null;
-		// Asked for by a sync of the workspace being left, which may not have finished.
-		this.bootstrapRequested = false;
 		this.account = account;
 		this.onAccountChange?.();
 	}
@@ -551,7 +548,12 @@ export class SyncStore {
 		this.onAccountChange?.();
 	}
 
-	async reauthenticateForRecovery(turnstileToken?: string): Promise<void> {
+	/**
+	 * Sign the open workspace in afresh, recreating its relay account when it is
+	 * missing. Aborting `signal` gives it up, and so does a relay that goes silent:
+	 * what runs it holds the workspace's sync lock meanwhile.
+	 */
+	async reauthenticateForRecovery(turnstileToken?: string, signal?: AbortSignal): Promise<void> {
 		const account = this.account;
 		if (!account) throw new Error('No synced workspace is active');
 		this.backgroundSessions.delete(account.accountId);
@@ -559,22 +561,30 @@ export class SyncStore {
 		this.pendingSessions.clear();
 		this.session = null;
 		try {
-			await this.accessToken(account);
+			await untilAborted(this.accessToken(account), signal);
 			return;
-		} catch {
+		} catch (error) {
+			if (signal?.aborted) throw error;
 			// A missing relay account can only be recreated during explicit recovery.
 		}
 		// Explicit recovery may recreate a missing relay account with the same signed identity.
-		const response = await fetch(serverUrl('/api/sync/register'), {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				accountId: account.accountId,
-				authPublicKey: account.authPublicKey,
-				signature: signSyncRegistration(account.syncKey, account.accountId, account.authPublicKey),
-				turnstileToken
+		const response = await withinTime(RELAY_SILENCE_MS, signal ?? null, (limited) =>
+			fetch(serverUrl('/api/sync/register'), {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					accountId: account.accountId,
+					authPublicKey: account.authPublicKey,
+					signature: signSyncRegistration(
+						account.syncKey,
+						account.accountId,
+						account.authPublicKey
+					),
+					turnstileToken
+				}),
+				signal: limited
 			})
-		});
+		);
 		if (!response.ok && response.status !== 409) {
 			const data = await response.json().catch(() => ({}));
 			if (response.status === 410 && data.retired === true) throw this.retired(account);
@@ -582,13 +592,13 @@ export class SyncStore {
 				typeof data.error === 'string' ? data.error : 'Could not recover sync authentication'
 			);
 		}
-		await this.accessToken(account);
+		await untilAborted(this.accessToken(account), signal);
 	}
 
 	/**
 	 * Register a new, empty account with the relay, for a workspace about to get a
 	 * new key. Only the relay is asked: nothing on this device changes until
-	 * `assignKey`, so this is done without holding anything a handover waits for.
+	 * `assignKey`, so this is done without holding anything a workspace change waits for.
 	 */
 	async registerAccount(
 		turnstileToken?: string
@@ -846,8 +856,8 @@ export class SyncStore {
 			throw new Error('Sync authentication failed');
 		}
 		const active = this.account?.accountId === account.accountId;
-		// A switch, logout or recovery cancels what would become the open workspace's
-		// session. A token for another workspace still saved here stays good.
+		// Recovery, or unlinking the key, discards a sign-in that was under way for it.
+		// A token for another workspace still saved here stays good.
 		if (
 			generation !== this.authenticationGeneration &&
 			(active || !this.profiles.some((profile) => profile.syncKey === account.syncKey))
@@ -948,7 +958,7 @@ export class SyncStore {
 		path: string,
 		payload: string,
 		uploadBytes: number,
-		indicate: boolean,
+		shown: () => boolean,
 		account: SyncAccount | null = this.account,
 		signal?: AbortSignal,
 		// The sync this request is for decides when it is given up.
@@ -974,14 +984,7 @@ export class SyncStore {
 			const result = await retryTransient(
 				() =>
 					live()
-						? this.sendSyncRequestWithToken(
-								path,
-								payload,
-								uploadBytes,
-								indicate,
-								accessToken,
-								signal
-							)
+						? this.sendSyncRequestWithToken(path, payload, uploadBytes, shown, accessToken, signal)
 						: Promise.resolve({ success: false, error: 'Sync was cancelled' }),
 				(response) => response.transient === true && live(),
 				transientRetry,
@@ -997,7 +1000,8 @@ export class SyncStore {
 		path: string,
 		payload: string,
 		uploadBytes: number,
-		indicate: boolean,
+		/** True while the transfer belongs on the sync indicator. */
+		shown: () => boolean,
 		accessToken: string,
 		signal?: AbortSignal
 	): Promise<SyncResult> {
@@ -1032,12 +1036,12 @@ export class SyncStore {
 			xhr.setRequestHeader('x-sync-client-id', this.syncClientId);
 			xhr.setRequestHeader(SYNC_PROTOCOL_HEADER, SYNC_PROTOCOL_VERSION);
 
-			const showTransfer = indicate && uploadBytes >= 32 * 1024;
-			if (showTransfer)
+			const large = uploadBytes >= 32 * 1024;
+			if (large && shown())
 				this.progress = { phase: 'upload', loadedBytes: 0, totalBytes: uploadBytes };
 			xhr.upload.onprogress = (event) => {
 				moving();
-				if (!showTransfer) return;
+				if (!large || !shown()) return;
 				this.progress = {
 					phase: 'upload',
 					loadedBytes: event.loaded,
@@ -1046,7 +1050,7 @@ export class SyncStore {
 			};
 			xhr.onprogress = (event) => {
 				moving();
-				if (!indicate || !event.lengthComputable || event.total < 32 * 1024) return;
+				if (!shown() || !event.lengthComputable || event.total < 32 * 1024) return;
 				this.progress = {
 					phase: 'download',
 					loadedBytes: event.loaded,
@@ -1124,32 +1128,33 @@ export class SyncStore {
 		);
 	}
 
-	/** Sync the open workspace. */
-	sync(
+	/**
+	 * Read the account for the open workspace without uploading anything, for an
+	 * operation that rewrites the workspace from it: a pairing merge, taking the
+	 * cloud's copy, replacing the cloud's copy. `local` is what this window holds.
+	 */
+	pullOpen(
 		local: SyncSnapshot,
-		indicate = false,
-		pullOnly = false,
-		applyPulled?: ApplyPulled,
+		applyPulled: ApplyPulled,
 		signal?: AbortSignal
 	): Promise<SyncResult> {
 		if (!this.account) return Promise.resolve({ success: false, error: 'Not linked' });
+		this.onSyncStart?.();
 		return this.syncTarget(
-			{ account: this.account, pid: this.activePid, open: true },
+			{ account: this.account, pid: this.activePid },
 			local,
-			indicate,
-			pullOnly,
+			true,
 			applyPulled,
 			signal
-		);
+		).finally(() => this.onSyncEnd?.());
 	}
 
 	/**
-	 * Sync a workspace that is not open in this window, so what it still owes the
-	 * relay is sent without anyone opening it. `local` is what its database holds and
-	 * `applyPulled` saves there. The cloud turns for it as for any sync; progress and
-	 * errors on the sync indicator speak for the open workspace.
+	 * Sync a workspace with the relay, whichever workspace this window shows. `local`
+	 * is what its database holds and `applyPulled` saves there. Progress, usage and
+	 * errors reach the sync indicator while the workspace is the open one.
 	 */
-	syncInBackground(
+	syncWorkspace(
 		profile: StoredProfile,
 		local: SyncSnapshot,
 		applyPulled: ApplyPulled,
@@ -1157,41 +1162,45 @@ export class SyncStore {
 	): Promise<SyncResult> {
 		if (!profile.syncKey) return Promise.resolve({ success: false, error: 'Not linked' });
 		return this.syncTarget(
-			{ account: identityFromSyncKey(profile.syncKey), pid: profile.id, open: false },
+			{ account: identityFromSyncKey(profile.syncKey), pid: profile.id },
 			local,
-			false,
 			false,
 			applyPulled,
 			signal
 		);
 	}
 
-	/** True while this device holds `pid` under this key and it is not the workspace open here. */
-	private heldInBackground(pid: string, account: SyncAccount): boolean {
+	/** True while this device holds `pid` under this key. */
+	private holds(pid: string, account: SyncAccount): boolean {
 		return (
-			this.activeId !== pid &&
 			!isProfileReleased(pid) &&
 			this.profiles.some((entry) => entry.id === pid && entry.syncKey === account.syncKey)
 		);
 	}
 
+	/** Photos this device could not read were left out of a sync that otherwise settled. */
+	attachmentsUnreadable(pid: string, some: boolean): void {
+		if (pid !== this.activeId) return;
+		if (some) this.lastError = UNREADABLE_ATTACHMENTS;
+		else if (this.lastError === UNREADABLE_ATTACHMENTS) this.lastError = null;
+	}
+
 	/** End-to-end encrypted per-record delta. Uploads only dirty outbox keys. */
 	private async syncTarget(
-		{ account, pid, open }: SyncTarget,
+		{ account, pid }: SyncTarget,
 		local: SyncSnapshot,
-		indicate: boolean,
 		pullOnly: boolean,
 		applyPulled?: ApplyPulled,
 		signal?: AbortSignal
 	): Promise<SyncResult> {
 		// Aborting `signal` ends the sync at its next step without waiting on the relay.
 		// What it had not committed stays queued, and the next sync sends or reads it again.
-		// A workspace this window opens meanwhile is the open workspace's sync to run.
-		const syncCancelled = (): boolean =>
-			signal?.aborted === true ||
-			(open ? this.account !== account : !this.heldInBackground(pid, account));
+		// So does taking the workspace, or its key, off this device.
+		const syncCancelled = (): boolean => signal?.aborted === true || !this.holds(pid, account);
+		// The sync indicator speaks for the workspace this window shows, at that moment.
+		const open = (): boolean =>
+			this.activeId === pid && this.account?.accountId === account.accountId;
 		let bootstrap = false;
-		if (indicate) this.onSyncStart?.();
 		try {
 			const ATTACHMENT_UPLOAD_BUDGET = 2;
 			// A large page is bounded by the relay's own byte cap, so notes pull
@@ -1229,7 +1238,7 @@ export class SyncStore {
 				(await getSyncState<Record<string, string>>(pid, keys.recordIds).catch(() => undefined)) ??
 				{};
 			if (!recordIds || typeof recordIds !== 'object' || Array.isArray(recordIds)) recordIds = {};
-			// A first upload sends everything over several rounds, and a handover or a
+			// A first upload sends everything over several rounds, and a rewrite of the workspace or a
 			// closed tab may cut it short. Queued before it starts, what was not sent
 			// yet is sent by the sync after; otherwise only later edits would be.
 			if (firstFullUpload && !pullOnly) await markSyncOutbox(pid, currentRecordKeys(local));
@@ -1478,7 +1487,7 @@ export class SyncStore {
 					SYNC_DELTA_PATH,
 					payload,
 					new Blob([payload]).size,
-					indicate,
+					open,
 					account,
 					signal,
 					syncCancelled
@@ -1507,7 +1516,7 @@ export class SyncStore {
 					await wait(Math.min(response.retryAfterSeconds, 30) * 1000, signal);
 					continue;
 				}
-				if (!response.success || !response.data) return this.fail(response, open);
+				if (!response.success || !response.data) return this.fail(response, open());
 				throttledWaits = 0;
 				const remoteUsage = response.data.usage;
 				if (remoteUsage && typeof remoteUsage === 'object') {
@@ -1520,7 +1529,7 @@ export class SyncStore {
 							candidate.maxBytes
 						].every((value) => typeof value === 'number' && Number.isFinite(value))
 					) {
-						if (open) this.usage = candidate as SyncUsage;
+						if (open()) this.usage = candidate as SyncUsage;
 					}
 				}
 				const writesAccepted = response.data.writesAccepted === true;
@@ -1546,11 +1555,10 @@ export class SyncStore {
 				}
 				if (response.data.reset === true) {
 					// The relay was deliberately reset while this device retained a baseline.
-					// Ask the notes store to reload full attachments before its retry.
+					// The caller sends this device's whole copy, attachments included, next.
 					resetRetries += 1;
 					if (resetRetries > MAX_RESET_RETRIES)
 						throw new Error('Relay repeatedly requested a state reset');
-					if (open) this.bootstrapRequested = true;
 					bootstrap = true;
 					baseline = {};
 					recordIds = {};
@@ -1817,7 +1825,7 @@ export class SyncStore {
 							}))
 						]
 					);
-					if (open) this.syncedCursor = cursor;
+					if (open()) this.syncedCursor = cursor;
 					for (const keysAtGeneration of internalAcknowledgements.values()) {
 						for (const key of keysAtGeneration) internallyMarkedOutbox.delete(key);
 					}
@@ -1847,10 +1855,10 @@ export class SyncStore {
 						error: 'Sync incomplete: account storage quota prevented some uploads',
 						refused: true
 					},
-					open
+					open()
 				);
 			const syncedAt = Date.now();
-			if (open) {
+			if (open()) {
 				this.lastError =
 					poisonCount > 0
 						? `Skipped ${poisonCount} unreadable sync record${poisonCount === 1 ? '' : 's'}`
@@ -1870,15 +1878,14 @@ export class SyncStore {
 							: 'Encrypted sync failed',
 					...(relayNotReached(err) ? { unreachable: true } : {})
 				},
-				open
+				open()
 			);
 		} finally {
-			if (indicate) this.progress = null;
-			if (indicate) this.onSyncEnd?.();
+			if (open()) this.progress = null;
 		}
 	}
 
-	/** A failed sync's answer. Only the open workspace's failure shows on the sync indicator. */
+	/** A failed sync's answer. A failure of the open workspace shows on the sync indicator. */
 	private fail(result: SyncResult, open: boolean): SyncResult {
 		const error = result.error || 'Sync failed';
 		if (open) {
@@ -1894,21 +1901,6 @@ export class SyncStore {
 				result.status < 500 &&
 				![401, 408, 429].includes(result.status));
 		return { success: false, error, ...(refused ? { refused } : {}) };
-	}
-
-	consumeCurrentStateBootstrapRequest(): boolean {
-		const requested = this.bootstrapRequested;
-		this.bootstrapRequested = false;
-		return requested;
-	}
-
-	async needsCurrentStateBootstrap(): Promise<boolean> {
-		if (!this.account) return false;
-		const baseline = await getSyncState<Record<string, string>>(
-			this.activePid,
-			syncControlKeys(this.account.accountId).baseline
-		).catch(() => undefined);
-		return !baseline || Object.keys(baseline).length === 0;
 	}
 
 	async committedRevision(): Promise<number | null> {
@@ -1946,15 +1938,21 @@ export class SyncStore {
 		return unlinked;
 	}
 
-	/** Delete a workspace's relay account, then keep its notes here as a private workspace. */
-	async deleteCloudAccount(profile: StoredProfile): Promise<{ success: boolean; error?: string }> {
+	/**
+	 * Delete a workspace's account from the relay. Only the relay is asked: the
+	 * workspace is unlinked on this device afterwards, so nothing a workspace change
+	 * waits for is held while the relay takes its time.
+	 */
+	async deleteRelayAccount(profile: StoredProfile): Promise<{ success: boolean; error?: string }> {
 		if (!profile.syncKey) return { success: false, error: 'That workspace is not synced' };
 		try {
-			const response = await this.authorizedFetch(
-				'/api/sync/account',
-				// Typed, so SvelteKit's form-CSRF check never depends on how a proxy names the host.
-				{ method: 'DELETE', headers: { 'content-type': 'application/json' } },
-				identityFromSyncKey(profile.syncKey)
+			const response = await withinTime(RELAY_SILENCE_MS, null, (signal) =>
+				this.authorizedFetch(
+					'/api/sync/account',
+					// Typed, so SvelteKit's form-CSRF check never depends on how a proxy names the host.
+					{ method: 'DELETE', headers: { 'content-type': 'application/json' }, signal },
+					identityFromSyncKey(profile.syncKey)
+				)
 			);
 			if (!response.ok) {
 				const data = (await response.json().catch(() => ({}))) as { error?: unknown };
@@ -1963,7 +1961,6 @@ export class SyncStore {
 					error: typeof data.error === 'string' ? data.error : 'Could not remove from the cloud'
 				};
 			}
-			await this.unlinkProfile(profile);
 			return { success: true };
 		} catch (error) {
 			return {

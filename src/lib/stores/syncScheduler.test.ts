@@ -1,13 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const device = vi.hoisted(() => ({
-	sync: vi.fn<(profile: { id: string }, signal: AbortSignal) => Promise<string>>()
-}));
-vi.mock('#lib/backgroundWorkspaceSync.js', () => ({ syncWorkspaceFromDevice: device.sync }));
+type Saved = (snapshot: SyncSnapshot, decisions: AttachmentDecisions) => Promise<void>;
 
+const driver = vi.hoisted(() => ({
+	sync: vi.fn<(profile: { id: string }, signal: AbortSignal, saved: Saved) => Promise<string>>()
+}));
+vi.mock('#lib/workspaceSync.js', () => ({ syncWorkspace: driver.sync }));
+
+import type { AttachmentDecisions } from '#lib/attachmentSettling.js';
 import { clearSyncOutbox, getSyncOutboxKeys, markSyncOutbox } from '#lib/db/idb.js';
 import type { StoredProfile } from '#lib/profiles.js';
 import { createSyncIdentity, randomOpaqueId } from '#lib/syncPairing.js';
+import { syncSnapshot, type SyncSnapshot } from '#lib/syncRecords.js';
 import { syncStore, type SyncOutcome } from './sync.svelte';
 import { syncScheduler } from './syncScheduler';
 import { TEST_WORKSPACE } from '../../tests/workspace';
@@ -40,8 +44,19 @@ describe('the sync scheduler', () => {
 	let third: StoredProfile;
 	/** The workspace of every round that started, in order. */
 	let rounds: string[];
-	let openSync: (signal: AbortSignal) => Promise<SyncOutcome>;
 	const name = (pid: string) => [open, other, third].find((entry) => entry.id === pid)?.name;
+	/** The next round of a workspace stays under way until it is answered. */
+	const hold = (profile: StoredProfile) => {
+		const held = pending();
+		const signals: AbortSignal[] = [];
+		driver.sync.mockImplementationOnce((asked, signal) => {
+			expect(asked.id).toBe(profile.id);
+			rounds.push(profile.name);
+			signals.push(signal);
+			return held.run(signal);
+		});
+		return { answer: held.answer, interrupted: () => signals[0]?.aborted === true };
+	};
 
 	beforeEach(async () => {
 		vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -51,14 +66,9 @@ describe('the sync scheduler', () => {
 		syncStore.profiles = [open, other, third];
 		syncStore.activateProfile(open);
 		rounds = [];
-		openSync = async () => 'synced';
-		syncScheduler.syncOpen = (_indicate, signal) => {
-			rounds.push('open');
-			return openSync(signal);
-		};
-		device.sync.mockReset().mockImplementation(async (profile) => {
+		driver.sync.mockReset().mockImplementation(async (profile, signal) => {
 			rounds.push(name(profile.id) ?? '?');
-			await clearSyncOutbox(profile.id, await getSyncOutboxKeys(profile.id));
+			if (!signal.aborted) await clearSyncOutbox(profile.id, await getSyncOutboxKeys(profile.id));
 			return 'synced';
 		});
 		for (const profile of [other, third]) await markSyncOutbox(profile.id, ['note:queued']);
@@ -66,7 +76,7 @@ describe('the sync scheduler', () => {
 
 	afterEach(async () => {
 		await syncScheduler.reset();
-		syncScheduler.syncOpen = null;
+		syncScheduler.onSynced = null;
 		for (const profile of [open, other, third])
 			await clearSyncOutbox(profile.id, await getSyncOutboxKeys(profile.id));
 		syncStore.activateLocalWorkspace(TEST_WORKSPACE);
@@ -74,29 +84,52 @@ describe('the sync scheduler', () => {
 		vi.restoreAllMocks();
 	});
 
-	it('runs one round at a time, the open workspace first and then the others', async () => {
-		const first = pending();
-		device.sync.mockImplementationOnce((profile, signal) => {
-			rounds.push(name(profile.id) ?? '?');
-			return first.run(signal);
-		});
-		const others = [syncScheduler.request(third.id), syncScheduler.request(other.id)];
-		await vi.waitFor(() => expect(rounds).toEqual(['third']));
+	it('syncs every workspace the same way, the open one and the others', async () => {
+		expect(
+			await Promise.all([syncScheduler.request(open.id), syncScheduler.request(other.id)])
+		).toEqual([true, true]);
 
-		// Asked while a workspace that is not open has the lock: it gives way.
-		const opened = syncScheduler.request(open.id);
+		expect(driver.sync.mock.calls.map(([profile]) => profile.id).sort()).toEqual(
+			[open.id, other.id].sort()
+		);
+	});
 
-		expect(await opened).toBe(true);
-		expect(await Promise.all(others)).toEqual([true, true]);
-		expect(rounds).toEqual(['third', 'open', 'third', 'other']);
+	it('runs workspaces side by side: none waits for another, and none interrupts another', async () => {
+		const slow = hold(other);
+		const asked = syncScheduler.request(other.id);
+		await vi.waitFor(() => expect(rounds).toEqual(['other']));
+
+		// The open workspace syncs, start to end, while the other one is still uploading.
+		expect(await syncScheduler.request(open.id)).toBe(true);
+		expect(await syncScheduler.request(third.id)).toBe(true);
+
+		expect(slow.interrupted()).toBe(false);
+		expect(syncScheduler.syncing(other.id)).toBe(true);
+		slow.answer('synced');
+		expect(await asked).toBe(true);
+		expect(rounds).toEqual(['other', 'open', 'third']);
+	});
+
+	it('leaves a sync alone when the window switches to another workspace', async () => {
+		const leaving = hold(open);
+		await markSyncOutbox(open.id, ['note:unsent']);
+		const asked = syncScheduler.request(open.id);
+		await vi.waitFor(() => expect(rounds).toEqual(['open']));
+
+		syncStore.activateProfile(other);
+		expect(await syncScheduler.request(other.id)).toBe(true);
+
+		// The workspace that was left is still on its first and only round.
+		expect(leaving.interrupted()).toBe(false);
+		leaving.answer('synced');
+		expect(await asked).toBe(true);
+		expect(rounds).toEqual(['open', 'other']);
 	});
 
 	it('answers everyone who asked during a sync with one more round, and no more', async () => {
-		const first = pending();
-		openSync = (signal) => first.run(signal);
+		const first = hold(open);
 		const asked = syncScheduler.request(open.id);
 		await vi.waitFor(() => expect(rounds).toEqual(['open']));
-		openSync = async () => 'synced';
 
 		const joined = [syncScheduler.request(open.id), syncScheduler.request(open.id)];
 		syncScheduler.changed(open.id);
@@ -108,52 +141,108 @@ describe('the sync scheduler', () => {
 		expect(syncScheduler.syncing(open.id)).toBe(false);
 	});
 
-	it('lets a handover go first, and the sync it interrupted goes again behind it', async () => {
-		const first = pending();
-		openSync = (signal) => first.run(signal);
+	it('lets a rewrite of the workspace go first, and the sync it interrupted goes again behind it', async () => {
+		const first = hold(open);
 		const asked = syncScheduler.request(open.id);
 		await vi.waitFor(() => expect(rounds).toEqual(['open']));
-		openSync = async () => 'synced';
 
 		const order: string[] = [];
-		const handed = syncScheduler.handover(async () => {
-			order.push(`handover after ${rounds.length} round`);
+		const rewritten = syncScheduler.rewrite(open.id, async () => {
+			order.push(`rewrite after ${rounds.length} round`);
 		});
 
 		expect(await asked).toBe(true);
-		await handed;
-		expect(order).toEqual(['handover after 1 round']);
+		await rewritten;
+		expect(first.interrupted()).toBe(true);
+		expect(order).toEqual(['rewrite after 1 round']);
 		expect(rounds).toEqual(['open', 'open']);
 	});
 
-	it('goes on from the database for a workspace that a handover closed', async () => {
-		const first = pending();
-		openSync = (signal) => first.run(signal);
-		await markSyncOutbox(open.id, ['note:unsent']);
-		const asked = syncScheduler.request(open.id);
-		await vi.waitFor(() => expect(rounds).toEqual(['open']));
+	it('leaves the sync of every other workspace alone when one is rewritten', async () => {
+		const slow = hold(other);
+		const asked = syncScheduler.request(other.id);
+		await vi.waitFor(() => expect(rounds).toEqual(['other']));
 
-		await syncScheduler.handover(async () => syncStore.activateProfile(other));
+		await syncScheduler.rewrite(open.id, async () => undefined);
 
-		// The same ask is answered by the sync that sends it, though the workspace is closed.
+		expect(slow.interrupted()).toBe(false);
+		slow.answer('synced');
 		expect(await asked).toBe(true);
-		expect(rounds).toEqual(['open', 'open']);
-		expect(device.sync).toHaveBeenCalledOnce();
-		expect(await getSyncOutboxKeys(open.id)).toEqual([]);
+		expect(rounds).toEqual(['other']);
 	});
 
-	it('does not contact the relay for a workspace that is not open and owes nothing', async () => {
-		await clearSyncOutbox(other.id, ['note:queued']);
-		const turned = vi.fn();
-		syncStore.onSyncStart = turned;
-		try {
-			expect(await syncScheduler.request(other.id)).toBe(true);
-		} finally {
-			syncStore.onSyncStart = null;
-		}
+	it('gives way to a rewrite of the workspace in another window', async () => {
+		const first = hold(other);
+		const { channel } = syncScheduler as unknown as { channel: BroadcastChannel };
+		const asked = syncScheduler.request(other.id);
+		await vi.waitFor(() => expect(rounds).toEqual(['other']));
 
-		expect(device.sync).not.toHaveBeenCalled();
-		expect(turned).not.toHaveBeenCalled();
+		channel.onmessage?.({ data: { type: 'rewrite', pid: third.id } } as MessageEvent);
+		expect(first.interrupted()).toBe(false);
+		channel.onmessage?.({ data: { type: 'rewrite', pid: other.id } } as MessageEvent);
+
+		expect(await asked).toBe(true);
+		expect(rounds).toEqual(['other', 'other']);
+	});
+
+	it('gives up a rewrite still running when the next one comes for the same workspace', async () => {
+		let given = false;
+		const first = syncScheduler.rewrite(
+			open.id,
+			(signal) =>
+				new Promise<string>((resolve) =>
+					signal.addEventListener('abort', () => {
+						given = true;
+						resolve('first gave way');
+					})
+				)
+		);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		const second = syncScheduler.rewrite(open.id, async () => 'second ran');
+
+		expect(await Promise.all([first, second])).toEqual(['first gave way', 'second ran']);
+		expect(given).toBe(true);
+	});
+
+	it('hands what a sync saved to the window, and tells it when another window synced', async () => {
+		const shown: Array<[string, boolean]> = [];
+		syncScheduler.onSynced = (pid, saved) => {
+			shown.push([name(pid) ?? '?', saved !== undefined]);
+		};
+		driver.sync.mockImplementationOnce(async (_profile, _signal, saved) => {
+			await saved(syncSnapshot(), new Map());
+			return 'synced';
+		});
+		const { channel } = syncScheduler as unknown as { channel: BroadcastChannel };
+
+		expect(await syncScheduler.request(open.id)).toBe(true);
+		channel.onmessage?.({ data: { type: 'local-sync-complete', pid: other.id } } as MessageEvent);
+
+		expect(shown).toEqual([
+			['open', true],
+			['other', false]
+		]);
+	});
+
+	it('catches every workspace up, shown or not, with or without something to send', async () => {
+		await clearSyncOutbox(other.id, ['note:queued']);
+		const local: StoredProfile = { id: 'local', name: 'Local', syncKey: '', createdAt: 1 };
+		syncStore.profiles = [open, other, third, local];
+
+		syncScheduler.catchUpAll();
+		await vi.waitFor(() => expect(rounds.slice().sort()).toEqual(['open', 'other', 'third']));
+		await vi.waitFor(() =>
+			expect([open, other, third].some(({ id }) => syncScheduler.syncing(id))).toBe(false)
+		);
+
+		// They have just caught up: the app being shown again asks nothing more,
+		// and the connection coming back asks every one of them again.
+		syncScheduler.catchUpAll();
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(rounds).toHaveLength(3);
+		window.dispatchEvent(new Event('online'));
+		await vi.waitFor(() => expect(rounds).toHaveLength(6));
 	});
 
 	it('does not sync a workspace that does not sync, or is no longer on the device', async () => {
@@ -169,8 +258,7 @@ describe('the sync scheduler', () => {
 	});
 
 	it('answers a failed sync at once, without another round for those who joined it', async () => {
-		const first = pending();
-		openSync = (signal) => first.run(signal);
+		const first = hold(open);
 		const asked = syncScheduler.request(open.id);
 		await vi.waitFor(() => expect(rounds).toEqual(['open']));
 		const joined = syncScheduler.request(open.id);
@@ -186,8 +274,7 @@ describe('the sync scheduler', () => {
 		expect(await syncScheduler.catchUp(open.id, 30_000)).toBe(true);
 		expect(rounds).toEqual(['open']);
 
-		const first = pending();
-		openSync = (signal) => first.run(signal);
+		const first = hold(open);
 		const asked = syncScheduler.request(open.id);
 		await vi.waitFor(() => expect(rounds).toEqual(['open', 'open']));
 		const caughtUp = syncScheduler.catchUp(open.id);
@@ -195,21 +282,5 @@ describe('the sync scheduler', () => {
 
 		expect(await Promise.all([asked, caughtUp])).toEqual([true, true]);
 		expect(rounds).toEqual(['open', 'open']);
-	});
-
-	it('gives way to a handover and to an open workspace in another window', async () => {
-		const first = pending();
-		device.sync.mockImplementationOnce((profile, signal) => {
-			rounds.push(name(profile.id) ?? '?');
-			return first.run(signal);
-		});
-		const { channel } = syncScheduler as unknown as { channel: BroadcastChannel };
-		const asked = syncScheduler.request(other.id);
-		await vi.waitFor(() => expect(rounds).toEqual(['other']));
-
-		channel.onmessage?.({ data: { type: 'sync-waiting' } } as MessageEvent);
-
-		expect(await asked).toBe(true);
-		expect(rounds).toEqual(['other', 'other']);
 	});
 });

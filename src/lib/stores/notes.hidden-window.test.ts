@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createSyncIdentity } from '#lib/syncPairing.js';
 import { putNote } from '#lib/db/idb.js';
 import { createKanbanBoard } from '#lib/kanban.js';
 import { saveBoardsToDevice } from '#lib/syncTombstones.js';
@@ -8,6 +7,8 @@ import type { Note } from '#lib/types.js';
 import { notesStore } from './notes.svelte';
 import { kanbanStore } from './kanban.svelte';
 import { syncStore } from './sync.svelte';
+import { syncScheduler } from './syncScheduler';
+import { linkTestWorkspace, unlinkTestWorkspace } from '../../tests/syncing';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 
 type Internals = {
@@ -109,19 +110,32 @@ describe('a hidden window while another window syncs', () => {
 		expect(readNotesMirror(TEST_WORKSPACE)).toEqual([]);
 	});
 
-	it('catches up before it syncs, so the flight never starts from outdated notes', async () => {
+	it('catches up when a sync of its own lands, and shows what the other window saved', async () => {
 		vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
 		internals.otherWindowSynced(TEST_WORKSPACE);
-		syncStore.account = createSyncIdentity();
-		const snapshots: string[][] = [];
-		vi.spyOn(syncStore, 'sync').mockImplementation(async (local) => {
-			snapshots.push(local.notes.map((item) => item.title));
+		linkTestWorkspace();
+		// The sync sends what the database holds, which the other window's save is part of.
+		const sent: string[][] = [];
+		vi.spyOn(syncStore, 'syncWorkspace').mockImplementation(async (_profile, local, saved) => {
+			sent.push(local.notes.map((item) => item.title));
+			await saved(local, TEST_WORKSPACE, {
+				readEnvelopes: 0,
+				relayHolds: () => true,
+				relayHas: () => undefined,
+				owes: async () => undefined
+			});
 			return { success: true, snapshot: local };
 		});
 
-		await notesStore.syncWithCloudManual();
+		try {
+			await notesStore.syncWithCloudManual();
+		} finally {
+			await syncScheduler.reset();
+			unlinkTestWorkspace();
+		}
 
-		expect(snapshots).toEqual([['saved elsewhere']]);
+		expect(sent).toEqual([['saved elsewhere']]);
+		expect(notesStore.notes.map((item) => item.title)).toEqual(['saved elsewhere']);
 		expect(internals.staleWhileHidden).toBeNull();
 	});
 });

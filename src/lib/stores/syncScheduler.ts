@@ -1,25 +1,35 @@
-// When a workspace syncs on this device, and who holds the sync lock, is decided
-// here and nowhere else. The rules are the same for every workspace:
+// When a workspace syncs on this device is decided here and nowhere else. The
+// rules are the same for every workspace, and none of them depends on which
+// workspace a window shows:
 //
-// 1. Each workspace has one lane, whether or not it is open in this window. A lane
-//    is asked to sync, runs rounds under the lock until it has settled, and tells
-//    everyone who asked meanwhile how it ended.
-// 2. One round runs at a time. A handover (switching workspace, an import landing,
-//    a pairing merge) goes first, then the open workspace, then the others in turn.
-// 3. Whatever comes first interrupts what is running. Nothing is lost with a round:
-//    what it had not committed is still queued, and its lane goes again.
+// 1. Every workspace syncs from its own database, in the background. What is
+//    written on this device goes to the database straight away; a sync sends what
+//    the database holds and saves what it pulled there.
+// 2. Each workspace has one lane. A lane is asked to sync, runs rounds until it has
+//    settled with the relay, and tells everyone who asked meanwhile how it ended.
+//    One round of a workspace runs at a time, across windows. Workspaces do not
+//    wait for each other, and none interrupts another.
+// 3. Only something that rewrites a workspace (an import landing, a pairing merge,
+//    unlinking, deleting) interrupts its sync. Nothing is lost with the round: what
+//    it had not committed is still queued, and the lane goes again.
 // 4. A sync that could not reach the relay is tried again by itself, later each
 //    time, for as long as the workspace has something to send. One the relay refused
 //    waits until something changes.
-// 5. The cloud icon turns while a round runs, whichever workspace it is for.
+// 5. Every workspace catches up with the relay at the same moments: when the app
+//    starts, when it is shown again, when the connection comes back. What other
+//    devices changed in a workspace is in its database before anyone opens it.
+// 6. The cloud icon turns while a round runs, whichever workspace it is for.
 import { SvelteMap } from 'svelte/reactivity';
+import type { AttachmentDecisions } from '#lib/attachmentSettling.js';
 import { getSyncOutboxKeys, isProfileReleased } from '#lib/db/idb.js';
-import { syncWorkspaceFromDevice } from '#lib/backgroundWorkspaceSync.js';
 import type { StoredProfile } from '#lib/profiles.js';
 import { backoffDelay, type Backoff } from '#lib/syncRetry.js';
+import type { SyncSnapshot } from '#lib/syncRecords.js';
+import { withLock } from '#lib/webLock.js';
+import { syncWorkspace } from '#lib/workspaceSync.js';
 import { syncStore, type SyncOutcome } from '#lib/stores/sync.svelte.js';
 
-/** Web lock serializing sync rounds and handovers across every window of this origin. */
+/** Web lock, one per workspace, serializing its sync rounds and rewrites across every window. */
 export const SYNC_LOCK = 'scrapscache-sync';
 
 /** How long after the last change a workspace waits before it syncs. */
@@ -27,6 +37,12 @@ export const SYNC_AFTER_CHANGE_MS = 5_000;
 
 /** How soon a workspace found owing the relay something gets its turn. */
 const SYNC_OWING_MS = 2_000;
+
+/**
+ * A workspace that caught up with the relay this recently is not asked again by
+ * the app starting or being shown: those arrive together, especially on iOS.
+ */
+export const CAUGHT_UP_MS = 30_000;
 
 /** The relay could not be reached: from 5 seconds, doubling, at most 5 minutes. */
 const unreachableRetry: Backoff = { base: 5_000, factor: 2, max: 300_000 };
@@ -39,26 +55,9 @@ const REACHABLE_RETRY_GAP_MS = 30_000;
 
 const SYNC_CHANNEL = 'scrapscache-sync-channel';
 
-let lockQueue: Promise<unknown> = Promise.resolve();
-
-/**
- * Run under the sync lock, in the order asked. An origin that is not secure has no
- * Web Locks; the order then still holds inside this window, which is what a
- * handover taking over from this window's own round relies on.
- */
-function withSyncLock<T>(run: () => Promise<T>): Promise<T> {
-	const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
-	if (locks?.request) return locks.request(SYNC_LOCK, run);
-	const held = lockQueue.then(run);
-	lockQueue = held.catch(() => undefined);
-	return held;
-}
-
 type Flight = {
 	promise: Promise<boolean>;
 	settle: (synced: boolean) => void;
-	/** A round of it ran to its end: the rounds after it show no progress of their own. */
-	shown: boolean;
 };
 
 type Lane = {
@@ -74,15 +73,19 @@ type Lane = {
 	leftover: string;
 	/** From the first ask until the lane has settled. */
 	flight: Flight | null;
+	/** The round that holds the workspace's lock or waits for it. */
+	round: AbortController | null;
+	/** The rewrites of the workspace started in this window that have not finished. */
+	rewrites: Set<AbortController>;
+	/** The rounds being run, until the lane is asked no more. */
+	pumped: Promise<void> | null;
 };
 
 /** How a round ended: as its sync did, or without one. */
 type RoundEnd =
 	| SyncOutcome
-	/** Given up for something that comes first; the lane goes again. */
+	/** Given up for something that rewrites the workspace; the lane goes again. */
 	| 'interrupted'
-	/** Not open here and nothing to send: the relay was not contacted. */
-	| 'idle'
 	/** The workspace no longer syncs on this device. */
 	| 'gone';
 
@@ -90,15 +93,16 @@ export class SyncScheduler {
 	private lanes = new Map<string, Lane>();
 	/** The lanes in flight, for the interface to read. */
 	private flights = new SvelteMap<string, Promise<boolean>>();
-	private running: { pid: string; round: AbortController } | null = null;
-	/** The rounds being run, until no lane is asked any more. */
-	private pumped: Promise<void> | null = null;
 	private channel: BroadcastChannel | null = null;
 
-	/** Syncs the workspace open in this window from what is in memory. Set by the notes store. */
-	syncOpen: ((indicate: boolean, signal: AbortSignal) => Promise<SyncOutcome>) | null = null;
-	/** Another window saved what it synced for this workspace. */
-	onOtherWindowSynced: ((pid: string) => void) | null = null;
+	/**
+	 * A sync saved into a workspace's database. A window showing that workspace shows
+	 * what was saved: handed over when the sync ran here, read back when it ran in
+	 * another window.
+	 */
+	onSynced:
+		| ((pid: string, saved?: { snapshot: SyncSnapshot; decisions: AttachmentDecisions }) => unknown)
+		| null = null;
 
 	constructor() {
 		syncStore.onWorkspaceOwes = (pid) => this.changed(pid, SYNC_OWING_MS);
@@ -107,24 +111,21 @@ export class SyncScheduler {
 			this.channel = new BroadcastChannel(SYNC_CHANNEL);
 			this.channel.onmessage = (event) => {
 				const type: unknown = event.data?.type;
-				if (type === 'local-sync-complete' && typeof event.data?.pid === 'string')
-					this.onOtherWindowSynced?.(event.data.pid);
-				// Another window's handover is waiting for the lock a round here may hold.
-				else if (type === 'handover') this.running?.round.abort();
-				// Another window's open workspace comes before one that is not open here.
-				else if (type === 'sync-waiting' && this.running && !this.isOpen(this.running.pid))
-					this.running.round.abort();
+				const pid: unknown = event.data?.pid;
+				if (typeof pid !== 'string') return;
+				if (type === 'local-sync-complete') void this.onSynced?.(pid);
+				// Another window is rewriting the workspace and waits for its lock.
+				else if (type === 'rewrite') this.giveWay(this.lanes.get(pid));
 			};
 		}
 		window.addEventListener('online', () => {
 			// A request sent before the connection came back is not going to be answered
-			// on the new one: the round is given up and its lane goes again.
-			this.running?.round.abort();
-			void this.request(syncStore.activePid);
-			void this.scan();
+			// on the new one: the rounds are given up and their lanes go again.
+			for (const lane of this.lanes.values()) lane.round?.abort();
+			void this.catchUpAll(0);
 		});
 		document.addEventListener('visibilitychange', () => {
-			if (document.visibilityState !== 'hidden') void this.scan();
+			if (document.visibilityState !== 'hidden') void this.catchUpAll();
 		});
 	}
 
@@ -144,9 +145,7 @@ export class SyncScheduler {
 		lane.asked = true;
 		lane.flight ??= this.takeOff(pid);
 		const { promise } = lane.flight;
-		// The open workspace does not wait for one that is not open.
-		if (this.isOpen(pid) && this.running && this.running.pid !== pid) this.running.round.abort();
-		void this.pump();
+		void this.pump(pid, lane);
 		return promise;
 	}
 
@@ -175,31 +174,44 @@ export class SyncScheduler {
 	}
 
 	/**
-	 * Run something that changes which data a sync would read, under the sync lock
-	 * and without waiting for a sync to finish. A round holds the lock for as long as
-	 * the relay takes to answer, and a handover only touches this device. So it asks
-	 * for the lock first, which puts whatever asks later behind it, and then the
-	 * round under way in any window is given up.
+	 * Run something that rewrites a workspace or changes its key, without a sync of
+	 * that workspace running beside it and without waiting for one to finish. A round
+	 * holds the workspace's lock for as long as the relay takes to answer, so the
+	 * lock is asked for first, which puts whatever asks later behind this, and then
+	 * the round under way in any window is given up. A rewrite still running for
+	 * the workspace gives way the same, when it listens to `signal`.
 	 */
-	handover<T>(run: () => Promise<T>): Promise<T> {
-		const held = withSyncLock(run);
-		this.running?.round.abort();
-		this.post({ type: 'handover' });
+	rewrite<T>(pid: string, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+		const lane = this.lane(pid);
+		const earlier = [...lane.rewrites];
+		const mine = new AbortController();
+		lane.rewrites.add(mine);
+		const held = withLock(`${SYNC_LOCK}:${pid}`, () => run(mine.signal)).finally(() =>
+			lane.rewrites.delete(mine)
+		);
+		lane.round?.abort();
+		for (const rewrite of earlier) rewrite.abort();
+		this.post({ type: 'rewrite', pid });
 		return held;
 	}
 
 	/**
-	 * Give every workspace that is not open here and owes the relay something its
-	 * turn, so what was written in a workspace is sent whether or not it is opened
-	 * again. One that owes nothing is not contacted until it is opened.
+	 * Every workspace on this device catches up with the relay, shown or not: what
+	 * was written in it is sent, and what other devices changed in it is saved into
+	 * its database. One that did so within the last `fresh` milliseconds is left
+	 * alone, unless something was queued in it since.
 	 */
-	async scan(): Promise<void> {
+	async catchUpAll(fresh = CAUGHT_UP_MS): Promise<void> {
 		for (const profile of [...syncStore.profiles]) {
 			const pid = profile.id;
-			if (this.isOpen(pid) || !this.stored(pid) || this.lanes.get(pid)?.flight) continue;
-			const keys = await this.queued(pid);
-			if (keys.length > 0 && keys.join('\n') !== this.lanes.get(pid)?.leftover)
-				this.changed(pid, SYNC_OWING_MS);
+			const lane = this.lanes.get(pid);
+			if (!this.profile(pid) || lane?.flight) continue;
+			if (lane && Date.now() - lane.syncedAt < fresh) {
+				const keys = await this.queued(pid);
+				if (keys.length === 0 || keys.join('\n') === lane.leftover) continue;
+			}
+			// Joins a sync that was asked for while the queue was read.
+			void this.catchUp(pid);
 		}
 	}
 
@@ -209,32 +221,30 @@ export class SyncScheduler {
 	}
 
 	/**
-	 * Forget every lane and what it had planned; settles once the round under way
-	 * has given up. For tests, which share one scheduler.
+	 * Forget every lane and what it had planned; settles once the rounds under way
+	 * have given up. For tests, which share one scheduler.
 	 */
 	async reset(): Promise<void> {
-		this.running?.round.abort();
+		const pumped: Array<Promise<void> | null> = [];
 		for (const [pid, lane] of this.lanes) {
+			lane.round?.abort();
 			this.cancelTimer(lane);
 			lane.asked = false;
 			this.land(pid, lane, false);
+			pumped.push(lane.pumped);
 		}
 		this.lanes.clear();
-		await this.pumped;
+		await Promise.all(pumped);
 	}
 
-	private isOpen(pid: string): boolean {
-		return pid === syncStore.activePid;
-	}
-
-	/** The workspace as this device holds it without having it open, when it syncs. */
-	private stored(pid: string): StoredProfile | null {
-		if (this.isOpen(pid) || isProfileReleased(pid)) return null;
+	/** The workspace as this device holds it, when it syncs. */
+	private profile(pid: string): StoredProfile | null {
+		if (isProfileReleased(pid)) return null;
 		return syncStore.profiles.find((entry) => entry.id === pid && entry.syncKey !== '') ?? null;
 	}
 
 	private syncs(pid: string): boolean {
-		return this.isOpen(pid) ? syncStore.isLoggedIn : this.stored(pid) !== null;
+		return this.profile(pid) !== null;
 	}
 
 	private lane(pid: string): Lane {
@@ -247,7 +257,10 @@ export class SyncScheduler {
 				triedAt: 0,
 				syncedAt: 0,
 				leftover: '',
-				flight: null
+				flight: null,
+				round: null,
+				rewrites: new Set(),
+				pumped: null
 			};
 			this.lanes.set(pid, lane);
 		}
@@ -258,7 +271,7 @@ export class SyncScheduler {
 		let settle: (synced: boolean) => void = () => undefined;
 		const promise = new Promise<boolean>((resolve) => (settle = resolve));
 		this.flights.set(pid, promise);
-		return { promise, settle, shown: false };
+		return { promise, settle };
 	}
 
 	private land(pid: string, lane: Lane, synced: boolean): void {
@@ -280,7 +293,13 @@ export class SyncScheduler {
 		lane.timer = null;
 	}
 
-	private post(message: { type: string; pid?: string }): void {
+	/** Whatever this window runs for a workspace lets go of its lock. */
+	private giveWay(lane: Lane | undefined): void {
+		lane?.round?.abort();
+		for (const rewrite of lane?.rewrites ?? []) rewrite.abort();
+	}
+
+	private post(message: { type: string; pid: string }): void {
 		try {
 			this.channel?.postMessage(message);
 		} catch {
@@ -289,92 +308,76 @@ export class SyncScheduler {
 	}
 
 	private async queued(pid: string): Promise<string[]> {
-		if (this.isOpen(pid)) await syncStore.waitForOutboxWrites();
+		await syncStore.waitForOutboxWrites();
 		return (await getSyncOutboxKeys(pid).catch(() => [])).sort();
 	}
 
-	/** The lane whose turn it is: the open workspace's first, then the others. */
-	private next(): string | null {
-		let first: string | null = null;
-		for (const [pid, lane] of this.lanes) {
-			if (!lane.asked) continue;
-			if (this.isOpen(pid)) return pid;
-			first ??= pid;
-		}
-		return first;
-	}
-
-	/** Run the lanes that were asked, one round at a time, until none is. */
-	private pump(): Promise<void> {
-		if (this.pumped) return this.pumped;
+	/** Run the rounds a lane was asked for, one after the other, until it is asked no more. */
+	private pump(pid: string, lane: Lane): Promise<void> {
+		if (lane.pumped) return lane.pumped;
 		let done = false;
 		const pumped = (async () => {
 			try {
-				for (let pid = this.next(); pid !== null; pid = this.next()) {
-					await this.fly(pid).catch((err) => {
+				while (lane.asked && this.lanes.get(pid) === lane) {
+					await this.fly(pid, lane).catch((err) => {
 						// Whoever asked is answered, whatever went wrong in between.
 						console.error('[sync] a sync round could not be settled', err);
-						const lane = this.lanes.get(pid);
-						if (!lane) return;
 						lane.asked = false;
 						this.land(pid, lane, false);
 					});
 				}
 			} finally {
-				// In the same step as the last look for a lane: an ask that arrives
+				// In the same step as the last look at the lane: an ask that arrives
 				// after it starts the next pump instead of joining one that is over.
 				done = true;
-				this.pumped = null;
+				lane.pumped = null;
 			}
 		})();
-		if (!done) this.pumped = pumped;
+		if (!done) lane.pumped = pumped;
 		return pumped;
 	}
 
 	/** One round of a lane, and what its end means for the lane. */
-	private async fly(pid: string): Promise<void> {
-		const lane = this.lane(pid);
+	private async fly(pid: string, lane: Lane): Promise<void> {
 		const flight = lane.flight;
 		lane.asked = false;
 		if (!flight) return;
 		let before: string[] = [];
 		let end: RoundEnd;
-		// A workspace that is not open and owes nothing is not contacted until it is
-		// opened: no lock is taken for it, and the cloud does not turn.
-		if (!this.isOpen(pid) && (await this.queued(pid)).length === 0) end = 'idle';
-		else {
-			const round = new AbortController();
-			this.running = { pid, round };
-			lane.triedAt = Date.now();
-			syncStore.onSyncStart?.();
-			// Another window's round for a workspace that is not open there gives way too.
-			if (this.isOpen(pid)) this.post({ type: 'sync-waiting' });
-			try {
-				end = await withSyncLock(async (): Promise<RoundEnd> => {
-					// Decided under the lock: a handover that went first may have changed
-					// which workspace is open, or taken this one off the device.
-					if (round.signal.aborted) return 'interrupted';
-					if (!this.syncs(pid)) return 'gone';
-					before = await this.queued(pid);
-					const outcome = await this.sync(pid, before, !flight.shown, round.signal);
-					return round.signal.aborted ? 'interrupted' : outcome;
+		const round = new AbortController();
+		lane.round = round;
+		lane.triedAt = Date.now();
+		syncStore.onSyncStart?.();
+		try {
+			end = await withLock(`${SYNC_LOCK}:${pid}`, async (): Promise<RoundEnd> => {
+				// Decided under the lock: a rewrite that went first may have taken the
+				// workspace, or its key, off the device.
+				if (round.signal.aborted) return 'interrupted';
+				const profile = this.profile(pid);
+				if (!profile) return 'gone';
+				before = await this.queued(pid);
+				const outcome = await syncWorkspace(profile, round.signal, async (snapshot, decisions) => {
+					await this.onSynced?.(pid, { snapshot, decisions });
 				});
-			} catch (err) {
-				end = round.signal.aborted ? 'interrupted' : 'failed';
-				if (end === 'failed') console.error('[sync] a sync round failed', err);
-			} finally {
-				this.running = null;
-				syncStore.onSyncEnd?.();
-			}
+				return round.signal.aborted ? 'interrupted' : outcome;
+			});
+		} catch (err) {
+			end = round.signal.aborted ? 'interrupted' : 'failed';
+			if (end === 'failed') console.error('[sync] a sync round failed', err);
+		} finally {
+			if (lane.round === round) lane.round = null;
+			syncStore.onSyncEnd?.();
 		}
 
+		// Forgotten meanwhile: nobody is waiting on this lane any more.
+		if (this.lanes.get(pid) !== lane) return;
 		if (end === 'interrupted') {
 			lane.asked = true;
 			return;
 		}
-		flight.shown = true;
 		if (end === 'synced') {
 			lane.syncedAt = Date.now();
+			lane.failures = 0;
 			this.announce(pid);
 			const after = await this.queued(pid);
 			// Only what this sync had its chance at counts as left over. What was queued
@@ -384,9 +387,6 @@ export class SyncScheduler {
 			if (after.length > left.length && !lane.timer && !lane.asked)
 				this.wake(pid, lane, SYNC_OWING_MS);
 			this.relayAnswered(pid);
-		}
-		if (end === 'synced' || end === 'idle') {
-			lane.failures = 0;
 			// Asked again while it ran: one more round before anyone is answered.
 			if (!lane.asked) this.land(pid, lane, true);
 			return;
@@ -403,20 +403,6 @@ export class SyncScheduler {
 			if (!lane.timer && (await this.queued(pid)).length > 0)
 				this.wake(pid, lane, backoffDelay(unreachableRetry, lane.failures - 1));
 		}
-	}
-
-	private sync(
-		pid: string,
-		queued: string[],
-		indicate: boolean,
-		signal: AbortSignal
-	): Promise<SyncOutcome | 'idle'> {
-		if (this.isOpen(pid))
-			return this.syncOpen ? this.syncOpen(indicate, signal) : Promise.resolve('failed');
-		const profile = this.stored(pid);
-		// Another window may have sent it while this round waited for the lock.
-		if (!profile || queued.length === 0) return Promise.resolve('idle');
-		return syncWorkspaceFromDevice(profile, signal);
 	}
 
 	/** The relay answered: a workspace waiting to try it again may go now. */

@@ -127,6 +127,17 @@ describe('a workspace that is not open', () => {
 		await notesStore.reloadForProfile();
 	}
 
+	/**
+	 * Every workspace has caught up, as on a device that has been open a while: a
+	 * load asks all of them to. The requests counted from here on are the test's own.
+	 */
+	async function caughtUp(): Promise<void> {
+		await vi.waitFor(() =>
+			expect(syncStore.profiles.some(({ id }) => syncScheduler.syncing(id))).toBe(false)
+		);
+		requests.length = 0;
+	}
+
 	beforeEach(async () => {
 		localStorage.clear();
 		seedTestKeyring();
@@ -186,6 +197,7 @@ describe('a workspace that is not open', () => {
 		);
 		syncStore.profiles = [left, here];
 		await open(here);
+		await caughtUp();
 	});
 
 	afterEach(async () => {
@@ -211,8 +223,8 @@ describe('a workspace that is not open', () => {
 		syncStore.onSyncEnd = () =>
 			cloud.push(requests.length > asked ? 'stops after the relay was asked' : 'stops unasked');
 
-		// Nobody names the workspace: it is found owing, and gets its turn.
-		await syncScheduler.scan();
+		// Nobody names the workspace: every workspace catches up, and so does this one.
+		syncScheduler.catchUpAll();
 		await vi.waitFor(async () => expect(await getSyncOutboxKeys(left.id)).toEqual([]), {
 			timeout: 5_000
 		});
@@ -323,18 +335,39 @@ describe('a workspace that is not open', () => {
 		expect(notesStore.deletedNoteIds).toEqual({ gone: 5 });
 	});
 
-	it('is left alone when it owes nothing', async () => {
-		await putNote(left.id, note('settled'));
-		await waitForDeviceWrites(left.id);
+	// A workspace nobody has open still takes in what other devices changed: it is
+	// in its database before it is opened, with nothing of its own to send.
+	it('takes in what another device changed without being opened', async () => {
+		await otherDeviceWrites(
+			{ kind: 'note', value: note('theirs', 'Theirs') as SyncNote },
+			'note:theirs'
+		);
+		expect(await getSyncOutboxKeys(left.id)).toEqual([]);
 
-		await syncScheduler.scan();
-		expect(await syncScheduler.request(left.id)).toBe(true);
+		// The connection comes back: every workspace catches up, shown or not.
+		window.dispatchEvent(new Event('online'));
+		await vi.waitFor(
+			async () =>
+				expect((await getAllNotesMetadata(left.id)).map((item) => item.title)).toEqual(['Theirs']),
+			{ timeout: 5_000 }
+		);
+		await vi.waitFor(() => expect(syncScheduler.syncing(left.id)).toBe(false));
 
-		expect(requests).toEqual([]);
-		expect(syncScheduler.syncing(left.id)).toBe(false);
+		// The window still shows its own workspace.
+		expect(notesStore.notes).toEqual([]);
+		// It has just caught up: being shown again a moment later asks nothing more.
+		const asked = requests.length;
+		await syncScheduler.catchUpAll();
+		await new Promise((resolve) => setTimeout(resolve, 30));
+		expect(requests).toHaveLength(asked);
+
+		// Opened later, it shows what was saved without waiting for the relay.
+		silent.add(identity.accountId);
+		await open(left);
+		expect(notesStore.notes.map((item) => item.title)).toEqual(['Theirs']);
 	});
 
-	it('gives the lock up to a workspace switch, and is sent once the relay answers', async () => {
+	it('is not disturbed by a workspace switch, and is sent once the relay answers', async () => {
 		const spare: StoredProfile = {
 			id: `spare-${randomOpaqueId()}`,
 			name: 'Spare',
@@ -353,8 +386,10 @@ describe('a workspace that is not open', () => {
 		expect(syncStore.activeId).toBe(spare.id);
 		expect(await getSyncOutboxKeys(left.id)).toEqual(['note:unsent']);
 		expect(await relayNoteTitles()).toEqual([]);
-		// It goes again behind the switch, by itself.
-		await vi.waitFor(() => expect(requests).toHaveLength(2));
+		// The request it had out is still the only one: the switch did not touch it.
+		await new Promise((resolve) => setTimeout(resolve, 30));
+		expect(requests).toHaveLength(1);
+		expect(syncScheduler.syncing(left.id)).toBe(true);
 
 		reconnect();
 		expect(await sent).toBe(true);
@@ -364,16 +399,11 @@ describe('a workspace that is not open', () => {
 
 	// A first upload takes several requests. Cut short, the rest of it is still
 	// queued: the next sync must not take the workspace for sent.
-	it('finishes a first upload that a workspace switch cut short', async () => {
-		const spare: StoredProfile = {
-			id: `spare-${randomOpaqueId()}`,
-			name: 'Spare',
-			syncKey: '',
-			createdAt: 3
-		};
-		syncStore.profiles = [left, here, spare];
+	it('finishes a first upload that a rewrite of the workspace cut short', async () => {
 		const titles = Array.from({ length: 20 }, (_, index) => `Note ${index + 10}`);
-		// Never queued one by one, as the notes of a workspace that just started syncing.
+		// A workspace that just started syncing: the relay has nothing of it yet.
+		await syncStore.clearAccountControlPlane(identity.accountId, left.id);
+		// Never queued one by one, as the notes of such a workspace.
 		for (const title of titles) await putNote(left.id, note(title, title));
 		await putNote(left.id, note('queued', 'Queued'), ['note:queued']);
 		await waitForDeviceWrites(left.id);
@@ -382,7 +412,8 @@ describe('a workspace that is not open', () => {
 		const sent = syncScheduler.request(left.id);
 		await vi.waitFor(() => expect(unanswered).toBe(1));
 		const asked = requests.length;
-		expect(await profileCoordinator.switchTo(spare.id)).toEqual({ success: true });
+		// As an import landing in it would: the round gives up its lock, and goes again.
+		await syncScheduler.rewrite(left.id, async () => undefined);
 		const sentFirst = await relayNoteTitles();
 		expect(sentFirst.length).toBeGreaterThan(0);
 		expect(sentFirst.length).toBeLessThan(21);
@@ -395,7 +426,7 @@ describe('a workspace that is not open', () => {
 		expect(await getSyncOutboxKeys(left.id)).toEqual([]);
 	});
 
-	it("gives way to the open workspace's own sync", async () => {
+	it("neither waits for the open workspace's sync nor holds it up", async () => {
 		const openIdentity = createSyncIdentity();
 		await relay.createAccount(openIdentity.accountId, 'credential');
 		const synced: StoredProfile = {
@@ -406,6 +437,7 @@ describe('a workspace that is not open', () => {
 		};
 		syncStore.profiles = [left, here, synced];
 		await open(synced);
+		await caughtUp();
 		await putNote(left.id, note('unsent', 'Still to send'), ['note:unsent']);
 		await waitForDeviceWrites(left.id);
 		silent.add(identity.accountId);
@@ -415,10 +447,11 @@ describe('a workspace that is not open', () => {
 		notesStore.createNote({ title: 'In the open workspace' });
 		await waitForDeviceWrites(synced.id);
 
+		// The open workspace syncs start to end while the other one's request is still out.
 		expect(await notesStore.syncWithCloudManual()).toBe(true);
 		expect(await relayNoteTitles(openIdentity)).toEqual(['In the open workspace']);
-		// Its own turn comes again after the open workspace's.
-		await vi.waitFor(() => expect(unanswered).toBe(1));
+		expect(requests.filter((account) => account === identity.accountId)).toHaveLength(1);
+		expect(syncScheduler.syncing(left.id)).toBe(true);
 		expect(await getSyncOutboxKeys(left.id)).toEqual(['note:unsent']);
 	});
 

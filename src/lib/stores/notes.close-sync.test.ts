@@ -18,6 +18,7 @@ import { syncSnapshot } from '#lib/syncRecords.js';
 import { notesStore } from './notes.svelte';
 import { syncScheduler } from './syncScheduler';
 import type { Note } from '#lib/types.js';
+import { linkTestWorkspace, unlinkTestWorkspace } from '../../tests/syncing';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 
 function noteWithPhoto(dataUrl: string): Note {
@@ -53,34 +54,24 @@ async function settleIndexedDb(): Promise<void> {
 }
 
 /** The relay's answer to each sync of the open workspace. */
-function relayAnswers(answer: () => ReturnType<typeof syncStore.sync>) {
-	vi.spyOn(syncStore, 'needsCurrentStateBootstrap').mockResolvedValue(false);
-	return vi.spyOn(syncStore, 'sync').mockImplementation(answer);
+function relayAnswers(answer: () => ReturnType<typeof syncStore.syncWorkspace>) {
+	return vi.spyOn(syncStore, 'syncWorkspace').mockImplementation(answer);
 }
 
 describe('syncing when a note closes', () => {
 	beforeEach(async () => {
 		await clearSyncOutbox(TEST_WORKSPACE, await getSyncOutboxKeys(TEST_WORKSPACE));
-		syncStore.account = {
-			syncKey: 'test-key',
-			accountId: 'test-account',
-			authPublicKey: 'test-secret',
-			pairingCode: 'test-code'
-		};
+		linkTestWorkspace();
 	});
 
 	afterEach(async () => {
 		vi.clearAllTimers();
 		vi.useRealTimers();
-		syncScheduler.reset();
+		await syncScheduler.reset();
 		vi.restoreAllMocks();
-		syncStore.account = null;
-		syncStore.lastError = null;
+		unlinkTestWorkspace();
 		notesStore.notes = [];
 		notesStore.loaded = true;
-		(
-			notesStore as unknown as { attachmentHydrationFailures: Set<string> }
-		).attachmentHydrationFailures.clear();
 		await clearAllNotes(TEST_WORKSPACE);
 		await clearSyncOutbox(TEST_WORKSPACE, await getSyncOutboxKeys(TEST_WORKSPACE));
 	});
@@ -100,16 +91,24 @@ describe('syncing when a note closes', () => {
 		expect(flush).toHaveBeenCalledOnce();
 	});
 
-	it('asks the cloud request to spin the icon', async () => {
+	it('turns the cloud icon while the request runs', async () => {
 		await markSyncOutbox(TEST_WORKSPACE, ['note:note-1']);
-		vi.spyOn(syncStore, 'needsCurrentStateBootstrap').mockResolvedValue(false);
-		const sync = vi.spyOn(syncStore, 'sync').mockResolvedValue({
-			success: true,
-			snapshot: syncSnapshot()
+		const turned: string[] = [];
+		syncStore.onSyncStart = () => turned.push('start');
+		syncStore.onSyncEnd = () => turned.push('end');
+		const sync = relayAnswers(async () => {
+			turned.push('request');
+			return { success: true, snapshot: syncSnapshot() };
 		});
 
-		expect(await notesStore.syncPendingChanges()).toBe(true);
-		expect(sync.mock.calls[0]?.[1]).toBe(true);
+		try {
+			expect(await notesStore.syncPendingChanges()).toBe(true);
+		} finally {
+			syncStore.onSyncStart = null;
+			syncStore.onSyncEnd = null;
+		}
+		expect(sync).toHaveBeenCalledOnce();
+		expect(turned).toEqual(['start', 'request', 'end']);
 	});
 
 	it('manual sync takes the place of the sync waiting for changes to pause', async () => {
@@ -125,24 +124,20 @@ describe('syncing when a note closes', () => {
 		await vi.advanceTimersByTimeAsync(10_000);
 
 		expect(sync).toHaveBeenCalledOnce();
-		expect(sync.mock.calls[0]?.[1]).toBe(true);
 	});
 
 	it('does not count a photo this device holds no bytes for as a failed upload', async () => {
 		// Nothing of it is here to read, so nothing here failed; a sync settles it.
 		const note = noteWithPhoto('');
-		await putNote(TEST_WORKSPACE, note);
+		await putNote(TEST_WORKSPACE, note, ['note:photo-note', 'attachment:photo-1']);
 		notesStore.notes = [note];
 		notesStore.lastPersistError = null;
-		vi.spyOn(syncStore, 'sync').mockResolvedValue({ success: true, snapshot: syncSnapshot() });
+		relayAnswers(async () => ({ success: true, snapshot: syncSnapshot() }));
 
 		// Its card scrolls into view, then the next sync runs.
 		await notesStore.ensureNoteAttachments(note.id);
-		const synced = await (
-			notesStore as unknown as { doSyncLocked(indicate: boolean): Promise<string> }
-		).doSyncLocked(false);
 
-		expect(synced).toBe('synced');
+		expect(await notesStore.flushSync()).toBe(true);
 		expect(syncStore.lastError).toBeNull();
 		expect(notesStore.lastPersistError).toBeNull();
 	});
@@ -150,17 +145,12 @@ describe('syncing when a note closes', () => {
 	it('warns after a sync while a photo on this device cannot be read', async () => {
 		vi.spyOn(console, 'error').mockImplementation(() => undefined);
 		const note = noteWithPhoto('');
-		await putNote(TEST_WORKSPACE, note);
+		await putNote(TEST_WORKSPACE, note, ['note:photo-note', 'attachment:photo-1']);
 		notesStore.notes = [note];
 		vi.spyOn(idb, 'hydrateNoteAttachments').mockRejectedValue(new Error('read failed'));
-		vi.spyOn(syncStore, 'sync').mockResolvedValue({ success: true, snapshot: syncSnapshot() });
+		relayAnswers(async () => ({ success: true, snapshot: syncSnapshot() }));
 
-		await notesStore.ensureNoteAttachments(note.id);
-		const synced = await (
-			notesStore as unknown as { doSyncLocked(indicate: boolean): Promise<string> }
-		).doSyncLocked(false);
-
-		expect(synced).toBe('synced');
+		expect(await notesStore.flushSync()).toBe(true);
 		expect(syncStore.lastError).toBe(
 			'Synced, but some photos could not be prepared for upload. They will retry on the next sync.'
 		);
@@ -172,11 +162,11 @@ describe('syncing when a note closes', () => {
 		await putNote(TEST_WORKSPACE, note);
 		notesStore.notes = [note];
 		const reauthenticate = vi.spyOn(syncStore, 'reauthenticateForRecovery').mockResolvedValue();
-		const sync = vi.spyOn(syncStore, 'sync');
+		const pull = vi.spyOn(syncStore, 'pullOpen');
 
 		expect(await notesStore.forcePushWorkspace()).toBe(false);
 		expect(reauthenticate).not.toHaveBeenCalled();
-		expect(sync).not.toHaveBeenCalled();
+		expect(pull).not.toHaveBeenCalled();
 		expect(notesStore.lastPersistError).toMatch(/Replacing the cloud copy was not started/);
 	});
 
@@ -193,40 +183,8 @@ describe('syncing when a note closes', () => {
 		expect(reauthenticate).toHaveBeenCalledOnce();
 	});
 
-	it('prunes attachment hydration failures after the damaged note is removed', async () => {
-		const failures = (notesStore as unknown as { attachmentHydrationFailures: Set<string> })
-			.attachmentHydrationFailures;
-		failures.add('deleted-photo-note');
-		notesStore.notes = [];
-		notesStore.loaded = true;
-
-		await (
-			notesStore as unknown as { hydrateAttachmentsForSync(): Promise<void> }
-		).hydrateAttachmentsForSync();
-
-		expect(failures.size).toBe(0);
-	});
-
-	it('retries a failed attachment hydration without requiring an outbox marker', async () => {
-		const note = noteWithPhoto('');
-		notesStore.notes = [note];
-		(
-			notesStore as unknown as { attachmentHydrationFailures: Set<string> }
-		).attachmentHydrationFailures.add(note.id);
-		const hydrate = vi.spyOn(notesStore, 'ensureNoteAttachments').mockResolvedValue();
-
-		await (
-			notesStore as unknown as { hydrateAttachmentsForSync(): Promise<void> }
-		).hydrateAttachmentsForSync();
-
-		expect(hydrate).toHaveBeenCalledWith(note.id);
-	});
-
 	it('does not go again by itself for what a sync that settled left queued', async () => {
 		notesStore.notes = [noteWithPhoto('')];
-		(
-			notesStore as unknown as { attachmentHydrationFailures: Set<string> }
-		).attachmentHydrationFailures.add('photo-note');
 		await markSyncOutbox(TEST_WORKSPACE, ['attachment:photo-1']);
 		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 		const sync = relayAnswers(async () => ({ success: true, snapshot: syncSnapshot() }));
@@ -310,24 +268,11 @@ describe('syncing when a note closes', () => {
 	});
 
 	it('clears attachment hydration warning on successful sync once attachments are healthy', async () => {
-		syncStore.account = {
-			accountId: 'acc-1',
-			syncKey: 'key-1',
-			authPublicKey: 'pub-1',
-			pairingCode: 'CODE-1234'
-		};
 		syncStore.lastError =
 			'Synced, but some photos could not be prepared for upload. They will retry on the next sync.';
-		vi.spyOn(syncStore, 'sync').mockResolvedValue({ success: true, snapshot: syncSnapshot() });
-		(
-			notesStore as unknown as { attachmentHydrationFailures: Set<string> }
-		).attachmentHydrationFailures.clear();
+		relayAnswers(async () => ({ success: true, snapshot: syncSnapshot() }));
 
-		const synced = await (
-			notesStore as unknown as { doSyncLocked(indicate: boolean): Promise<string> }
-		).doSyncLocked(false);
-
-		expect(synced).toBe('synced');
+		expect(await notesStore.flushSync()).toBe(true);
 		expect(syncStore.lastError).toBeNull();
 	});
 });

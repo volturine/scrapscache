@@ -13,7 +13,12 @@ vi.mock('#lib/editorContext.js', () => ({
 import { syncStore, type StartedDeviceLink } from '#lib/stores/sync.svelte.js';
 import { notesStore } from '#lib/stores/notes.svelte.js';
 import { syncScheduler } from '#lib/stores/syncScheduler.js';
-import { showOpenWorkspaceSyncing } from '../../tests/syncing';
+import { syncSnapshot } from '#lib/syncRecords.js';
+import {
+	linkTestWorkspace,
+	showOpenWorkspaceSyncing,
+	unlinkTestWorkspace
+} from '../../tests/syncing';
 import { uiStore } from '#lib/stores/ui.svelte.js';
 import Topbar from './Topbar.svelte';
 
@@ -21,16 +26,16 @@ import Topbar from './Topbar.svelte';
 // first transform of the dialog and its QR libraries out of each test's waits.
 beforeAll(() => import('./SyncModal.svelte'), 30_000);
 
-afterEach(() => {
+afterEach(async () => {
 	uiStore.syncOpen = false;
 	history.replaceState({}, '', '/');
 	syncStore.lastError = null;
 	syncStore.usage = null;
-	syncStore.account = null;
+	unlinkTestWorkspace();
 	syncStore.onSyncStart = null;
 	syncStore.onSyncEnd = null;
 	showOpenWorkspaceSyncing(false);
-	syncScheduler.reset();
+	await syncScheduler.reset();
 	vi.restoreAllMocks();
 });
 
@@ -139,15 +144,10 @@ describe('Topbar sync status', () => {
 		const endSpy = vi.fn();
 		syncStore.onSyncStart = startSpy;
 		syncStore.onSyncEnd = endSpy;
-		syncStore.account = {
-			syncKey: 'k',
-			accountId: 'acc',
-			authPublicKey: 'pub',
-			pairingCode: 'code'
-		};
-		vi.spyOn(syncStore, 'sync').mockImplementation(async () => {
+		linkTestWorkspace();
+		vi.spyOn(syncStore, 'syncWorkspace').mockImplementation(async () => {
 			expect(startSpy).toHaveBeenCalledOnce();
-			return { success: true, notes: [], labels: [] };
+			return { success: true, snapshot: syncSnapshot() };
 		});
 
 		await notesStore.syncWithCloud();

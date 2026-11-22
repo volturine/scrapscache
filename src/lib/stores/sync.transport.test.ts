@@ -68,12 +68,15 @@ class FakeXhr {
 	}
 }
 
+/** The request is for a workspace this window does not show. */
+const hidden = () => false;
+
 type Transport = {
 	sendSyncRequest(
 		path: string,
 		payload: string,
 		uploadBytes: number,
-		indicate: boolean,
+		shown: () => boolean,
 		account?: unknown,
 		signal?: AbortSignal
 	): Promise<{ success: boolean; status?: number; error?: string; retryAfterSeconds?: number }>;
@@ -87,7 +90,7 @@ function transport(store: SyncStore): Transport {
 }
 
 async function send(store: SyncStore) {
-	const pending = transport(store).sendSyncRequest(SYNC_DELTA_PATH, '{}', 2, false);
+	const pending = transport(store).sendSyncRequest(SYNC_DELTA_PATH, '{}', 2, hidden);
 	await vi.runAllTimersAsync();
 	return pending;
 }
@@ -178,8 +181,8 @@ describe('sync transport', () => {
 		expect(sends).toBe(1);
 	});
 
-	// A sync that gives up its round for a workspace handover must not hold the sync
-	// lock for as long as a poor connection takes to answer, or to fail.
+	// A sync that gives up its round for a rewrite of its workspace must not hold the
+	// sync lock for as long as a poor connection takes to answer, or to fail.
 	describe('a round its sync gave up', () => {
 		const giveUp = new DOMException('The sync gave up its round.', 'AbortError');
 		// The store's own device reads run on the faked clock; the answers above do not.
@@ -192,7 +195,7 @@ describe('sync transport', () => {
 				SYNC_DELTA_PATH,
 				'{}',
 				2,
-				false,
+				hidden,
 				store.account,
 				round.signal
 			);
@@ -215,7 +218,7 @@ describe('sync transport', () => {
 				SYNC_DELTA_PATH,
 				'{}',
 				2,
-				false,
+				hidden,
 				store.account,
 				round.signal
 			);
@@ -235,7 +238,7 @@ describe('sync transport', () => {
 				SYNC_DELTA_PATH,
 				'{}',
 				2,
-				false,
+				hidden,
 				store.account,
 				round.signal
 			);
@@ -255,7 +258,7 @@ describe('sync transport', () => {
 	describe('a request the relay goes silent on', () => {
 		const sendSilent = async () => {
 			replies = [{ silent: true }];
-			const pending = transport(store).sendSyncRequest(SYNC_DELTA_PATH, '{}', 2, false);
+			const pending = transport(store).sendSyncRequest(SYNC_DELTA_PATH, '{}', 2, hidden);
 			await vi.advanceTimersByTimeAsync(0);
 			expect(sends).toBe(1);
 			return pending;
@@ -325,7 +328,7 @@ describe('sync transport', () => {
 				SYNC_DELTA_PATH,
 				'{}',
 				2,
-				false
+				hidden
 			);
 			await vi.advanceTimersByTimeAsync(60_000);
 
@@ -500,7 +503,7 @@ describe('sync transport', () => {
 
 	it('drops the retry once the workspace leaves this account', async () => {
 		replies = [{ network: true }, { status: 200, body: {} }];
-		const pending = transport(store).sendSyncRequest(SYNC_DELTA_PATH, '{}', 2, false);
+		const pending = transport(store).sendSyncRequest(SYNC_DELTA_PATH, '{}', 2, hidden);
 		await vi.advanceTimersByTimeAsync(0);
 		store.account = createSyncIdentity();
 		await vi.runAllTimersAsync();

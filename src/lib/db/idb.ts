@@ -56,7 +56,12 @@ const dbPromises = new Map<string, Promise<IDBPDatabase>>();
 let deviceDbPromise: Promise<IDBPDatabase> | null = null;
 const noteChains = new Map<string, Promise<void>>();
 let deviceWriteChain: Promise<void> = Promise.resolve();
-let writeGeneration = 0;
+/**
+ * Bumped when a workspace's data is replaced whole: a write queued for it before
+ * that is dropped. Per workspace, since others are written to at the same time.
+ */
+const writeGenerations = new Map<string, number>();
+const writeGeneration = (pid: string): number => writeGenerations.get(pid) ?? 0;
 const outboxGenerations = new Map<string, number>();
 
 function enqueueDeviceWrite<T>(operation: () => Promise<T>): Promise<T> {
@@ -419,7 +424,7 @@ export async function closeDeviceDatabase(): Promise<void> {
 	deviceDbPromise = null;
 	deviceWriteChain = Promise.resolve();
 	noteChains.clear();
-	writeGeneration = 0;
+	writeGenerations.clear();
 	outboxGenerations.clear();
 	departedProfiles.clear();
 	deletedProfiles.clear();
@@ -725,21 +730,45 @@ export async function hydrateNoteAttachments(pid: string, note: Note): Promise<N
 export async function putNote(pid: string, note: Note, keys: Iterable<string> = []): Promise<void> {
 	const snapshot = plainNote(note);
 	const outboxKeys = uniqueOutboxKeys(keys);
-	const generation = writeGeneration;
+	const generation = writeGeneration(pid);
 	return enqueueNote(pid, snapshot.id, () =>
 		enqueueDeviceWrite(async () => {
-			if (generation !== writeGeneration) return;
+			if (generation !== writeGeneration(pid)) return;
 			await putNoteSnapshot(pid, snapshot, outboxKeys);
+		})
+	);
+}
+
+/**
+ * Save a note as `merge` makes it from what is stored at that moment; null saves
+ * nothing. It takes its turn among the saves of that note, so every save this
+ * window asked for before it has landed and is what `merge` is given: a sync can
+ * save what it pulled without going over an edit that was still on its way in.
+ */
+export function mergeNote(
+	pid: string,
+	id: string,
+	merge: (stored: Note | undefined) => Note | null
+): Promise<Note | null> {
+	const generation = writeGeneration(pid);
+	return enqueueNote(pid, id, () =>
+		enqueueDeviceWrite(async () => {
+			if (generation !== writeGeneration(pid)) return null;
+			const db = await getDB(pid);
+			const stored = (await db.get(NOTES_STORE, id)) as Note | undefined;
+			const next = merge(stored ? plainNote(stored) : undefined);
+			if (next) await putNoteSnapshot(pid, plainNote(next));
+			return next;
 		})
 	);
 }
 
 /** Both arguments are named: two strings are too easy to read the wrong way round. */
 export function deleteNote(pid: string, id: string): Promise<void> {
-	const generation = writeGeneration;
+	const generation = writeGeneration(pid);
 	return enqueueNote(pid, id, async () => {
 		await enqueueDeviceWrite(async () => {
-			if (generation !== writeGeneration) return;
+			if (generation !== writeGeneration(pid)) return;
 			const db = await getDB(pid);
 			const ownPrefix = `${id}::`;
 			const imageKeys = ((await db.getAllKeys(IMAGES_STORE)) as string[]).filter((key) =>
@@ -820,17 +849,21 @@ export async function deleteLabel(
 	});
 }
 
-export async function deleteLabelWithSyncState(
+/**
+ * Delete a label and record the delete in one transaction, on top of the deletes
+ * stored at that moment: one a sync saved meanwhile is kept. Returns all of them.
+ */
+export async function deleteLabelRecordingIt(
 	pid: string,
 	id: string,
-	state: Iterable<readonly [key: string, value: unknown]>,
+	deletesKey: string,
+	deletedAt: number,
 	syncOutboxKeys: Iterable<string> = []
-): Promise<void> {
+): Promise<Record<string, unknown>> {
 	const outboxKeys = uniqueOutboxKeys(syncOutboxKeys);
-	const entries = [...state];
 	const dbName = resolveDbName(pid);
 	const previousGeneration = outboxGenerations.get(dbName) ?? null;
-	await enqueueDeviceWrite(async () => {
+	return enqueueDeviceWrite(async () => {
 		const db = await getDB(pid);
 		const tx = db.transaction(
 			outboxKeys.length
@@ -841,13 +874,20 @@ export async function deleteLabelWithSyncState(
 		try {
 			await tx.objectStore(LABELS_STORE).delete(id);
 			const syncState = tx.objectStore(SYNC_STATE_STORE);
-			for (const [key, value] of entries) await syncState.put(value, key);
+			const stored: unknown = await syncState.get(deletesKey);
+			const deletes: Record<string, unknown> =
+				stored && typeof stored === 'object' && !Array.isArray(stored)
+					? { ...(stored as Record<string, unknown>) }
+					: {};
+			deletes[id] = Math.max(Number(deletes[id]) || 0, deletedAt);
+			await syncState.put(deletes, deletesKey);
 			if (outboxKeys.length) {
 				const generation = await nextOutboxGeneration(tx, dbName);
 				const outbox = tx.objectStore(SYNC_OUTBOX_STORE);
 				for (const key of outboxKeys) await outbox.put(generation, key);
 			}
 			await tx.done;
+			return deletes;
 		} catch (error) {
 			await abortWrite(tx, dbName, previousGeneration);
 			throw error;
@@ -924,9 +964,9 @@ export async function bulkPutNotes(pid: string, notes: Note[]): Promise<void> {
 }
 
 export async function bulkPutLabels(pid: string, labels: Label[]): Promise<void> {
-	const generation = writeGeneration;
+	const generation = writeGeneration(pid);
 	await enqueueDeviceWrite(async () => {
-		if (generation !== writeGeneration) return;
+		if (generation !== writeGeneration(pid)) return;
 		const db = await getDB(pid);
 		const tx = db.transaction(LABELS_STORE, 'readwrite');
 		for (const label of labels) tx.store.put(plainLabel(label));
@@ -1005,9 +1045,10 @@ export function replaceAllDeviceData(
 	labels: Label[],
 	onNoteCommitted?: (note: Note) => void | Promise<void>
 ): Promise<void> {
-	const generation = ++writeGeneration;
+	const generation = writeGeneration(pid) + 1;
+	writeGenerations.set(pid, generation);
 	return enqueueDeviceWrite(async () => {
-		if (generation !== writeGeneration) return;
+		if (generation !== writeGeneration(pid)) return;
 		const db = await getDB(pid);
 		const rows: Array<{ lean: Note; blobs: Array<{ key: string; value: unknown }> }> = [];
 		for (const note of notes) {

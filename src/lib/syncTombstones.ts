@@ -1,7 +1,8 @@
 // Durable delete manifests in IndexedDB. Permanent delete wins until cleared.
 import {
-	deleteLabelWithSyncState,
+	deleteLabelRecordingIt,
 	getSyncState,
+	mergeWorkspaceState,
 	setSyncState,
 	writeSyncStateWithOutbox
 } from '#lib/db/idb.js';
@@ -32,6 +33,12 @@ export function resetTombstoneCaches(): void {
 	boardCache = null;
 }
 
+/** A sync saved these deletions for the open workspace: the caches hold them from now on. */
+export function adoptTombstones(notes: Tombstones, labels: Tombstones): void {
+	noteCache = sanitizeTombstones(notes);
+	labelCache = sanitizeTombstones(labels);
+}
+
 export function readTombstones(): Tombstones {
 	return { ...(noteCache ?? {}) };
 }
@@ -44,11 +51,40 @@ export function readBoardTombstones(): Tombstones {
 	return { ...(boardCache ?? {}) };
 }
 
+/** The later delete of each record in either map. */
+export function newestTombstones(held: Tombstones, other: Tombstones): Tombstones {
+	const merged = { ...held };
+	for (const [id, deletedAt] of Object.entries(other)) {
+		if (deletedAt > (merged[id] || 0)) merged[id] = deletedAt;
+	}
+	return merged;
+}
+
+/** Replace the open workspace's note deletes, for an operation that rewrites the workspace. */
 export async function writeTombstones(pid: string, tombstones: Tombstones): Promise<void> {
 	noteCache = sanitizeTombstones(tombstones);
 	await setSyncState(pid, NOTE_IDB, noteCache);
 }
 
+/**
+ * Record note deletes of the open workspace, with their upload markers, on top of
+ * the ones stored at that moment: a delete a sync saved meanwhile is kept. Returns
+ * all of them.
+ */
+export async function addTombstones(
+	pid: string,
+	added: Tombstones,
+	syncOutboxKeys: Iterable<string> = []
+): Promise<Tombstones> {
+	const state = await mergeWorkspaceState(pid, [NOTE_IDB], (current) => ({
+		value: { [NOTE_IDB]: newestTombstones(sanitizeTombstones(current[NOTE_IDB]), added) },
+		outboxKeys: syncOutboxKeys
+	}));
+	noteCache = newestTombstones(noteCache ?? {}, state[NOTE_IDB]);
+	return { ...noteCache };
+}
+
+/** Replace the open workspace's label deletes, for an operation that rewrites the workspace. */
 export async function writeLabelTombstones(
 	pid: string,
 	tombstones: Tombstones,
@@ -58,15 +94,18 @@ export async function writeLabelTombstones(
 	await writeSyncStateWithOutbox(pid, [[LABEL_IDB, labelCache]], syncOutboxKeys);
 }
 
+/** Delete a label of the open workspace and record it; returns every label delete stored. */
 export async function deleteLabelWithTombstone(
 	pid: string,
 	id: string,
-	tombstones: Tombstones,
+	deletedAt: number,
 	syncOutboxKeys: Iterable<string> = []
-): Promise<void> {
-	const next = sanitizeTombstones(tombstones);
-	await deleteLabelWithSyncState(pid, id, [[LABEL_IDB, next]], syncOutboxKeys);
-	labelCache = next;
+): Promise<Tombstones> {
+	const stored = sanitizeTombstones(
+		await deleteLabelRecordingIt(pid, id, LABEL_IDB, deletedAt, syncOutboxKeys)
+	);
+	labelCache = newestTombstones(labelCache ?? {}, stored);
+	return { ...labelCache };
 }
 
 type WorkspaceTombstones = { notes: Tombstones; labels: Tombstones; boards: Tombstones };
@@ -113,20 +152,38 @@ export async function saveBoardsToDevice<T>(pid: string, boards: T): Promise<voi
 	await setSyncState(pid, BOARDS_IDB, JSON.parse(JSON.stringify(boards ?? [])));
 }
 
-/** Persist boards, tombstones, and optional upload markers in one transaction. */
-export async function writeKanbanState(
+/**
+ * Save the open workspace's boards and board deletes with their upload markers in
+ * one transaction. With `merge` they go on top of what is stored at that moment,
+ * so boards a sync saved meanwhile are kept; without it they replace what is stored.
+ */
+export async function writeKanbanState<T>(
 	pid: string,
-	boards: unknown,
+	boards: T[],
 	boardTombstones: Tombstones,
-	syncOutboxKeys: Iterable<string> = []
+	syncOutboxKeys: Iterable<string> = [],
+	merge?: (stored: unknown, mine: T[], deleted: Tombstones) => T[]
 ): Promise<void> {
-	boardCache = sanitizeTombstones(boardTombstones);
-	await writeSyncStateWithOutbox(
-		pid,
-		[
-			[BOARDS_IDB, JSON.parse(JSON.stringify(boards ?? []))],
-			[BOARD_IDB, boardCache]
-		],
-		syncOutboxKeys
-	);
+	const mine = sanitizeTombstones(boardTombstones);
+	const plain = JSON.parse(JSON.stringify(boards ?? [])) as T[];
+	if (!merge) {
+		boardCache = mine;
+		await writeSyncStateWithOutbox(
+			pid,
+			[
+				[BOARDS_IDB, plain],
+				[BOARD_IDB, boardCache]
+			],
+			syncOutboxKeys
+		);
+		return;
+	}
+	const state = await mergeWorkspaceState(pid, [BOARDS_IDB, BOARD_IDB], (current) => {
+		const deleted = newestTombstones(sanitizeTombstones(current[BOARD_IDB]), mine);
+		return {
+			value: { [BOARDS_IDB]: merge(current[BOARDS_IDB], plain, deleted), [BOARD_IDB]: deleted },
+			outboxKeys: syncOutboxKeys
+		};
+	});
+	boardCache = newestTombstones(boardCache ?? {}, state[BOARD_IDB]);
 }

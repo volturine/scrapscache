@@ -1,9 +1,11 @@
 // Workspace orchestration. Every workspace owns its own namespaced dataset and
 // is either private (no sync key) or synced. Switching, syncing, unlinking and
-// removing are all handovers: drain pending writes, change this window's
-// identity, then reload memory from the target namespace. They run under the
-// sync lock so no sync flight can interleave with the handover, and take it from
-// a flight in progress instead of waiting: a handover never depends on the relay.
+// removing are all workspace changes: drain pending writes, change this window's
+// identity or the keyring, then reload memory from the target namespace. They run
+// one at a time under the workspace lock, which only ever covers work on this
+// device. Sync takes no part in a switch: every workspace syncs from its own
+// database whichever one a window shows. A change that takes a workspace's key or
+// data away is also a rewrite of that workspace, which its sync gives way to.
 import { syncStore, PROFILE_META_KEY } from './sync.svelte';
 import { notesStore } from './notes.svelte';
 import { syncScheduler } from './syncScheduler';
@@ -27,11 +29,12 @@ import {
 	resumeProfile
 } from '#lib/db/idb.js';
 import { unregisterReminderDevice } from '#lib/reminderWake.js';
+import { withWorkspaceLock } from '#lib/webLock.js';
 
 type Outcome = { success: boolean; error?: string };
 
 export class ProfileCoordinator {
-	/** True while a workspace handover is in progress. */
+	/** True while a workspace change is in progress. */
 	switching = $state(false);
 
 	private guard(): string | null {
@@ -43,18 +46,19 @@ export class ProfileCoordinator {
 
 	private async activate(target: StoredProfile): Promise<void> {
 		syncStore.activateProfile(target);
-		await notesStore.reloadForProfile();
 		// Queue the encrypted profile-name record so a fresh key's account learns
-		// its local name (baseline dedupe makes repeat switches free).
+		// its local name (baseline dedupe makes repeat switches free). Queued before
+		// the load, whose catch-up then sends it in the same sync.
 		if (target.syncKey) await syncStore.queueOutbox([PROFILE_META_KEY]);
+		await notesStore.reloadForProfile();
 	}
 
-	private async handover(fallback: string, run: () => Promise<Outcome>): Promise<Outcome> {
+	private async change(fallback: string, run: () => Promise<Outcome>): Promise<Outcome> {
 		const blocked = this.guard();
 		if (blocked) return { success: false, error: blocked };
 		this.switching = true;
 		try {
-			return await syncScheduler.handover(async () => {
+			return await withWorkspaceLock(async () => {
 				await notesStore.waitForPendingProfileWrites();
 				return run();
 			});
@@ -76,7 +80,7 @@ export class ProfileCoordinator {
 
 	/** Create an empty private workspace and make it active. */
 	async createLocal(): Promise<Outcome> {
-		return this.handover('Could not create workspace', async () => {
+		return this.change('Could not create workspace', async () => {
 			await this.createAndActivateEmpty();
 			return { success: true };
 		});
@@ -119,8 +123,8 @@ export class ProfileCoordinator {
 	/**
 	 * Register a new account for a workspace, then put the workspace on its key.
 	 * The relay is asked before anything is held: registering can take as long as a
-	 * poor connection does, and a handover in any window must not wait behind it.
-	 * Only the last step, which touches this device alone, is a handover.
+	 * poor connection does, and a workspace change in any window must not wait
+	 * behind it. Only the last step, which touches this device alone, is one.
 	 */
 	private async moveToNewKey(
 		fallback: string,
@@ -144,23 +148,26 @@ export class ProfileCoordinator {
 			return { success: false, error: registered.error ?? 'Registration failed' };
 		const { account } = registered;
 		let synced = false;
-		const result = await this.handover(fallback, async () => {
-			// The workspace may have changed while the relay was asked: removed, or
-			// given a key by another window. The new account is then left unused.
-			const profile = this.find(profileId);
-			if (profile.syncKey !== asked.syncKey)
-				return { success: false, error: 'This workspace changed meanwhile. Try again.' };
-			const assigned = await syncStore.assignKey(profile, account, name);
-			synced = syncStore.activeId === profileId;
-			if (synced) await this.activate(assigned);
-			else {
-				await markSyncOutbox(profileId, [PROFILE_META_KEY]);
-				syncScheduler.changed(profileId);
-			}
-			return { success: true };
-		});
+		const result = await this.change(fallback, () =>
+			// A sync under the workspace's old key gives way to the new one.
+			syncScheduler.rewrite(profileId, async () => {
+				// The workspace may have changed while the relay was asked: removed, or
+				// given a key by another window. The new account is then left unused.
+				const profile = this.find(profileId);
+				if (profile.syncKey !== asked.syncKey)
+					return { success: false, error: 'This workspace changed meanwhile. Try again.' };
+				const assigned = await syncStore.assignKey(profile, account, name);
+				synced = syncStore.activeId === profileId;
+				if (synced) await this.activate(assigned);
+				else {
+					await markSyncOutbox(profileId, [PROFILE_META_KEY]);
+					syncScheduler.changed(profileId);
+				}
+				return { success: true };
+			})
+		);
 		// First sync can take a long time for a large workspace. Leave the
-		// handover first so the UI can show the synced workspace immediately.
+		// change first so the UI can show the synced workspace immediately.
 		if (synced) void notesStore.syncWithCloudManual().catch(() => undefined);
 		return result;
 	}
@@ -175,7 +182,7 @@ export class ProfileCoordinator {
 				const target = syncStore.profiles.find((profile) => profile.id === profileId);
 				if (!target || isLocalWorkspace(target))
 					return { success: false, error: 'That workspace is not synced' };
-				await syncScheduler.handover(async () => {
+				await withWorkspaceLock(async () => {
 					await notesStore.waitForPendingProfileWrites();
 					await this.activate(target);
 				});
@@ -206,22 +213,40 @@ export class ProfileCoordinator {
 	 * workspace. With `deleteCloud`, its cloud copy is deleted for every device.
 	 */
 	async unlink(profileId: string, deleteCloud = false): Promise<Outcome> {
-		return this.handover('Could not stop syncing', async () => {
-			const profile = this.find(profileId);
-			if (isLocalWorkspace(profile)) return { success: true };
+		const blocked = this.guard();
+		if (blocked) return { success: false, error: blocked };
+		this.switching = true;
+		try {
 			if (deleteCloud) {
-				const result = await syncStore.deleteCloudAccount(profile);
-				if (!result.success) return result;
-			} else {
-				await syncStore.unlinkProfile(profile);
+				const asked = this.find(profileId);
+				if (isLocalWorkspace(asked)) return { success: true };
+				// The relay is asked before anything is held, like registering a new key.
+				const deleted = await syncStore.deleteRelayAccount(asked);
+				if (!deleted.success) return deleted;
 			}
-			// Its push subscription goes either way. Best effort: an unreachable relay
-			// (or one that already deleted the account) must not surface as an
-			// unhandled rejection.
-			void unregisterReminderDevice(profile).catch(() => undefined);
-			if (syncStore.activeId === profileId) await notesStore.reloadForProfile();
-			return { success: true };
-		});
+			return await withWorkspaceLock(async () => {
+				await notesStore.waitForPendingProfileWrites();
+				// A sync of the workspace gives way: its key is about to go.
+				return syncScheduler.rewrite(profileId, async () => {
+					const profile = this.find(profileId);
+					if (isLocalWorkspace(profile)) return { success: true };
+					await syncStore.unlinkProfile(profile);
+					// Its push subscription goes either way. Best effort: an unreachable relay
+					// (or one that already deleted the account) must not surface as an
+					// unhandled rejection.
+					void unregisterReminderDevice(profile).catch(() => undefined);
+					if (syncStore.activeId === profileId) await notesStore.reloadForProfile();
+					return { success: true };
+				});
+			});
+		} catch (err) {
+			return {
+				success: false,
+				error: err instanceof Error ? err.message : 'Could not stop syncing'
+			};
+		} finally {
+			this.switching = false;
+		}
 	}
 
 	/**
@@ -230,7 +255,7 @@ export class ProfileCoordinator {
 	 * and removing the last one leaves a fresh empty workspace behind.
 	 */
 	async remove(profileId: string): Promise<Outcome> {
-		return this.handover('Could not delete workspace', async () => {
+		return this.change('Could not delete workspace', async () => {
 			const profile = this.find(profileId);
 			if (syncStore.activeId === profileId) {
 				const next = syncStore.profiles.find(
@@ -239,7 +264,10 @@ export class ProfileCoordinator {
 				if (next) await this.activate(next);
 				else await this.createAndActivateEmpty();
 			}
-			const removal = await syncStore.removeProfile(profileId);
+			// A sync of the workspace gives way: its database is about to go.
+			const removal = await syncScheduler.rewrite(profileId, () =>
+				syncStore.removeProfile(profileId)
+			);
 			if (removal === 'failed') return { success: false, error: 'Could not delete workspace' };
 			// A pending delete lands the moment the other window lets go, so the
 			// mirrors go now: left behind, they would bring its notes back without
@@ -287,8 +315,8 @@ export class ProfileCoordinator {
 			return current?.id === open.id && current.syncKey !== open.syncKey ? current : null;
 		};
 		if (!changed()) return;
-		await syncScheduler.handover(async () => {
-			// Checked again under the lock: a handover that held it may have moved
+		await withWorkspaceLock(async () => {
+			// Checked again under the lock: a change that held it may have moved
 			// this window to another workspace meanwhile.
 			const current = changed();
 			if (!current) return;
@@ -305,7 +333,7 @@ export class ProfileCoordinator {
 	 */
 	async leaveReleasedWorkspace(): Promise<void> {
 		if (!isProfileReleased(syncStore.activeId)) return;
-		await syncScheduler.handover(async () => {
+		await withWorkspaceLock(async () => {
 			// Checked again under the lock: while it waited, this window may have
 			// moved on by itself, or another signal may already have moved it.
 			if (!isProfileReleased(syncStore.activeId)) return;
@@ -316,23 +344,24 @@ export class ProfileCoordinator {
 	}
 
 	/**
-	 * Point this window at another workspace. A sync under way is not waited for:
-	 * it gives up its round, and its workspace goes on syncing from its database
-	 * without being opened again (see the sync scheduler). The workspace arrived in
-	 * then syncs without holding up the caller: the switch is done once its notes
-	 * are loaded. A caller that needs the synced state joins that sync with
+	 * Point this window at another workspace. Sync takes no part in it: a sync under
+	 * way for either workspace runs on from that workspace's database, undisturbed
+	 * (see the sync scheduler). The workspace arrived in is asked to sync without
+	 * holding up the caller: the switch is done once its notes are loaded. A caller
+	 * that needs the synced state joins that sync with
 	 * `notesStore.reconcileWithCloud()`; a failed sync shows on the sync indicator.
 	 */
 	async switchTo(profileId: string): Promise<Outcome> {
 		if (profileId === syncStore.activeId) return { success: true };
 		let shouldSync = false;
-		const result = await this.handover('Could not switch workspace', async () => {
+		const result = await this.change('Could not switch workspace', async () => {
 			const target = this.find(profileId);
 			await this.activate(target);
 			shouldSync = !isLocalWorkspace(target);
 			return { success: true };
 		});
-		if (result.success && shouldSync) void notesStore.syncWithCloudManual();
+		// Joins the catch-up its load already asked for instead of asking for another.
+		if (result.success && shouldSync) void notesStore.reconcileWithCloud();
 		return result;
 	}
 
@@ -345,7 +374,7 @@ export class ProfileCoordinator {
 		if (blocked) return { outcome: 'linked', error: blocked };
 		this.switching = true;
 		try {
-			const activated = await syncScheduler.handover(async () => {
+			const activated = await withWorkspaceLock(async () => {
 				await notesStore.waitForPendingProfileWrites();
 				let profile = profileForSyncKey(syncStore.profiles, syncKey);
 				const existed = profile != null;
@@ -361,8 +390,8 @@ export class ProfileCoordinator {
 				await this.activate(profile);
 				return { isNew: !existed };
 			});
-			// Both sync paths acquire SYNC_LOCK themselves. Release the handover
-			// lock first, while switching continues to block other profile changes.
+			// Both sync paths take the workspace's sync lock themselves. The workspace
+			// lock is let go first, while `switching` keeps this window where it is.
 			const synced = activated.isNew
 				? await notesStore.replaceWithCloudManual()
 				: await notesStore.syncWithCloudManual();

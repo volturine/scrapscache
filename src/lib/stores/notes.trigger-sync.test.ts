@@ -1,22 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createSyncIdentity } from '#lib/syncPairing.js';
 import { notesStore } from './notes.svelte';
 import { syncStore } from './sync.svelte';
 import { syncScheduler } from './syncScheduler';
+import { linkTestWorkspace, unlinkTestWorkspace } from '../../tests/syncing';
 
 describe('heuristic sync triggers and coalescing', () => {
-	beforeEach(() => {
+	beforeEach(async () => {
 		localStorage.clear();
 		vi.restoreAllMocks();
 		notesStore.notes = [];
 		notesStore.loaded = true;
 		notesStore.labels = [];
-		syncScheduler.reset();
-		syncStore.account = createSyncIdentity();
+		await syncScheduler.reset();
+		linkTestWorkspace();
+		// Loaded as the app loads it, so its first board is saved and queued like any other.
+		await notesStore.reloadForProfile();
 	});
 
-	afterEach(() => {
+	afterEach(async () => {
 		vi.useRealTimers();
+		await syncScheduler.reset();
+		unlinkTestWorkspace();
 	});
 
 	function mockRelay(requests: unknown[], delayMs = 0): void {

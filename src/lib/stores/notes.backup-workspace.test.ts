@@ -5,6 +5,7 @@ import { BackupImportMode, type ScrapsCacheBackup } from '#lib/backup.js';
 import { createSyncIdentity } from '#lib/syncPairing.js';
 import { notesStore } from './notes.svelte';
 import { SYNC_LOCK, syncScheduler } from './syncScheduler';
+import { WORKSPACE_LOCK } from '#lib/webLock.js';
 import { profileCoordinator } from './profiles.svelte';
 import { syncStore } from './sync.svelte';
 import { kanbanStore } from './kanban.svelte';
@@ -71,14 +72,17 @@ function backupNote(id: string): ScrapsCacheBackup['notes'][number] {
 
 /** The sync lock as the browser grants it: one holder at a time, in request order. */
 function serialLocks() {
-	let chain: Promise<unknown> = Promise.resolve();
+	const chains = new Map<string, Promise<unknown>>();
 	return {
 		request: <T>(name: string, ...rest: unknown[]): Promise<T> => {
 			const run = rest.at(-1) as () => Promise<T>;
-			// Only the sync lock is under test; the others are theirs to take.
-			if (name !== SYNC_LOCK) return run();
-			const held = chain.then(run);
-			chain = held.catch(() => undefined);
+			// Only the sync and workspace locks are under test; the others are theirs to take.
+			if (name !== WORKSPACE_LOCK && !name.startsWith(SYNC_LOCK)) return run();
+			const held = (chains.get(name) ?? Promise.resolve()).then(run);
+			chains.set(
+				name,
+				held.catch(() => undefined)
+			);
 			return held;
 		}
 	};
@@ -334,13 +338,13 @@ describe('backup and Keep import stay in the open workspace', () => {
 	// A sync flight reads the workspace, merges, and writes it back. Landing an
 	// import partway through one would have the flight save the notes it pulled
 	// over the imported ones and push the mixture to the relay as the newest version.
-	it('lands only once it holds the sync lock', async () => {
+	it('lands only once it holds the sync lock of its workspace', async () => {
 		await openWorkspace(workspaceA);
 		vi.stubGlobal('navigator', { ...navigator, locks: serialLocks() });
 		try {
 			let releaseFlight!: () => void;
 			const flight = navigator.locks.request(
-				SYNC_LOCK,
+				`${SYNC_LOCK}:${workspaceA.id}`,
 				() => new Promise<void>((resolve) => (releaseFlight = resolve))
 			);
 			let landed = false;
@@ -404,7 +408,7 @@ describe('backup and Keep import stay in the open workspace', () => {
 		try {
 			let releaseFlight!: () => void;
 			const flight = navigator.locks.request(
-				SYNC_LOCK,
+				`${SYNC_LOCK}:${workspaceA.id}`,
 				() => new Promise<void>((resolve) => (releaseFlight = resolve))
 			);
 			const result = await notesStore.importBackup({ version: 1 }, BackupImportMode.Replace);
@@ -458,9 +462,9 @@ describe('backup and Keep import stay in the open workspace', () => {
 		try {
 			let releaseFlight!: () => void;
 			const flightGate = new Promise<void>((resolve) => (releaseFlight = resolve));
-			const flight = navigator.locks.request(SYNC_LOCK, () => flightGate);
-			// Queued ahead of the import, as a handover to another workspace would be.
-			const moved = navigator.locks.request(SYNC_LOCK, async () => {
+			const flight = navigator.locks.request(`${SYNC_LOCK}:${workspaceA.id}`, () => flightGate);
+			// Queued ahead of the import, as a switch to another workspace would be.
+			const moved = navigator.locks.request(WORKSPACE_LOCK, async () => {
 				syncStore.activateProfile(workspaceB);
 				await notesStore.reloadForProfile();
 			});
@@ -496,7 +500,7 @@ describe('backup and Keep import stay in the open workspace', () => {
 		try {
 			// Queued ahead of the import: another window removed the workspace, and
 			// this window left it.
-			const removed = navigator.locks.request(SYNC_LOCK, async () => {
+			const removed = navigator.locks.request(WORKSPACE_LOCK, async () => {
 				syncStore.activateProfile(workspaceB);
 				await notesStore.reloadForProfile();
 				syncStore.profiles = syncStore.profiles.filter((entry) => entry.id !== workspaceA.id);

@@ -1,22 +1,28 @@
-// Sync for a workspace that is not open in this window. A workspace left with
-// changes still to send must not wait to be opened again, so its sync runs from
-// what its database holds and saves there. The in-memory stores belong to the open
-// workspace and take no part. The fast-boot mirrors are left as they are: a load
-// merges them with the database, where what was saved here is the newer copy.
+// A sync of one workspace, whichever window has it open or none. It reads what the
+// workspace's database holds and saves what it pulled there: everything written on
+// this device goes to the database straight away, so that is all there is to send,
+// and the sync does not depend on which workspace a window shows. A window that has
+// the workspace open is told what was saved and shows it. The fast-boot mirrors are
+// left as they are: a load merges them with the database, where what was saved here
+// is the newer copy.
 import type { Label, Note } from '#lib/types.js';
 import {
 	deleteNote,
 	getAllLabels,
 	getAllNotesMetadata,
-	getNote,
 	getSyncOutboxKeys,
 	getSyncState,
 	hydrateNoteAttachments,
+	mergeNote,
 	mergeStoredLabels,
 	mergeWorkspaceState,
-	putNote
+	waitForDeviceWrites
 } from '#lib/db/idb.js';
-import { settleAttachments, withAttachmentDecisions } from '#lib/attachmentSettling.js';
+import {
+	settleAttachments,
+	withAttachmentDecisions,
+	type AttachmentDecisions
+} from '#lib/attachmentSettling.js';
 import { mergeStoredCanvasLibrary, readCanvasLibrary } from '#lib/canvasLibrary.js';
 import { mergeKanbanBoards, normalizeBoard, type KanbanBoard } from '#lib/kanban.js';
 import {
@@ -39,6 +45,8 @@ import {
 	sanitizeTombstones,
 	type Tombstones
 } from '#lib/syncTombstones.js';
+import { canvasLibraryStore } from '#lib/stores/canvasLibrary.js';
+import { kanbanStore } from '#lib/stores/kanban.svelte.js';
 import { reminderHistoryStore } from '#lib/stores/reminderHistory.js';
 import {
 	syncOutcome,
@@ -86,11 +94,32 @@ async function readWorkspace(pid: string): Promise<SyncSnapshot> {
 	};
 }
 
+/** Told what a sync saved into the database, so a window showing the workspace can show it. */
+export type SyncSaved = (snapshot: SyncSnapshot, decisions: AttachmentDecisions) => Promise<void>;
+
+/** What this window is still writing for a workspace has reached its database. */
+async function localWritesLanded(pid: string): Promise<void> {
+	await Promise.all([
+		syncStore.waitForOutboxWrites(),
+		kanbanStore.waitForPendingWrites(),
+		canvasLibraryStore.waitForPendingWrites(),
+		reminderHistoryStore.waitForPendingWrites()
+	]);
+	await waitForDeviceWrites(pid);
+}
+
 /**
  * The notes with the bytes a sync may have to send: of every attachment when the
  * relay has nothing of this device yet, and otherwise of the notes queued to upload.
+ * Bytes that cannot be read are not sent: the attachment stays queued, and its note
+ * is named in `unreadable`.
  */
-async function withBytesToSend(pid: string, notes: Note[], everything: boolean): Promise<Note[]> {
+async function withBytesToSend(
+	pid: string,
+	notes: Note[],
+	everything: boolean,
+	unreadable: Set<string>
+): Promise<Note[]> {
 	const queued = everything ? null : new Set(await getSyncOutboxKeys(pid));
 	const loaded: Note[] = [];
 	for (const note of notes) {
@@ -100,8 +129,14 @@ async function withBytesToSend(pid: string, notes: Note[], everything: boolean):
 			(queued === null ||
 				queued.has(`note:${note.id}`) ||
 				images.some((image) => queued.has(`attachment:${image.id}`)));
-		// Bytes that cannot be read are not sent: the attachment stays queued.
-		loaded.push(wanted ? await hydrateNoteAttachments(pid, note).catch(() => note) : note);
+		loaded.push(
+			wanted
+				? await hydrateNoteAttachments(pid, note).catch(() => {
+						unreadable.add(note.id);
+						return note;
+					})
+				: note
+		);
 	}
 	return loaded;
 }
@@ -116,7 +151,9 @@ async function saveToWorkspace(
 	pid: string,
 	account: SyncAccount,
 	pulled: PulledRelayState,
-	signal: AbortSignal
+	signal: AbortSignal,
+	unreadable: Set<string>,
+	saved: SyncSaved
 ): Promise<SyncSnapshot> {
 	const stored = await readWorkspace(pid);
 	const tombstones = newest(stored.tombstones, snapshot.tombstones);
@@ -128,9 +165,9 @@ async function saveToWorkspace(
 		account,
 		relay: pulled,
 		signal,
-		unreadable: () => undefined
+		unreadable: (noteId) => unreadable.add(noteId)
 	});
-	// Given up for a handover or for the open workspace's sync: nothing is saved.
+	// Given up for something that rewrites this workspace: nothing is saved.
 	if (signal.aborted) return snapshot;
 	// Deletes are saved first: a note saved before its delete would outlive a crash.
 	const state = await mergeWorkspaceState(
@@ -155,31 +192,33 @@ async function saveToWorkspace(
 			};
 		}
 	);
-	reminderHistoryStore.forgetNotes(pid, tombstones);
+	// What was deleted while the relay was waited for is deleted too.
+	const deleted = state[NOTE_IDB];
+	reminderHistoryStore.forgetNotes(pid, deleted);
 	const notes: Note[] = [];
-	for (const note of settled.notes) {
+	for (const note of withoutTombstoned(settled.notes, deleted)) {
 		const before = storedNotes.get(note.id);
 		if (!settled.persist.has(note.id) && !noteNeedsDurableWrite(before, note)) {
 			notes.push(note);
 			continue;
 		}
-		// Another window may have saved this note since it was read; its edit is merged in.
-		const now = await getNote(pid, note.id);
-		const edited =
-			now !== undefined &&
-			(before === undefined || durableNoteSignature(now) !== durableNoteSignature(before));
-		const saved = edited
-			? withAttachmentDecisions(mergeTwoNotes(now, note), settled.decisions)
-			: note;
-		await putNote(pid, saved);
-		notes.push(saved);
+		// A window may have saved this note since it was read. The save takes its turn
+		// among that note's saves, so it sees every one of them and merges the edit in.
+		const kept = await mergeNote(pid, note.id, (now) => {
+			// Deleted for good since it was read: the delete stands.
+			if (now === undefined) return before === undefined ? note : null;
+			return before === undefined || durableNoteSignature(now) !== durableNoteSignature(before)
+				? withAttachmentDecisions(mergeTwoNotes(now, note), settled.decisions)
+				: note;
+		});
+		if (kept) notes.push(kept);
 	}
 	for (const note of stored.notes) {
-		if (tombstones[note.id]) await deleteNote(pid, note.id);
+		if (deleted[note.id]) await deleteNote(pid, note.id);
 	}
-	// Labels are edited without the sync lock, by a window that has this workspace
-	// open. They are merged with what is stored when they are written, never with
-	// what was read before the relay was waited for.
+	// Labels are edited while a sync runs, by a window that has this workspace open.
+	// They are merged with what is stored when they are written, never with what was
+	// read before the relay was waited for.
 	const labels: Label[] = await mergeStoredLabels(pid, LABEL_IDB, (current, deleted) =>
 		withoutTombstoned(
 			mergeLabelLists(current, snapshot.labels),
@@ -192,7 +231,7 @@ async function saveToWorkspace(
 		snapshot.libraryTombstones
 	);
 	await reminderHistoryStore.waitForPendingWrites();
-	return {
+	const result: SyncSnapshot = {
 		notes,
 		labels,
 		boards: state[BOARDS_IDB],
@@ -202,20 +241,25 @@ async function saveToWorkspace(
 		libraryItems: library.entries,
 		libraryTombstones: library.tombstones
 	};
+	await saved(result, settled.decisions);
+	return result;
 }
 
 /**
- * Sync a workspace that is not open in this window from its database. Unless it
- * settled with the relay, what it owes is still queued.
+ * Sync a workspace from its database. Unless it settled with the relay, what it
+ * owes is still queued. `saved` hears what was saved, each time something is.
  */
-export async function syncWorkspaceFromDevice(
+export async function syncWorkspace(
 	profile: StoredProfile,
-	signal: AbortSignal
+	signal: AbortSignal,
+	saved: SyncSaved = async () => undefined
 ): Promise<SyncOutcome> {
 	const pid = profile.id;
 	const account = identityFromSyncKey(profile.syncKey);
+	const unreadable = new Set<string>();
 	// A relay that was reset asks for this device's whole copy: one more pass sends it.
 	for (let pass = 0; pass < 2; pass += 1) {
+		await localWritesLanded(pid);
 		const baseline = await getSyncState<Record<string, string>>(
 			pid,
 			syncControlKeys(account.accountId).baseline
@@ -227,18 +271,23 @@ export async function syncWorkspaceFromDevice(
 			notes: await withBytesToSend(
 				pid,
 				withoutTombstoned(stored.notes, stored.tombstones),
-				everything
+				everything,
+				unreadable
 			),
 			labels: withoutTombstoned(stored.labels, stored.labelTombstones)
 		};
 		if (signal.aborted) return 'failed';
-		const result = await syncStore.syncInBackground(
+		const result = await syncStore.syncWorkspace(
 			profile,
 			local,
-			(snapshot, _pid, pulled) => saveToWorkspace(snapshot, pid, account, pulled, signal),
+			(snapshot, _pid, pulled) =>
+				saveToWorkspace(snapshot, pid, account, pulled, signal, unreadable, saved),
 			signal
 		);
-		if (!result.success || !result.bootstrap) return syncOutcome(result);
+		if (!result.success) return syncOutcome(result);
+		if (result.bootstrap) continue;
+		syncStore.attachmentsUnreadable(pid, unreadable.size > 0);
+		return 'synced';
 	}
 	return 'synced';
 }

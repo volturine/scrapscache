@@ -81,6 +81,8 @@ export class KanbanStore {
 	#activeBoardId = $state<string>('');
 	#boardTombstones = $state<Record<string, number>>(readTombstones(syncStore.activePid));
 	private pendingDeviceWrites: Promise<void> = Promise.resolve();
+	/** The boards were replaced with the cloud's: the next save replaces what is stored. */
+	private replacePending = false;
 	#persistable = false;
 
 	get boards() {
@@ -136,7 +138,9 @@ export class KanbanStore {
 	 */
 	async hydrateFromDevice(
 		pid: string,
-		remoteTombstones: Record<string, number> = {}
+		remoteTombstones: Record<string, number> = {},
+		/** False once the window has moved on to another workspace: nothing is loaded then. */
+		wanted: () => boolean = () => true
 	): Promise<void> {
 		// Read this workspace's shelf before touching any state: saving state
 		// mirrors whatever is in memory, which until the swap below still belongs
@@ -150,6 +154,8 @@ export class KanbanStore {
 		} catch (error) {
 			deviceReadError = error;
 		}
+		// The window moved on while the device was read: these boards are not its own.
+		if (!wanted()) return;
 		// Normalized on read: boards stored before a field existed must not reach
 		// the reactive state half-shaped.
 		const fromIdb = normalizeBoards(stored);
@@ -216,12 +222,32 @@ export class KanbanStore {
 	 * workspace's boards into another's.
 	 */
 	async persistSyncState(pid: string, syncOutboxKeys: Iterable<string> = []): Promise<void> {
-		await writeKanbanState(
-			pid,
-			this.boardsForSync(),
-			this.boardTombstonesForSync(),
-			syncOutboxKeys
+		await this.save(pid, [...syncOutboxKeys]);
+	}
+
+	/**
+	 * Save the boards as they are now, in the order asked. They go on top of what is
+	 * stored at that moment, so boards a sync saved meanwhile are kept, unless this
+	 * device has just taken the cloud's boards in place of its own.
+	 */
+	private save(pid: string, outboxKeys: string[]): Promise<void> {
+		const boards = this.boardsForSync();
+		const tombstones = this.boardTombstonesForSync();
+		const replace = this.replacePending;
+		this.replacePending = false;
+		const write = this.pendingDeviceWrites.then(() =>
+			writeKanbanState(
+				pid,
+				boards,
+				tombstones,
+				outboxKeys,
+				replace
+					? undefined
+					: (stored, mine, deleted) => mergeKanbanBoards(normalizeBoards(stored), mine, deleted)
+			)
 		);
+		this.pendingDeviceWrites = write.catch(() => undefined);
+		return write;
 	}
 
 	/** Used for the explicit “discard local data” link flow. */
@@ -229,6 +255,7 @@ export class KanbanStore {
 		remoteBoards: KanbanBoard[],
 		remoteTombstones: Record<string, number> = {}
 	): void {
+		this.replacePending = true;
 		this.boardTombstones = { ...remoteTombstones };
 		const boards = normalizeBoards(remoteBoards).filter(
 			(board) => (this.boardTombstones[board.id] || 0) < board.updatedAt
@@ -407,14 +434,7 @@ export class KanbanStore {
 	}
 
 	private requestSync(keys: Iterable<string> = []): void {
-		const pid = syncStore.activePid;
-		const boards = this.boardsForSync();
-		const tombstones = this.boardTombstonesForSync();
-		const outboxKeys = [...keys];
-		const write = this.pendingDeviceWrites.then(() =>
-			writeKanbanState(pid, boards, tombstones, outboxKeys)
-		);
-		this.pendingDeviceWrites = write.catch(() => undefined);
+		void this.save(syncStore.activePid, [...keys]).catch(() => undefined);
 		// Empty re-mark: the atomic write above already queued the keys; this
 		// only nudges the debounced push via the shared data-change hook.
 		syncStore.requestAutoSync([]);

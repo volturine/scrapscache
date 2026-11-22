@@ -3,7 +3,9 @@ import type { Note } from '#lib/types.js';
 import {
 	clearSyncOutbox,
 	commitSyncControl,
-	deleteLabelWithSyncState,
+	deleteLabelRecordingIt,
+	deleteNote,
+	mergeNote,
 	getAllLabels,
 	getAllNotesMetadata,
 	getSyncOutboxKeys,
@@ -131,29 +133,61 @@ describe('durable sync outbox', () => {
 	it('commits label deletion, its tombstone, and outbox marker in one transaction', async () => {
 		const label = { id: 'deleted-label', name: 'Delete me', createdAt: 1, updatedAt: 1 };
 		await putLabel(TEST_WORKSPACE, label);
-		await deleteLabelWithSyncState(
-			TEST_WORKSPACE,
-			label.id,
-			[['label-tombstones', { [label.id]: 123 }]],
-			[`label-tombstone:${label.id}`]
-		);
+		// A delete a sync saved meanwhile is kept, and a later delete of the same label stands.
+		await setSyncState(TEST_WORKSPACE, 'label-tombstones', {
+			'saved-meanwhile': 50,
+			[label.id]: 200
+		});
+		expect(
+			await deleteLabelRecordingIt(TEST_WORKSPACE, label.id, 'label-tombstones', 123, [
+				`label-tombstone:${label.id}`
+			])
+		).toEqual({ 'saved-meanwhile': 50, [label.id]: 200 });
 		expect(await getAllLabels(TEST_WORKSPACE)).toEqual([]);
-		expect(await getSyncState(TEST_WORKSPACE, 'label-tombstones')).toEqual({ [label.id]: 123 });
+		expect(await getSyncState(TEST_WORKSPACE, 'label-tombstones')).toEqual({
+			'saved-meanwhile': 50,
+			[label.id]: 200
+		});
 		expect(await getSyncOutboxKeys(TEST_WORKSPACE)).toEqual([`label-tombstone:${label.id}`]);
 
 		await clearSyncOutbox(TEST_WORKSPACE, await getSyncOutboxKeys(TEST_WORKSPACE));
 		await putLabel(TEST_WORKSPACE, label);
 		await expect(
-			deleteLabelWithSyncState(
-				TEST_WORKSPACE,
-				label.id,
-				[['label-tombstones', () => undefined]],
-				[`label-tombstone:${label.id}`]
-			)
+			deleteLabelRecordingIt(TEST_WORKSPACE, label.id, 'label-tombstones', 300, [
+				Number.NaN as unknown as string
+			])
 		).rejects.toThrow();
 		expect((await getAllLabels(TEST_WORKSPACE)).map(({ id }) => id)).toEqual([label.id]);
-		expect(await getSyncState(TEST_WORKSPACE, 'label-tombstones')).toEqual({ [label.id]: 123 });
+		expect(await getSyncState(TEST_WORKSPACE, 'label-tombstones')).toEqual({
+			'saved-meanwhile': 50,
+			[label.id]: 200
+		});
 		expect(await getSyncOutboxKeys(TEST_WORKSPACE)).toEqual([]);
+	});
+
+	// A sync saves a note it pulled as merged with what is stored when its turn
+	// comes: a save asked for before it, still on its way in, is what it merges with.
+	it('gives a merge save every save of that note asked for before it', async () => {
+		await putNote(TEST_WORKSPACE, note('first'));
+		const edit = putNote(TEST_WORKSPACE, note('edited meanwhile'));
+		const seen: Array<string | undefined> = [];
+		const merged = mergeNote(TEST_WORKSPACE, 'atomic-note', (stored) => {
+			seen.push(stored?.title);
+			return stored ? { ...stored, title: `${stored.title}, with what was pulled` } : null;
+		});
+		await Promise.all([edit, merged]);
+
+		expect(seen).toEqual(['edited meanwhile']);
+		expect(
+			(await getAllNotesMetadata(TEST_WORKSPACE)).find(({ id }) => id === 'atomic-note')?.title
+		).toBe('edited meanwhile, with what was pulled');
+
+		// Answering null saves nothing: a note deleted meanwhile stays deleted.
+		await deleteNote(TEST_WORKSPACE, 'atomic-note');
+		expect(await mergeNote(TEST_WORKSPACE, 'atomic-note', () => null)).toBeNull();
+		expect((await getAllNotesMetadata(TEST_WORKSPACE)).some(({ id }) => id === 'atomic-note')).toBe(
+			false
+		);
 	});
 
 	it('commits a note and its outbox marker together or rolls both back', async () => {

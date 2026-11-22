@@ -142,4 +142,19 @@ describe('replaceAllDeviceData', () => {
 		);
 		expect(committed).toEqual(['a', 'b']);
 	});
+	// Workspaces are written to at the same time: one syncs while another takes the
+	// cloud's copy. Replacing one must not drop a save that is queued for another.
+	it('leaves the queued saves of every other workspace alone', async () => {
+		const queued = putNote('another-workspace', note('theirs', 'Queued before the replace'));
+
+		await replaceAllDeviceData(TEST_WORKSPACE, [note('mine', 'Replaced')], []);
+		await queued;
+
+		expect((await getAllNotesMetadata('another-workspace')).map(({ title }) => title)).toEqual([
+			'Queued before the replace'
+		]);
+		expect((await getAllNotesMetadata(TEST_WORKSPACE)).map(({ title }) => title)).toEqual([
+			'Replaced'
+		]);
+	});
 });

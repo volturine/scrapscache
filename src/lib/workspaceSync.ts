@@ -10,22 +10,32 @@ import {
 	deleteNote,
 	getAllLabels,
 	getAllNotesMetadata,
+	getStoredAttachmentVersions,
 	getSyncOutboxKeys,
 	getSyncState,
 	hydrateNoteAttachments,
 	mergeNote,
 	mergeStoredLabels,
 	mergeWorkspaceState,
-	waitForDeviceWrites
+	uploadGeneration,
+	waitForDeviceWrites,
+	type RewritePlan
 } from '#lib/db/idb.js';
 import {
 	settleAttachments,
 	withAttachmentDecisions,
 	type AttachmentDecisions
 } from '#lib/attachmentSettling.js';
-import { mergeStoredCanvasLibrary, readCanvasLibrary } from '#lib/canvasLibrary.js';
+import {
+	CANVAS_LIBRARY_STATE_KEY,
+	CANVAS_LIBRARY_TOMBSTONES_KEY,
+	mergeStoredCanvasLibrary,
+	readCanvasLibrary
+} from '#lib/canvasLibrary.js';
+import { editContext } from '#lib/editContext.js';
 import { mergeKanbanBoards, normalizeBoard, type KanbanBoard } from '#lib/kanban.js';
 import {
+	isTombstoned,
 	mergeLabelLists,
 	mergeNoteLists,
 	mergeTwoNotes,
@@ -33,7 +43,8 @@ import {
 } from '#lib/model/index.js';
 import { durableNoteSignature, noteNeedsDurableWrite } from '#lib/noteStorage.js';
 import type { StoredProfile } from '#lib/profiles.js';
-import { syncControlKeys } from '#lib/syncEngine.js';
+import { currentRecordKeys, syncControlKeys } from '#lib/syncEngine.js';
+import { buildForcePushSnapshot } from '#lib/syncForcePush.js';
 import { identityFromSyncKey } from '#lib/syncPairing.js';
 import type { SyncSnapshot } from '#lib/syncRecords.js';
 import {
@@ -204,7 +215,7 @@ async function saveToWorkspace(
 		}
 		// A window may have saved this note since it was read. The save takes its turn
 		// among that note's saves, so it sees every one of them and merges the edit in.
-		const kept = await mergeNote(pid, note.id, (now) => {
+		const kept = await mergeNote(pid, note, (now) => {
 			// Deleted for good since it was read: the delete stands.
 			if (now === undefined) return before === undefined ? note : null;
 			return before === undefined || durableNoteSignature(now) !== durableNoteSignature(before)
@@ -290,4 +301,90 @@ export async function syncWorkspace(
 		return 'synced';
 	}
 	return 'synced';
+}
+
+/** A save landed in the workspace between a plan reading it and the plan landing. */
+export class WorkspaceChanged extends Error {}
+
+/** How long replacing the relay's copy waits for photo saves under way before giving up. */
+const BYTES_LANDING_MS = 15_000;
+
+/**
+ * What makes this device's copy of a workspace the relay's. `remote` and `control`
+ * are what `readRelay` answered. Decided from what the database holds now: every
+ * record is stamped past the relay's copy, and what only the relay holds is
+ * deleted. It lands with the sync state of the copy that was read and with every
+ * record queued, so the sync after it sends whatever differs and downloads nothing
+ * twice. Nothing is changed on this device or the relay until it lands.
+ *
+ * It lands whole over what it read, so it refuses to land, with `WorkspaceChanged`,
+ * when anything was saved in the workspace since: whoever runs it plans again.
+ */
+export async function planRelayReplacement(
+	pid: string,
+	remote: SyncSnapshot,
+	control: Record<string, unknown>,
+	signal: AbortSignal
+): Promise<RewritePlan> {
+	await localWritesLanded(pid);
+	// This copy becomes the relay's, so every photo it lists has to be here in the
+	// version listed: one that was never received, or could not be saved, stops it.
+	// Asking waits for photo saves under way, which a save that keeps failing never
+	// ends: it is given up rather than waited for with a workspace held.
+	const held = await getStoredAttachmentVersions(
+		pid,
+		AbortSignal.any([signal, AbortSignal.timeout(BYTES_LANDING_MS)])
+	).catch(() => {
+		throw new Error('Photos are still being saved on this device. Try again in a moment.');
+	});
+	const readAt = await uploadGeneration(pid);
+	const stored = await readWorkspace(pid);
+	const notes = withoutTombstoned(stored.notes, stored.tombstones);
+	for (const note of notes) {
+		for (const image of note.images ?? []) {
+			const version = held.get(`${note.id}::${image.id}`);
+			if (version === undefined || (image.contentHash && image.contentHash !== version))
+				throw new Error(
+					'Some attachments could not be loaded. Replacing the cloud copy was not started.'
+				);
+		}
+	}
+	const local: SyncSnapshot = {
+		...stored,
+		// A note the relay deleted for good returns under a new id, and its bytes with it.
+		notes: await Promise.all(
+			notes.map((note) =>
+				isTombstoned(note.id, remote.tombstones) ? hydrateNoteAttachments(pid, note) : note
+			)
+		),
+		labels: withoutTombstoned(stored.labels, stored.labelTombstones)
+	};
+	const snapshot = buildForcePushSnapshot(local, remote, editContext);
+	// Records that return under a new id leave nothing behind under the old one.
+	const kept = new Set(snapshot.notes.map((note) => note.id));
+	const keptLabels = new Set(snapshot.labels.map((label) => label.id));
+	return {
+		notes: snapshot.notes,
+		stateKeys: [],
+		land: (now) => {
+			if (now.uploadGeneration !== readAt) throw new WorkspaceChanged();
+			return {
+				clear: false,
+				notes: snapshot.notes,
+				labels: snapshot.labels,
+				dropNotes: now.noteIds.filter((id) => !kept.has(id)),
+				dropLabels: now.labels.flatMap((label) => (keptLabels.has(label.id) ? [] : [label.id])),
+				state: {
+					[NOTE_IDB]: snapshot.tombstones,
+					[LABEL_IDB]: snapshot.labelTombstones,
+					[BOARD_IDB]: snapshot.boardTombstones,
+					[BOARDS_IDB]: JSON.parse(JSON.stringify(snapshot.boards)),
+					[CANVAS_LIBRARY_STATE_KEY]: JSON.parse(JSON.stringify(snapshot.libraryItems)),
+					[CANVAS_LIBRARY_TOMBSTONES_KEY]: snapshot.libraryTombstones,
+					...control
+				},
+				outboxKeys: currentRecordKeys(snapshot)
+			};
+		}
+	};
 }

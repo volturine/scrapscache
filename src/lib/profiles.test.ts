@@ -10,7 +10,7 @@ import {
 	getSyncOutboxKeys,
 	getSyncState,
 	markSyncOutbox,
-	putLabel,
+	saveLabel,
 	putNote,
 	addFiredReminderKeys
 } from '#lib/db/idb.js';
@@ -27,12 +27,7 @@ import {
 	type StoredProfile,
 	mcpWorkspaceGrant
 } from './profiles';
-import {
-	hydrateTombstones,
-	writeTombstones,
-	writeLabelTombstones,
-	NOTE_IDB
-} from './syncTombstones';
+import { addTombstones, readStoredTombstones, NOTE_IDB } from './syncTombstones';
 
 function note(id: string): Note {
 	return {
@@ -60,9 +55,9 @@ describe('profile namespaces', () => {
 	it('keeps notes, labels, outbox, tombstones, and reminders isolated per profile', async () => {
 		await putNote('p-one', note('shared-id'));
 		await putNote('p-two', note('other-note'));
-		await putLabel('p-one', label('label-1'));
+		await saveLabel('p-one', label('label-1'));
 		await markSyncOutbox('p-one', ['note:shared-id']);
-		await writeTombstones('p-one', { gone: 5 });
+		await addTombstones('p-one', { gone: 5 });
 		await addFiredReminderKeys('p-one', ['wake-1']);
 
 		expect((await getAllNotesMetadata('p-one')).map(({ id }) => id)).toEqual(['shared-id']);
@@ -71,8 +66,7 @@ describe('profile namespaces', () => {
 		expect(await getSyncOutboxKeys('p-two')).toEqual([]);
 		expect(await getSyncState('p-two', NOTE_IDB)).toBeUndefined();
 		expect(await getFiredReminderKeys('p-two')).toEqual([]);
-		await hydrateTombstones('p-two');
-		expect((await hydrateTombstones('p-two')).notes).toEqual({});
+		expect((await readStoredTombstones('p-two')).notes).toEqual({});
 		expect(await getFiredReminderKeys('p-two')).toEqual([]);
 	});
 });

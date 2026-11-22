@@ -3,6 +3,8 @@ import { buildForcePushSnapshot } from './syncForcePush';
 import { applyNoteEdit, createEditContext, mergeNoteLists, withoutTombstoned } from './model';
 import { syncSnapshot, type SyncSnapshot } from './syncRecords';
 import type { Note } from './types';
+import { photoMarker } from './photoMarker';
+import { createKanbanBoard } from './kanban';
 
 function note(id: string, title: string, at: number): Note {
 	return {
@@ -112,6 +114,29 @@ describe('force push workspace', () => {
 		expect(forced.notes[0].id).not.toBe('deleted');
 		expect(withoutTombstoned(forced.notes, remote.tombstones)).toHaveLength(1);
 		expect(forced.tombstones.deleted).toBe(200);
+	});
+	it('carries a returning note\u2019s photo markers and board cards over to its new ids', () => {
+		const returning: Note = {
+			...note('deleted', 'Restore me', 10),
+			body: `Before\n${photoMarker({ id: 'shot', name: 'shot.png' })}\nAfter`,
+			images: [{ id: 'shot', mime: 'image/png', dataUrl: '', createdAt: 1, name: 'shot.png' }]
+		};
+		const board = {
+			...createKanbanBoard('Board'),
+			columns: [{ id: 'column', labelId: null, order: ['deleted', 'kept'] }]
+		};
+		const forced = buildForcePushSnapshot(
+			syncSnapshot({ notes: [returning, note('kept', 'Kept', 10)], boards: [board] }),
+			{ ...snapshot([]), tombstones: { deleted: 200 } },
+			createEditContext(() => 100)
+		);
+
+		const [returned] = forced.notes;
+		const [photo] = returned.images!;
+		expect(returned.id).not.toBe('deleted');
+		expect(photo.id).not.toBe('shot');
+		expect(returned.body).toBe(`Before\n${photoMarker({ id: photo.id, name: 'shot.png' })}\nAfter`);
+		expect(forced.boards[0].columns[0].order).toEqual([returned.id, 'kept']);
 	});
 	it('publishes an empty workspace as deletions for all cloud notes', () => {
 		const forced = buildForcePushSnapshot(

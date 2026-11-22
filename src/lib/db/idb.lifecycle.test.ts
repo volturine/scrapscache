@@ -20,7 +20,7 @@ import {
 	getDeviceDB,
 	getSyncState,
 	isProfileReleased,
-	putLabel,
+	saveLabel,
 	putNote,
 	putStoredProfile,
 	readStoredProfiles,
@@ -65,7 +65,7 @@ describe('closeDeviceDatabase', () => {
 	it('lets a write that was never awaited finish before closing', async () => {
 		// The stores queue writes and move on, so the close has to cover them.
 		void putNote(PROFILE, note('unawaited'));
-		void putLabel(PROFILE, label('unawaited-tag'));
+		void saveLabel(PROFILE, label('unawaited-tag'));
 
 		await closeDeviceDatabase();
 

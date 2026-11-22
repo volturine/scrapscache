@@ -172,32 +172,16 @@ export class ProfileCoordinator {
 		return result;
 	}
 
-	/** Publish a synced workspace as the newest cloud version. */
+	/**
+	 * Publish a synced workspace as the newest cloud version, whichever workspace
+	 * this window shows.
+	 */
 	async forceResync(turnstileToken?: string, profileId?: string | null): Promise<Outcome> {
 		const blocked = this.guard();
 		if (blocked) return { success: false, error: blocked };
 		this.switching = true;
 		try {
-			if (profileId && profileId !== syncStore.activeId) {
-				const target = syncStore.profiles.find((profile) => profile.id === profileId);
-				if (!target || isLocalWorkspace(target))
-					return { success: false, error: 'That workspace is not synced' };
-				await withWorkspaceLock(async () => {
-					await notesStore.waitForPendingProfileWrites();
-					await this.activate(target);
-				});
-			}
-			if (!syncStore.account) return { success: false, error: 'No synced workspace is active' };
-			const synced = await notesStore.forcePushWorkspace(turnstileToken);
-			return synced
-				? { success: true }
-				: {
-						success: false,
-						error:
-							syncStore.lastError ??
-							notesStore.lastPersistError ??
-							'Replacing the cloud copy did not finish'
-					};
+			return await notesStore.forcePushWorkspace(profileId ?? syncStore.activeId, turnstileToken);
 		} catch (err) {
 			return {
 				success: false,
@@ -366,41 +350,38 @@ export class ProfileCoordinator {
 	}
 
 	/**
-	 * Activate a sync key received via device pairing.
-	 * Starting from a blank slate locally, it pulls all records from the cloud.
+	 * Take a sync key received through device pairing. A key this device does not
+	 * hold yet gets a workspace of its own, and that workspace syncs like any other
+	 * before a window opens it: nothing was written in it here, so what the account
+	 * holds is all it ends up with, in its database by the time it is shown.
 	 */
 	async receiveLinkedKey(syncKey: string): Promise<{ outcome: 'linked'; error?: string }> {
 		const blocked = this.guard();
 		if (blocked) return { outcome: 'linked', error: blocked };
 		this.switching = true;
 		try {
-			const activated = await withWorkspaceLock(async () => {
-				await notesStore.waitForPendingProfileWrites();
-				let profile = profileForSyncKey(syncStore.profiles, syncKey);
-				const existed = profile != null;
-				if (!profile) {
-					profile = {
-						id: randomOpaqueId(),
-						name: nextProfileName(syncStore.profiles),
-						syncKey,
-						createdAt: Date.now()
-					};
-					await syncStore.addKeyringEntry(profile);
-				}
-				await this.activate(profile);
-				return { isNew: !existed };
-			});
-			// Both sync paths take the workspace's sync lock themselves. The workspace
-			// lock is let go first, while `switching` keeps this window where it is.
-			const synced = activated.isNew
-				? await notesStore.replaceWithCloudManual()
-				: await notesStore.syncWithCloudManual();
-			if (!synced)
-				return {
-					outcome: 'linked',
-					error: syncStore.lastError ?? 'Could not sync the received profile'
+			const received = await withWorkspaceLock(async () => {
+				const held = profileForSyncKey(syncStore.profiles, syncKey);
+				if (held) return held;
+				const added: StoredProfile = {
+					id: randomOpaqueId(),
+					name: nextProfileName(syncStore.profiles),
+					syncKey,
+					createdAt: Date.now()
 				};
-			return { outcome: 'linked' };
+				await syncStore.addKeyringEntry(added);
+				return added;
+			});
+			// Nothing is held while the relay is waited for, and `switching` keeps this
+			// window where it is.
+			const synced = await syncScheduler.request(received.id);
+			await withWorkspaceLock(async () => {
+				await notesStore.waitForPendingProfileWrites();
+				await this.activate(this.find(received.id));
+			});
+			return synced
+				? { outcome: 'linked' }
+				: { outcome: 'linked', error: 'Could not sync the received profile' };
 		} catch (err) {
 			return {
 				outcome: 'linked',

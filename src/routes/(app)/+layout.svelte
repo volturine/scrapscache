@@ -18,6 +18,8 @@
 	import { reminderStore } from '#lib/stores/reminders.svelte.js';
 	import { reminderHistoryClient } from '#lib/reminderHistoryClient.js';
 	import { getAllNotesMetadata } from '#lib/db/idb.js';
+	import { withoutTombstoned } from '#lib/model/index.js';
+	import { readStoredTombstones } from '#lib/syncTombstones.js';
 	import { preloadVapidPublicKey } from '#lib/reminderWake.js';
 	import { registerServiceWorker } from '#lib/serviceWorker.js';
 	import { provideEditorActions } from '#lib/editorContext.js';
@@ -281,7 +283,9 @@
 					name: profile.name,
 					syncKey: profile.syncKey || null
 				})),
-			loadNotes: (pid) => getAllNotesMetadata(pid),
+			// A note deleted for good may still have a row until its workspace next syncs.
+			loadNotes: async (pid) =>
+				withoutTombstoned(await getAllNotesMetadata(pid), (await readStoredTombstones(pid)).notes),
 			reconcile: reconcileReminders,
 			openNote: (pid, noteId) => void openNoteInWorkspace(pid, noteId),
 			openWorkspace: (pid) => void openWorkspace(pid),

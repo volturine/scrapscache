@@ -6,7 +6,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as idb from '#lib/db/idb.js';
-import { clearAllNotes, getAllNotesMetadata } from '#lib/db/idb.js';
+import { getAllNotesMetadata } from '#lib/db/idb.js';
 import {
 	journalPendingNotes,
 	NOTES_MIRROR_KEY,
@@ -15,7 +15,7 @@ import {
 } from '#lib/noteStorage.js';
 import type { Note } from '#lib/types.js';
 import { notesStore } from './notes.svelte';
-import { TEST_WORKSPACE } from '../../tests/workspace';
+import { emptyWorkspace, TEST_WORKSPACE } from '../../tests/workspace';
 
 function note(id: string): Note {
 	return {
@@ -46,7 +46,7 @@ function writesTo(setItem: { mock: { calls: unknown[][] } }, key: string): strin
 
 beforeEach(async () => {
 	localStorage.clear();
-	await clearAllNotes(TEST_WORKSPACE);
+	await emptyWorkspace(TEST_WORKSPACE);
 	notesStore.notes = Array.from({ length: 500 }, (_, index) => note(`n${index}`));
 	notesStore.labels = [];
 	notesStore.deletedNoteIds = {};
@@ -127,7 +127,7 @@ describe('saving a note', () => {
 	it('brings back an edit whose IndexedDB write never landed', async () => {
 		notesStore.notes = [note('kept')];
 		// The page dies before the write commits: it never resolves.
-		vi.spyOn(idb, 'putNote').mockImplementationOnce(() => new Promise(() => undefined));
+		vi.spyOn(idb, 'saveNote').mockImplementationOnce(() => new Promise(() => undefined));
 
 		notesStore.updateNote('kept', { title: 'typed just before the crash' });
 		vi.restoreAllMocks();
@@ -164,12 +164,12 @@ describe('saving a note', () => {
 	it('keeps a newer journaled edit when an older write lands', async () => {
 		notesStore.notes = [note('n1')];
 		let land: () => void = () => undefined;
-		vi.spyOn(idb, 'putNote').mockImplementationOnce(
+		vi.spyOn(idb, 'saveNote').mockImplementationOnce(
 			() => new Promise<void>((resolve) => (land = resolve))
 		);
 		notesStore.updateNote('n1', { title: 'first' });
 		// The second write is still in flight when the first lands.
-		vi.spyOn(idb, 'putNote').mockImplementationOnce(() => new Promise(() => undefined));
+		vi.spyOn(idb, 'saveNote').mockImplementationOnce(() => new Promise(() => undefined));
 		notesStore.updateNote('n1', { title: 'second' });
 
 		land();

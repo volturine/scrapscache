@@ -143,7 +143,8 @@ A small device database, `scrapscache-device`, lists the workspaces by id and
 one-way link tag, never by name or sync key, and caches link previews. The
 service worker reads it to find which workspace a reminder push belongs to.
 
-Reminders are equal across workspaces. While the app is open it watches every
+Reminders are equal across workspaces. Receipts of handled reminders are
+exchanged for every synced workspace at the same moments, whichever one is open. While the app is open it watches every
 workspace, not only the open one: a due reminder from another workspace alerts
 with that workspace's name, and opening it switches there. Each workspace keeps
 its own fired ledger and synced history. With the app closed, the relay pushes
@@ -172,8 +173,8 @@ applies the same rules to every workspace on the device:
    every window. Workspaces do not wait for each other, and none interrupts
    another: a long upload in one never holds up, or is restarted by, another.
 3. Only something that rewrites a workspace interrupts its sync: an import
-   landing, a pairing merge or replace, unlinking, deleting. The interrupted
-   round drops its request and its lane goes again afterwards. What it had not
+   landing, replacing the cloud copy, unlinking, deleting. The interrupted round
+   drops its request and its lane goes again afterwards. What it had not
    committed is still queued.
 4. A sync that could not reach the relay is tried again by itself, from 5 seconds
    and later each time up to 5 minutes, for as long as the workspace has
@@ -193,15 +194,35 @@ that was under way when the window moved on simply finishes. Between those
 moments only the workspace a window shows hears of changes as they happen: the
 live connection to the relay is one per window, for the account it shows.
 
-A sync and a window write to the same database at the same time, so neither
-saves over the other. A sync saves each note as merged with what is stored when
-that note's turn comes, after every save the window asked for before it. Deletes
-and boards a window saves go on top of the ones stored at that moment. A window
-that shows a workspace merges what a sync saved into what it holds, and saves
-again, queued to upload, whatever it holds that the database does not: an edit
-made on a note as it was before the sync, or a save that failed. An edit never
-undoes what a sync brought, and a sync never undoes an edit. Another window
-showing the same workspace reads the database again.
+A sync and any number of windows write to the same database at the same time, so
+every save merges with what is stored at that moment and none goes over another:
+the database only moves forward. An edited note is saved merged with the stored
+copy (`saveNote` in `src/lib/db/idb.ts`), and so is a note a sync pulled; a label
+keeps the later of two renames; deletes, boards and the canvas library go on top
+of the ones stored. Each save reads the stored copy and writes the result, with
+its attachment bytes and its upload marks, in one transaction, so no other
+window's save can land in between. Whichever of two saves lands last, the result
+is the same. An
+edit never undoes what a sync brought, and a sync never undoes an edit. A window
+that shows a workspace merges what a sync saved into what it holds and writes
+nothing for it; another window showing the same workspace reads the database
+again.
+
+Two things do not merge, and each lands whole in one transaction as a rewrite of
+the workspace (`rewriteWorkspace`): an import, and replacing the cloud copy.
+
+Pairing needs no operation of its own. A key received from another device gets a
+workspace, and that workspace syncs like any other before a window opens it.
+Nothing was written in it on this device, so the account's copy is all it ends up
+with, in its database by the time it is shown.
+
+Replacing the cloud copy ("force push") has the shape an import has. The relay's
+copy is read first, with nothing held and nothing recorded on this device
+(`readRelay`). Then one transaction stamps this device's copy past the one that
+was read, records the sync state of that copy, and queues every record; an
+ordinary sync sends whatever differs. It lands over what it read, so it refuses to
+land when anything was saved in the workspace since, and is planned again. A tab
+closed at any point leaves the workspace either as it was or ready to upload.
 
 What changes the workspaces themselves (switching, creating, unlinking, deleting,
 an import landing) runs one at a time under a separate lock that only ever covers

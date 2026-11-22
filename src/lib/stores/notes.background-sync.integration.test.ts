@@ -13,7 +13,7 @@ import {
 	getAllNotesMetadata,
 	getSyncOutboxKeys,
 	hydrateNoteAttachments,
-	putLabel,
+	saveLabel,
 	putNote,
 	waitForDeviceWrites
 } from '#lib/db/idb.js';
@@ -25,7 +25,9 @@ import type { Note } from '#lib/types.js';
 import { notesStore } from './notes.svelte';
 import { syncScheduler } from './syncScheduler';
 import { profileCoordinator } from './profiles.svelte';
-import { syncStore, type SyncAccount } from './sync.svelte';
+import { PROFILE_META_KEY, syncStore, type SyncAccount } from './sync.svelte';
+import { kanbanStore } from './kanban.svelte';
+import { createKanbanBoard } from '#lib/kanban.js';
 import { seedTestKeyring, TEST_WORKSPACE } from '../../tests/workspace';
 
 // A workspace left with changes still to send is not open any more, and may never
@@ -95,19 +97,23 @@ describe('a workspace that is not open', () => {
 			.sort();
 	}
 
-	/** Another device of the same account writes a record to the relay. */
-	async function otherDeviceWrites(payload: SyncRecordPayload, key: string): Promise<void> {
-		const slot = await sha256(`${identity.syncKey}\u0000${key}`);
-		const caughtUp = (await relay.sync(identity.accountId, 0, [], [], 50)).cursor;
+	/** Another device of an account writes a record to the relay. */
+	async function otherDeviceWrites(
+		payload: SyncRecordPayload,
+		key: string,
+		account: SyncIdentity = identity
+	): Promise<void> {
+		const slot = await sha256(`${account.syncKey}\u0000${key}`);
+		const caughtUp = (await relay.sync(account.accountId, 0, [], [], 50)).cursor;
 		const written = await relay.sync(
-			identity.accountId,
+			account.accountId,
 			caughtUp,
 			[
 				{
 					id: randomOpaqueId(),
 					slot,
 					expectedId: null,
-					ciphertext: encryptSyncPayload(identity.syncKey, payload, slot)
+					ciphertext: encryptSyncPayload(account.syncKey, payload, slot)
 				}
 			],
 			[],
@@ -245,7 +251,7 @@ describe('a workspace that is not open', () => {
 	// open. A sync that read them before waiting on the relay must not write that
 	// older copy back over the rename.
 	it('keeps a label renamed in another window while it waited on the relay', async () => {
-		await putLabel(left.id, { id: 'renamed', name: 'Before', createdAt: 1, updatedAt: 1 });
+		await saveLabel(left.id, { id: 'renamed', name: 'Before', createdAt: 1, updatedAt: 1 });
 		// Listing a photo this device has no bytes for makes the sync ask the relay for it.
 		const photo = { id: 'photo', mime: 'image/png', dataUrl: '', createdAt: 1, contentHash: 'h' };
 		await putNote(left.id, { ...note('with-photo'), images: [photo] }, ['note:with-photo']);
@@ -265,7 +271,7 @@ describe('a workspace that is not open', () => {
 
 		const synced = syncScheduler.request(left.id);
 		await vi.waitFor(() => expect(relayAsked).toBe(true));
-		await putLabel(left.id, { id: 'renamed', name: 'After', createdAt: 1, updatedAt: 50 });
+		await saveLabel(left.id, { id: 'renamed', name: 'After', createdAt: 1, updatedAt: 50 });
 		await waitForDeviceWrites(left.id);
 		answer();
 
@@ -365,6 +371,50 @@ describe('a workspace that is not open', () => {
 		silent.add(identity.accountId);
 		await open(left);
 		expect(notesStore.notes.map((item) => item.title)).toEqual(['Theirs']);
+	});
+
+	// Pairing gives this device a key. The workspace it gets syncs like any other
+	// before a window opens it, so it starts as the account's copy: nothing this
+	// device makes up for a workspace it opens (a board to show, a name) is sent.
+	it('fills a newly paired workspace from the account before it is opened', async () => {
+		const paired = createSyncIdentity();
+		await relay.createAccount(paired.accountId, 'credential');
+		await otherDeviceWrites(
+			{ kind: 'note', value: note('theirs', 'Theirs') as SyncNote },
+			'note:theirs',
+			paired
+		);
+		await otherDeviceWrites(
+			{ kind: 'board', value: { ...createKanbanBoard('Their board'), id: 'their-board' } },
+			'board:their-board',
+			paired
+		);
+		await otherDeviceWrites(
+			{ kind: 'profile-meta', value: { name: 'Shared notes' } },
+			PROFILE_META_KEY,
+			paired
+		);
+
+		expect(await profileCoordinator.receiveLinkedKey(paired.syncKey)).toEqual({
+			outcome: 'linked'
+		});
+
+		expect(syncStore.activeProfile).toMatchObject({
+			syncKey: paired.syncKey,
+			name: 'Shared notes'
+		});
+		expect(notesStore.notes.map((item) => item.title)).toEqual(['Theirs']);
+		expect(kanbanStore.boards.map((board) => board.name)).toEqual(['Their board']);
+		// Opening it sends nothing of this device's own.
+		expect(await notesStore.flushSync()).toBe(true);
+		const records = await relayRecords(paired);
+		expect(
+			records.flatMap((record) => (record.kind === 'board' ? [record.value.name] : []))
+		).toEqual(['Their board']);
+		expect(
+			records.flatMap((record) => (record.kind === 'profile-meta' ? [record.value.name] : []))
+		).toEqual(['Shared notes']);
+		expect(await relayNoteTitles(paired)).toEqual(['Theirs']);
 	});
 
 	it('is not disturbed by a workspace switch, and is sent once the relay answers', async () => {

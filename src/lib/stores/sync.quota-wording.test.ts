@@ -97,7 +97,7 @@ describe('quota isolation independent of server error wording', () => {
 		});
 		await idb.markSyncOutbox(TEST_WORKSPACE, ['note:note-1', 'attachment:ok', 'attachment:huge']);
 
-		const result = await syncOpen(store, syncSnapshot({ notes: [local] }), false, async (s) => s);
+		const result = await syncOpen(store, syncSnapshot({ notes: [local] }), async (s) => s);
 
 		expect(result.success).toBe(false);
 		expect(result.error).toMatch(/quota/);

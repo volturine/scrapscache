@@ -1,10 +1,10 @@
 /**
- * A sync flight belongs to the workspace it started in.
+ * A sync belongs to the workspace it runs for.
  *
- * Downloading, decrypting and applying takes time, and the window can be
- * switched to another workspace while it runs. Nothing a flight pulled may
- * land anywhere but the workspace it was pulled for — not in the database, not
- * in the notes on screen, not in the mirror they are saved to.
+ * It saves into that workspace's database, whichever workspace a window shows,
+ * and tells the window what it saved. A window that shows another workspace, or
+ * has moved to one while the sync ran, takes none of it: not into the notes on
+ * screen, not into the mirror they are saved to, not into its own database.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -36,15 +36,14 @@ function note(id: string, title = id): Note {
 	};
 }
 
-/** Reach the private applier the way a flight does. */
-function applyPulled(snapshot: Parameters<typeof callApply>[0], pid: string) {
-	return callApply(snapshot, pid);
+/** Tell the window what a sync saved, the way the scheduler does. */
+function showSynced(snapshot: SyncSnapshot, pid: string): Promise<void> {
+	return (
+		notesStore as unknown as {
+			showSynced(pid: string, saved: SyncSnapshot, decisions: Map<string, unknown>): Promise<void>;
+		}
+	).showSynced(pid, snapshot, new Map());
 }
-const callApply = (
-	notesStore as unknown as {
-		applyPulledSnapshot: (snapshot: SyncSnapshot, pid: string) => Promise<unknown>;
-	}
-).applyPulledSnapshot.bind(notesStore);
 
 function snapshotOf(notes: Note[]) {
 	return syncSnapshot({ notes });
@@ -54,38 +53,29 @@ beforeEach(() => {
 	localStorage.clear();
 	notesStore.notes = [];
 	notesStore.labels = [];
+	notesStore.loaded = true;
 });
 
-describe('a sync flight cannot write into another workspace', () => {
-	it('drops what it pulled when the window moved on', async () => {
-		// The window is on the anonymous workspace; a flight for another one
-		// finishes downloading and tries to apply.
+describe('what a sync saved reaches only a window showing its workspace', () => {
+	it('is not shown by a window on another workspace', async () => {
 		vi.spyOn(syncStore, 'activePid', 'get').mockReturnValue(TEST_WORKSPACE);
 
-		await applyPulled(snapshotOf([note('secret-1', 'from the other workspace')]), OTHER);
+		await showSynced(snapshotOf([note('secret-1', 'from the other workspace')]), OTHER);
 
-		expect(await getAllNotesMetadata(TEST_WORKSPACE)).toEqual([]);
 		expect(notesStore.notes).toEqual([]);
 		expect(readNotesMirror(TEST_WORKSPACE)).toEqual([]);
+		expect(await getAllNotesMetadata(TEST_WORKSPACE)).toEqual([]);
 		vi.restoreAllMocks();
 	});
 
-	it('applies what it pulled for the workspace still on screen', async () => {
+	it('is shown by a window on that workspace, which saves nothing for it', async () => {
 		vi.spyOn(syncStore, 'activePid', 'get').mockReturnValue(TEST_WORKSPACE);
 
-		await applyPulled(snapshotOf([note('mine-1', 'my own note')]), TEST_WORKSPACE);
+		await showSynced(snapshotOf([note('mine-1', 'my own note')]), TEST_WORKSPACE);
 
-		expect((await getAllNotesMetadata(TEST_WORKSPACE)).map((n) => n.id)).toEqual(['mine-1']);
 		expect(notesStore.notes.map((n) => n.id)).toEqual(['mine-1']);
-		vi.restoreAllMocks();
-	});
-
-	it('leaves the other workspace empty either way', async () => {
-		vi.spyOn(syncStore, 'activePid', 'get').mockReturnValue(TEST_WORKSPACE);
-
-		await applyPulled(snapshotOf([note('secret-2')]), OTHER);
-		await applyPulled(snapshotOf([note('mine-2')]), TEST_WORKSPACE);
-
+		// The sync saved it already; showing it is not a save.
+		expect(await getAllNotesMetadata(TEST_WORKSPACE)).toEqual([]);
 		expect(await getAllNotesMetadata(OTHER)).toEqual([]);
 		vi.restoreAllMocks();
 	});

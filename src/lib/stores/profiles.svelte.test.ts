@@ -437,28 +437,28 @@ describe('workspace changes', () => {
 		syncStore.profiles = [active];
 		syncStore.activateProfile(active);
 		stubChange();
-		const push = vi.spyOn(notesStore, 'forcePushWorkspace').mockResolvedValue(true);
+		const push = vi.spyOn(notesStore, 'forcePushWorkspace').mockResolvedValue({ success: true });
 
 		const result = await new ProfileCoordinator().forceResync(undefined, active.id);
 
 		expect(result).toEqual({ success: true });
-		expect(push).toHaveBeenCalledOnce();
+		expect(push).toHaveBeenCalledExactlyOnceWith(active.id, undefined);
 		expect(syncStore.activeProfile).toEqual(active);
 	});
 
-	it('activates another synced workspace before force pushing it', async () => {
+	it('force pushes another synced workspace without leaving the open one', async () => {
 		const active = workspace('active-force', true);
 		const other = workspace('other-force', true, 2);
 		syncStore.profiles = [active, other];
 		syncStore.activateProfile(active);
 		stubChange();
-		const push = vi.spyOn(notesStore, 'forcePushWorkspace').mockResolvedValue(true);
+		const push = vi.spyOn(notesStore, 'forcePushWorkspace').mockResolvedValue({ success: true });
 
-		const result = await new ProfileCoordinator().forceResync(undefined, other.id);
+		const result = await new ProfileCoordinator().forceResync('token', other.id);
 
 		expect(result).toEqual({ success: true });
-		expect(syncStore.activeProfile).toEqual(other);
-		expect(push).toHaveBeenCalledOnce();
+		expect(push).toHaveBeenCalledExactlyOnceWith(other.id, 'token');
+		expect(syncStore.activeProfile).toEqual(active);
 	});
 
 	it('rejects changes to an unknown workspace', async () => {
@@ -480,15 +480,30 @@ describe('workspace changes', () => {
 		expect(syncStore.profiles).toEqual([kept]);
 	});
 
+	it('opens the workspace a received key already has on this device, without adding another', async () => {
+		const held = workspace('held', true, 2);
+		syncStore.profiles = [workspace(TEST_WORKSPACE, false, 0), held];
+		syncStore.activateLocalWorkspace(TEST_WORKSPACE);
+		stubChange();
+		const sync = vi.spyOn(syncScheduler, 'request').mockResolvedValue(true);
+
+		expect(await new ProfileCoordinator().receiveLinkedKey(held.syncKey)).toEqual({
+			outcome: 'linked'
+		});
+
+		expect(syncStore.profiles.map(({ id }) => id)).toEqual([TEST_WORKSPACE, 'held']);
+		expect(sync).toHaveBeenCalledExactlyOnceWith('held');
+		expect(syncStore.activeId).toBe('held');
+	});
+
 	it.each([true, false])(
-		'lets the workspace lock go before pulling a new paired workspace (sync succeeds: %s)',
+		'syncs a newly paired workspace before a window opens it, with no lock held meanwhile (sync succeeds: %s)',
 		async (success) => {
 			const held = new Set<string>();
 			vi.stubGlobal('navigator', {
 				locks: {
 					request: async (name: string, run: () => Promise<unknown>) => {
 						expect(name === WORKSPACE_LOCK || name.startsWith(SYNC_LOCK)).toBe(true);
-						// The pull waits on the relay: no workspace change may wait behind it.
 						if (held.size > 0) throw new Error(`${name} asked for while ${[...held]} is held`);
 						held.add(name);
 						try {
@@ -504,20 +519,23 @@ describe('workspace changes', () => {
 				await putNote(TEST_WORKSPACE, note('keep-local'));
 				stubChange();
 				const coordinator = new ProfileCoordinator();
-				const pull = vi.spyOn(notesStore, 'replaceWithCloudManual').mockImplementation(async () => {
+				const sync = vi.spyOn(syncScheduler, 'request').mockImplementation(async (pid) => {
+					// The sync waits on the relay: no workspace change may wait behind it.
+					expect(held.size).toBe(0);
 					expect(coordinator.switching).toBe(true);
-					return navigator.locks.request(`${SYNC_LOCK}:${syncStore.activeId}`, async () => success);
+					// The workspace is on the device, and no window shows it yet.
+					expect(syncStore.profiles.some((entry) => entry.id === pid)).toBe(true);
+					expect(syncStore.activeId).toBe(TEST_WORKSPACE);
+					return success;
 				});
-				const merge = vi.spyOn(notesStore, 'syncWithCloudManual').mockResolvedValue(true);
-				syncStore.lastError = null;
 				const result = await coordinator.receiveLinkedKey(createSyncIdentity().syncKey);
 				expect(result).toEqual(
 					success
 						? { outcome: 'linked' }
 						: { outcome: 'linked', error: 'Could not sync the received profile' }
 				);
-				expect(pull).toHaveBeenCalledOnce();
-				expect(merge).not.toHaveBeenCalled();
+				expect(sync).toHaveBeenCalledExactlyOnceWith(syncStore.activeId);
+				expect(syncStore.activeId).not.toBe(TEST_WORKSPACE);
 				expect(coordinator.switching).toBe(false);
 				expect(await getAllNotesMetadata(syncStore.activePid)).toEqual([]);
 				expect(await noteIds(TEST_WORKSPACE)).toContain('keep-local');

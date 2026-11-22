@@ -159,7 +159,6 @@ async function otherDevice(
 			const result = await syncOpen(
 				client,
 				syncSnapshot({ notes: device.notes }),
-				false,
 				async (snapshot: SyncSnapshot) => {
 					for (const item of snapshot.notes) await putNote(OTHER_DEVICE, item);
 					device.notes = snapshot.notes;
@@ -920,7 +919,7 @@ describe('attachments across devices', () => {
 			const created = notesStore.createNote({ title: 'trip' });
 			await notesStore.flushNote(created.id);
 			const shot = await photo('shot', bytes('saved on the second try'));
-			vi.spyOn(idb, 'putNote').mockRejectedValueOnce(
+			vi.spyOn(idb, 'saveNote').mockRejectedValueOnce(
 				new DOMException('Storage full', 'QuotaExceededError')
 			);
 

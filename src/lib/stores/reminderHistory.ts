@@ -1,4 +1,4 @@
-import { getSyncState, mergeWorkspaceState } from '#lib/db/idb.js';
+import { mergeWorkspaceState } from '#lib/db/idb.js';
 import {
 	isReminderHistoryEntry,
 	mergeReminderEntries,
@@ -136,11 +136,6 @@ export class ReminderHistoryStore {
 	}
 	waitForPendingWrites(): Promise<void> {
 		return this.pendingWrites;
-	}
-	/** Whether the workspace has receipts or deletions waiting to be sent. */
-	async hasPending(pid: string): Promise<boolean> {
-		await this.pendingWrites;
-		return channelState(await getSyncState(pid, REMINDER_CHANNEL_KEY)).pending.length > 0;
 	}
 	/** The next upload for `accountId`, starting over when the workspace changed account. */
 	async prepare(pid: string, accountId: string): Promise<ReminderOutbox> {

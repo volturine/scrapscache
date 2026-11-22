@@ -9,10 +9,9 @@ import type { ApplyPulled, SyncStore } from '#lib/stores/sync.svelte.js';
 export async function syncOpen(
 	store: SyncStore,
 	local: SyncSnapshot,
-	pullOnly = false,
 	applyPulled: ApplyPulled = async (snapshot) => snapshot,
 	signal: AbortSignal = new AbortController().signal
-): ReturnType<SyncStore['pullOpen']> {
+): ReturnType<SyncStore['syncWorkspace']> {
 	const account = store.account;
 	if (!account) return { success: false, error: 'Not linked' };
 	// The keyring loads once a store exists, and would replace the entry added here.
@@ -25,7 +24,5 @@ export async function syncOpen(
 		profile = { id: pid, name: '', syncKey: account.syncKey, createdAt: 0 };
 		store.profiles = [...store.profiles.filter((entry) => entry.id !== pid), profile];
 	}
-	return pullOnly
-		? store.pullOpen(local, applyPulled, signal)
-		: store.syncWorkspace(profile, local, applyPulled, signal);
+	return store.syncWorkspace(profile, local, applyPulled, signal);
 }

@@ -11,20 +11,20 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-	deleteLabel,
 	deleteNote,
 	getAllLabels,
 	getAllNotesMetadata,
 	hydrateNoteAttachments,
-	putLabel,
-	putNote
+	saveLabel,
+	putNote,
+	setSyncState
 } from '#lib/db/idb.js';
 import {
-	hydrateTombstones,
+	readStoredTombstones,
 	loadBoardsFromDevice,
-	saveBoardsToDevice,
-	writeLabelTombstones,
-	writeTombstones,
+	addTombstones,
+	BOARDS_IDB,
+	deleteLabelWithTombstone,
 	writeKanbanState
 } from '#lib/syncTombstones.js';
 import {
@@ -90,18 +90,18 @@ describe('notes stay in the workspace that saved them', () => {
 
 describe('labels stay in the workspace that saved them', () => {
 	it('keeps each workspace to its own labels', async () => {
-		await putLabel(MINE, label('mine-tag'));
-		await putLabel(THEIRS, label('theirs-tag'));
+		await saveLabel(MINE, label('mine-tag'));
+		await saveLabel(THEIRS, label('theirs-tag'));
 
 		expect((await getAllLabels(MINE)).map((l) => l.id)).toEqual(['mine-tag']);
 		expect((await getAllLabels(THEIRS)).map((l) => l.id)).toEqual(['theirs-tag']);
 	});
 
 	it('deletes from the workspace it was told, and no other', async () => {
-		await putLabel(MINE, label('shared-tag'));
-		await putLabel(THEIRS, label('shared-tag'));
+		await saveLabel(MINE, label('shared-tag'));
+		await saveLabel(THEIRS, label('shared-tag'));
 
-		await deleteLabel(MINE, 'shared-tag');
+		await deleteLabelWithTombstone(MINE, 'shared-tag', 5);
 
 		expect(await getAllLabels(MINE)).toEqual([]);
 		expect((await getAllLabels(THEIRS)).map((l) => l.id)).toEqual(['shared-tag']);
@@ -110,10 +110,10 @@ describe('labels stay in the workspace that saved them', () => {
 
 describe('boards stay in the workspace that saved them', () => {
 	it('reads back its own boards, whatever the fallback is', async () => {
-		await saveBoardsToDevice(TEST_WORKSPACE, [
+		await setSyncState(TEST_WORKSPACE, BOARDS_IDB, [
 			{ ...createKanbanBoard('Anonymous'), id: 'anon-board' }
 		]);
-		await saveBoardsToDevice(MINE, [{ ...createKanbanBoard('Mine'), id: 'my-board' }]);
+		await setSyncState(MINE, BOARDS_IDB, [{ ...createKanbanBoard('Mine'), id: 'my-board' }]);
 
 		// An undefined fallback is how the store asks "have I saved any?", and
 		// must not read as "no workspace given".
@@ -125,29 +125,29 @@ describe('boards stay in the workspace that saved them', () => {
 	});
 
 	it('keeps board delete manifests apart', async () => {
-		await writeKanbanState(MINE, [], { 'board-x': 10 }, []);
-		await writeKanbanState(THEIRS, [], { 'board-y': 20 }, []);
+		await writeKanbanState(MINE, [], { 'board-x': 10 }, [], (_stored, mine) => mine);
+		await writeKanbanState(THEIRS, [], { 'board-y': 20 }, [], (_stored, mine) => mine);
 
-		expect((await hydrateTombstones(MINE)).boards).toEqual({ 'board-x': 10 });
-		expect((await hydrateTombstones(THEIRS)).boards).toEqual({ 'board-y': 20 });
+		expect((await readStoredTombstones(MINE)).boards).toEqual({ 'board-x': 10 });
+		expect((await readStoredTombstones(THEIRS)).boards).toEqual({ 'board-y': 20 });
 	});
 });
 
 describe('delete manifests stay in the workspace that wrote them', () => {
 	it('keeps note tombstones apart', async () => {
-		await writeTombstones(MINE, { 'note-x': 10 });
-		await writeTombstones(THEIRS, { 'note-y': 20 });
+		await addTombstones(MINE, { 'note-x': 10 });
+		await addTombstones(THEIRS, { 'note-y': 20 });
 
-		expect((await hydrateTombstones(MINE)).notes).toEqual({ 'note-x': 10 });
-		expect((await hydrateTombstones(THEIRS)).notes).toEqual({ 'note-y': 20 });
+		expect((await readStoredTombstones(MINE)).notes).toEqual({ 'note-x': 10 });
+		expect((await readStoredTombstones(THEIRS)).notes).toEqual({ 'note-y': 20 });
 	});
 
 	it('keeps label tombstones apart', async () => {
-		await writeLabelTombstones(MINE, { 'tag-x': 10 }, []);
-		await writeLabelTombstones(THEIRS, { 'tag-y': 20 }, []);
+		await deleteLabelWithTombstone(MINE, 'tag-x', 10);
+		await deleteLabelWithTombstone(THEIRS, 'tag-y', 20);
 
-		expect((await hydrateTombstones(MINE)).labels).toEqual({ 'tag-x': 10 });
-		expect((await hydrateTombstones(THEIRS)).labels).toEqual({ 'tag-y': 20 });
+		expect((await readStoredTombstones(MINE)).labels).toEqual({ 'tag-x': 10 });
+		expect((await readStoredTombstones(THEIRS)).labels).toEqual({ 'tag-y': 20 });
 	});
 });
 
@@ -202,7 +202,7 @@ describe('switching workspaces leaves each one as it was', () => {
 		const activePid = vi.spyOn(syncStore, 'activePid', 'get');
 
 		// The anonymous workspace has a board of its own on this device.
-		await saveBoardsToDevice(TEST_WORKSPACE, [
+		await setSyncState(TEST_WORKSPACE, BOARDS_IDB, [
 			{ ...createKanbanBoard('Anonymous plans'), id: 'anon-board', updatedAt: 1 }
 		]);
 
@@ -225,7 +225,7 @@ describe('switching workspaces leaves each one as it was', () => {
 		const { syncStore } = await import('#lib/stores/sync.svelte.js');
 		const activePid = vi.spyOn(syncStore, 'activePid', 'get');
 
-		await saveBoardsToDevice(TEST_WORKSPACE, [
+		await setSyncState(TEST_WORKSPACE, BOARDS_IDB, [
 			{ ...createKanbanBoard('Anonymous plans'), id: 'shared-board-id', updatedAt: 1 }
 		]);
 

@@ -129,25 +129,22 @@ export function restoredCanvasLibrary(
 
 /**
  * Merge entries and deletes into the library a workspace has saved, in one
- * transaction, and return what is saved after. `replace` starts from nothing
- * instead of from what is saved.
+ * transaction with their upload markers, and return what is saved after.
  */
 export async function mergeStoredCanvasLibrary(
 	pid: string,
 	entries: CanvasLibraryEntry[],
 	tombstones: Record<string, number>,
-	options: { replace?: boolean; outboxKeys?: Iterable<string> } = {}
+	outboxKeys: Iterable<string> = []
 ): Promise<{ entries: CanvasLibraryEntry[]; tombstones: Record<string, number> }> {
 	const state = await mergeWorkspaceState(
 		pid,
 		[CANVAS_LIBRARY_STATE_KEY, CANVAS_LIBRARY_TOMBSTONES_KEY],
 		(current) => {
-			const deleted = sanitizeLibraryTombstones(
-				options.replace ? {} : current[CANVAS_LIBRARY_TOMBSTONES_KEY]
-			);
+			const deleted = sanitizeLibraryTombstones(current[CANVAS_LIBRARY_TOMBSTONES_KEY]);
 			for (const [id, at] of Object.entries(sanitizeLibraryTombstones(tombstones)))
 				deleted[id] = Math.max(deleted[id] ?? 0, at);
-			const stored = options.replace ? [] : current[CANVAS_LIBRARY_STATE_KEY];
+			const stored = current[CANVAS_LIBRARY_STATE_KEY];
 			return {
 				value: {
 					[CANVAS_LIBRARY_STATE_KEY]: mergeCanvasLibrary(
@@ -157,7 +154,7 @@ export async function mergeStoredCanvasLibrary(
 					),
 					[CANVAS_LIBRARY_TOMBSTONES_KEY]: deleted
 				},
-				outboxKeys: options.outboxKeys ?? []
+				outboxKeys
 			};
 		}
 	);

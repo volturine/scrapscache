@@ -33,18 +33,8 @@ async function setup() {
 		b = new ReminderHistoryStore();
 	await a.hydrate('active-other');
 	await b.hydrate(profiles[1].id);
-	const clientA = new ReminderHistoryClient(
-		a,
-		() => profiles,
-		() => profiles[0].id,
-		send
-	);
-	const clientB = new ReminderHistoryClient(
-		b,
-		() => profiles,
-		() => profiles[1].id,
-		send
-	);
+	const clientA = new ReminderHistoryClient(a, () => profiles, send);
+	const clientB = new ReminderHistoryClient(b, () => profiles, send);
 	return { a, b, clientA, clientB, send, db, account, profiles };
 }
 const fired = { id: 'w'.repeat(43), noteId: 'private-note-id', firedAt: 1000 };
@@ -178,12 +168,7 @@ describe('independent reminder delivery', () => {
 				await exchangeReminderHistory(identity.accountId, request.cursor, request.notes, db)
 			);
 		};
-		const client = new ReminderHistoryClient(
-			a,
-			() => profiles,
-			() => '',
-			send
-		);
+		const client = new ReminderHistoryClient(a, () => profiles, send);
 		a.recordDismissed(profiles[0].id, fired, 7000);
 		await a.waitForPendingWrites();
 		const old = client.exchange(profiles[0].id);
@@ -290,12 +275,7 @@ describe('independent reminder delivery', () => {
 				return {
 					profile,
 					store,
-					client: new ReminderHistoryClient(
-						store,
-						() => profiles,
-						() => '',
-						send
-					)
+					client: new ReminderHistoryClient(store, () => profiles, send)
 				};
 			});
 			for (let step = 0; step < 24; step += 1) {

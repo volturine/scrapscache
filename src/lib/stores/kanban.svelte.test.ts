@@ -1,9 +1,9 @@
 import { tick } from 'svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createKanbanBoard, type KanbanBoard } from '#lib/kanban.js';
-import { getSyncOutboxKeys } from '#lib/db/idb.js';
+import { getSyncOutboxKeys, setSyncState } from '#lib/db/idb.js';
 import { createSyncIdentity } from '#lib/syncPairing.js';
-import { loadBoardsFromDevice, saveBoardsToDevice } from '#lib/syncTombstones.js';
+import { BOARDS_IDB, loadBoardsFromDevice } from '#lib/syncTombstones.js';
 import { actionUndo } from './actionUndo.svelte';
 import { KanbanStore } from './kanban.svelte';
 import { syncStore } from './sync.svelte';
@@ -24,7 +24,8 @@ describe('kanban persist during sync', () => {
 
 	it('writes $state boards to IndexedDB without throwing DataCloneError', async () => {
 		const store = new KanbanStore();
-		await expect(store.persistSyncState(TEST_WORKSPACE)).resolves.toBeUndefined();
+		store.renameBoard(store.boards[0].id, 'Renamed');
+		await expect(store.waitForPendingWrites()).resolves.toBeUndefined();
 		const stored = await loadBoardsFromDevice<unknown>(TEST_WORKSPACE, null);
 		expect(stored).toEqual(
 			expect.arrayContaining([
@@ -53,8 +54,7 @@ describe('kanban persist during sync', () => {
 	it('keeps a newer localStorage board over a stale IndexedDB copy', async () => {
 		const store = new KanbanStore();
 		const base = store.boardsForSync()[0];
-		store.boards = [{ ...base, name: 'stale', updatedAt: 1 }];
-		await store.persistSyncState(TEST_WORKSPACE);
+		await setSyncState(TEST_WORKSPACE, BOARDS_IDB, [{ ...base, name: 'stale', updatedAt: 1 }]);
 		store.boards = [{ ...base, name: 'from-ls', updatedAt: 2 }];
 		await store.hydrateFromDevice(TEST_WORKSPACE);
 		expect(store.boards[0]?.name).toBe('from-ls');
@@ -93,32 +93,10 @@ describe('kanban persist during sync', () => {
 	});
 });
 
-describe('replaceWithCloud', () => {
-	it('keeps the active board when it still exists in the cloud state', () => {
-		const store = new KanbanStore();
-		const kept = createKanbanBoard('Kept');
-		const other = createKanbanBoard('Other');
-		store.replaceWithCloud([other, kept]);
-		store.selectBoard(kept.id);
-		store.replaceWithCloud([kept, { ...other, name: 'Renamed' }]);
-		expect(store.activeBoardId).toBe(kept.id);
-		expect(store.boards.map((board) => board.name)).toEqual(['Kept', 'Renamed']);
-	});
-
-	it('falls back to the first board when the active board is gone', () => {
-		const store = new KanbanStore();
-		const kept = createKanbanBoard('Kept');
-		store.replaceWithCloud([kept]);
-		store.selectBoard(kept.id);
-		store.replaceWithCloud([createKanbanBoard('Fresh')]);
-		expect(store.activeBoardId).toBe(store.boards[0].id);
-	});
-});
-
 describe('boards belong to the workspace that saved them', () => {
 	it('reads back what a signed-in workspace saved, not the anonymous one', async () => {
 		// The anonymous workspace has boards of its own on this device.
-		await saveBoardsToDevice(TEST_WORKSPACE, [
+		await setSyncState(TEST_WORKSPACE, BOARDS_IDB, [
 			{ ...createKanbanBoard('Anonymous board'), id: 'anon-board' }
 		]);
 		const arranged = {
@@ -126,7 +104,7 @@ describe('boards belong to the workspace that saved them', () => {
 			id: 'work-board',
 			columns: [{ id: 'todo', labelId: null, order: ['n2', 'n1'] }]
 		};
-		await saveBoardsToDevice('workspace-1', [arranged]);
+		await setSyncState('workspace-1', BOARDS_IDB, [arranged]);
 
 		const mine = await loadBoardsFromDevice<KanbanBoard[] | undefined>('workspace-1', undefined);
 
@@ -174,7 +152,7 @@ describe('boards belong to the workspace that saved them', () => {
 	});
 
 	it('reports nothing rather than another workspace\u2019s boards when it has none', async () => {
-		await saveBoardsToDevice(TEST_WORKSPACE, [createKanbanBoard('Anonymous board')]);
+		await setSyncState(TEST_WORKSPACE, BOARDS_IDB, [createKanbanBoard('Anonymous board')]);
 
 		expect(await loadBoardsFromDevice('workspace-2', undefined)).toBeUndefined();
 	});

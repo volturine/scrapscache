@@ -1,6 +1,4 @@
 import {
-	CANVAS_LIBRARY_STATE_KEY,
-	CANVAS_LIBRARY_TOMBSTONES_KEY,
 	diffCanvasLibrary,
 	libraryItemsFor,
 	mergeCanvasLibrary,
@@ -31,7 +29,6 @@ export class CanvasLibraryStore {
 	private tombstones: Record<string, number> = {};
 	private generation = 0;
 	private revision = 0;
-	private replacePending = false;
 	private listeners = new Set<(items: CanvasLibraryItem[]) => void>();
 	private pendingWrites: Promise<void> = Promise.resolve();
 
@@ -44,7 +41,6 @@ export class CanvasLibraryStore {
 		this.pid = pid;
 		this.entries = [];
 		this.tombstones = {};
-		this.replacePending = false;
 		const stored = await readCanvasLibrary(pid);
 		if (generation !== this.generation) return;
 		this.entries = stored.entries;
@@ -97,14 +93,6 @@ export class CanvasLibraryStore {
 		syncStore.requestAutoSync([]);
 	}
 
-	entriesForSync(): CanvasLibraryEntry[] {
-		return this.entries.map((entry) => ({ ...entry }));
-	}
-
-	tombstonesForSync(): Record<string, number> {
-		return { ...this.tombstones };
-	}
-
 	/** Merge what a sync pulled without scheduling another upload. */
 	applySync(remote: CanvasLibraryEntry[], remoteTombstones: Record<string, number>): void {
 		const tombstones = { ...this.tombstones };
@@ -112,19 +100,6 @@ export class CanvasLibraryStore {
 			if (deletedAt > (tombstones[id] || 0)) tombstones[id] = deletedAt;
 		}
 		this.set(mergeCanvasLibrary(this.entries, remote, tombstones), tombstones);
-	}
-
-	/** Used when this device takes the cloud's copy instead of its own. */
-	replaceWithCloud(remote: CanvasLibraryEntry[], remoteTombstones: Record<string, number>): void {
-		this.replacePending = true;
-		const tombstones = sanitizeTombstones(remoteTombstones);
-		this.set(mergeCanvasLibrary([], remote, tombstones), tombstones);
-	}
-
-	async persistSyncState(pid: string, syncOutboxKeys: Iterable<string> = []): Promise<void> {
-		if (pid !== this.pid) return;
-		this.persist(pid, [...syncOutboxKeys]);
-		await this.pendingWrites;
 	}
 
 	waitForPendingWrites(): Promise<void> {
@@ -143,13 +118,8 @@ export class CanvasLibraryStore {
 		const tombstones = { ...this.tombstones };
 		const generation = this.generation;
 		const revision = this.revision;
-		const replace = this.replacePending;
-		this.replacePending = false;
 		const write = this.pendingWrites.then(async () => {
-			const stored = await mergeStoredCanvasLibrary(pid, entries, tombstones, {
-				replace,
-				outboxKeys: keys
-			});
+			const stored = await mergeStoredCanvasLibrary(pid, entries, tombstones, keys);
 			if (pid === this.pid && generation === this.generation && revision === this.revision)
 				this.applySync(stored.entries, stored.tombstones);
 		});

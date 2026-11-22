@@ -3,7 +3,7 @@
 // see `rewriteWorkspace`. Nothing here touches the in-memory stores, so an import
 // lands in the workspace it was started for whether or not that one is still open.
 import type { Label, Note } from '#lib/types.js';
-import type { StoredWorkspace, WorkspaceRewrite } from '#lib/db/idb.js';
+import type { RewritePlan, StoredWorkspace } from '#lib/db/idb.js';
 import { BackupImportMode, type ScrapsCacheBackup } from '#lib/backup.js';
 import {
 	CANVAS_LIBRARY_STATE_KEY,
@@ -22,13 +22,6 @@ import {
 	NOTE_IDB,
 	sanitizeTombstones
 } from '#lib/syncTombstones.js';
-
-/** What an import writes, decided when it lands, and the workspace state it reads to decide. */
-export type ImportPlan = {
-	notes: Note[];
-	stateKeys: string[];
-	land: (stored: StoredWorkspace) => WorkspaceRewrite;
-};
 
 /**
  * Labels an import adds: one the workspace already has by name is used as it is,
@@ -102,7 +95,7 @@ export function planBackupImport(input: {
 	now: number;
 	/** The relay account the workspace syncs with, when it syncs. */
 	accountId: string | null;
-}): ImportPlan {
+}): RewritePlan {
 	const { backup, notes, mode, now, accountId } = input;
 	const library = [CANVAS_LIBRARY_STATE_KEY, CANVAS_LIBRARY_TOMBSTONES_KEY];
 	if (mode === BackupImportMode.Keep) {
@@ -197,7 +190,7 @@ export function planKeepImport(input: {
 	labels: Label[];
 	mode: BackupImportMode;
 	now: number;
-}): ImportPlan {
+}): RewritePlan {
 	const { notes, labels, mode, now } = input;
 	if (mode === BackupImportMode.Keep) {
 		return {

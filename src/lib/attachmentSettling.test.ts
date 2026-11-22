@@ -33,7 +33,6 @@ describe('settling attachments', () => {
 			pid: TEST_WORKSPACE,
 			account: createSyncIdentity(),
 			relay: {
-				readEnvelopes: 0,
 				relayHolds: () => true,
 				relayHas: () => undefined,
 				owes: async () => undefined

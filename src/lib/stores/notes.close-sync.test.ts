@@ -5,13 +5,7 @@ vi.mock('#lib/imageThumb.js', async (importOriginal) => {
 	return { ...actual, makeImageThumbDataUrl: vi.fn(async () => null) };
 });
 
-import {
-	clearAllNotes,
-	clearSyncOutbox,
-	getSyncOutboxKeys,
-	markSyncOutbox,
-	putNote
-} from '#lib/db/idb.js';
+import { clearSyncOutbox, getSyncOutboxKeys, markSyncOutbox, putNote } from '#lib/db/idb.js';
 import * as idb from '#lib/db/idb.js';
 import { syncStore } from './sync.svelte';
 import { syncSnapshot } from '#lib/syncRecords.js';
@@ -19,7 +13,7 @@ import { notesStore } from './notes.svelte';
 import { syncScheduler } from './syncScheduler';
 import type { Note } from '#lib/types.js';
 import { linkTestWorkspace, unlinkTestWorkspace } from '../../tests/syncing';
-import { TEST_WORKSPACE } from '../../tests/workspace';
+import { emptyWorkspace, TEST_WORKSPACE } from '../../tests/workspace';
 
 function noteWithPhoto(dataUrl: string): Note {
 	return {
@@ -54,7 +48,7 @@ async function settleIndexedDb(): Promise<void> {
 }
 
 /** The relay's answer to each sync of the open workspace. */
-function relayAnswers(answer: () => ReturnType<typeof syncStore.syncWorkspace>) {
+function relayAnswers(answer: typeof syncStore.syncWorkspace) {
 	return vi.spyOn(syncStore, 'syncWorkspace').mockImplementation(answer);
 }
 
@@ -72,7 +66,7 @@ describe('syncing when a note closes', () => {
 		unlinkTestWorkspace();
 		notesStore.notes = [];
 		notesStore.loaded = true;
-		await clearAllNotes(TEST_WORKSPACE);
+		await emptyWorkspace(TEST_WORKSPACE);
 		await clearSyncOutbox(TEST_WORKSPACE, await getSyncOutboxKeys(TEST_WORKSPACE));
 	});
 
@@ -161,26 +155,50 @@ describe('syncing when a note closes', () => {
 		const note = noteWithPhoto('');
 		await putNote(TEST_WORKSPACE, note);
 		notesStore.notes = [note];
-		const reauthenticate = vi.spyOn(syncStore, 'reauthenticateForRecovery').mockResolvedValue();
-		const pull = vi.spyOn(syncStore, 'pullOpen');
+		vi.spyOn(syncStore, 'reauthenticateForRecovery').mockResolvedValue();
+		vi.spyOn(syncStore, 'readRelay').mockResolvedValue({
+			success: true,
+			snapshot: syncSnapshot(),
+			control: { cursor: 4 }
+		});
+		const sync = relayAnswers(async () => ({ success: true, snapshot: syncSnapshot() }));
 
-		expect(await notesStore.forcePushWorkspace()).toBe(false);
-		expect(reauthenticate).not.toHaveBeenCalled();
-		expect(pull).not.toHaveBeenCalled();
+		expect(await notesStore.forcePushWorkspace(TEST_WORKSPACE)).toEqual({
+			success: false,
+			error: expect.stringMatching(/Replacing the cloud copy was not started/)
+		});
+		// Nothing landed: the note is as it was, nothing is queued, nothing was sent.
+		expect((await idb.getAllNotesMetadata(TEST_WORKSPACE))[0].updatedAt).toBe(1);
+		expect(await getSyncOutboxKeys(TEST_WORKSPACE)).toEqual([]);
+		expect(await idb.getSyncState(TEST_WORKSPACE, 'cursor')).toBeUndefined();
+		expect(sync).not.toHaveBeenCalled();
 		expect(notesStore.lastPersistError).toMatch(/Replacing the cloud copy was not started/);
 	});
 
-	it('goes on to replace the cloud copy once every listed photo is read from this device', async () => {
-		vi.spyOn(console, 'error').mockImplementation(() => undefined);
+	it('replaces the cloud copy from the database, whatever bytes this window has loaded', async () => {
 		await putNote(TEST_WORKSPACE, noteWithPhoto('data:image/png;base64,iVBORw0KGgo='));
+		await idb.waitForDeviceWrites(TEST_WORKSPACE);
 		// Memory holds the note without its bytes, as after any durable write.
 		notesStore.notes = [noteWithPhoto('')];
-		const reauthenticate = vi
-			.spyOn(syncStore, 'reauthenticateForRecovery')
-			.mockRejectedValue(new Error('stop here'));
+		vi.spyOn(syncStore, 'reauthenticateForRecovery').mockResolvedValue();
+		vi.spyOn(syncStore, 'readRelay').mockResolvedValue({
+			success: true,
+			snapshot: syncSnapshot(),
+			control: { cursor: 4 }
+		});
+		const sync = relayAnswers(async (_profile, local) => {
+			// Every record is queued, and the upload reads the photo from the database.
+			expect(await getSyncOutboxKeys(TEST_WORKSPACE)).toEqual(
+				expect.arrayContaining(['note:photo-note', 'attachment:photo-1'])
+			);
+			expect(local.notes[0].images?.[0].dataUrl).toBe('data:image/png;base64,iVBORw0KGgo=');
+			return { success: true, snapshot: local };
+		});
 
-		expect(await notesStore.forcePushWorkspace()).toBe(false);
-		expect(reauthenticate).toHaveBeenCalledOnce();
+		expect(await notesStore.forcePushWorkspace(TEST_WORKSPACE)).toEqual({ success: true });
+		expect(sync).toHaveBeenCalled();
+		// The sync state of the copy that was read landed with it.
+		expect(await idb.getSyncState(TEST_WORKSPACE, 'cursor')).toBe(4);
 	});
 
 	it('does not go again by itself for what a sync that settled left queued', async () => {

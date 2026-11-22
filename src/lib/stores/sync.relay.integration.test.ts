@@ -134,12 +134,7 @@ describe('client sync against the sqlite relay', () => {
 		}> = [];
 		wire(deviceA, relay, requestsA);
 		await putNote(TEST_WORKSPACE, local, [`note:${local.id}`, `attachment:${image.id}`]);
-		const uploaded = await syncOpen(
-			deviceA,
-			syncSnapshot({ notes: [local] }),
-			false,
-			applyToDevice
-		);
+		const uploaded = await syncOpen(deviceA, syncSnapshot({ notes: [local] }), applyToDevice);
 		expect(uploaded.success, uploaded.error).toBe(true);
 
 		await wipeDevice();
@@ -150,7 +145,7 @@ describe('client sync against the sqlite relay', () => {
 			deleteSlots: Array<{ id: string; slot: string }>;
 		}> = [];
 		wire(deviceB, relay, requestsB);
-		const pulled = await syncOpen(deviceB, syncSnapshot(), false, applyToDevice);
+		const pulled = await syncOpen(deviceB, syncSnapshot(), applyToDevice);
 		expect(pulled.success, pulled.error).toBe(true);
 
 		const stored = (await getAllNotesMetadata(TEST_WORKSPACE)).find((item) => item.id === 'note-1');
@@ -176,7 +171,7 @@ describe('client sync against the sqlite relay', () => {
 		wire(client, relay, requests as never);
 		await putNote(TEST_WORKSPACE, original, [`note:${original.id}`, `attachment:${oldImage.id}`]);
 		expect(
-			(await syncOpen(client, syncSnapshot({ notes: [original] }), false, applyToDevice)).success
+			(await syncOpen(client, syncSnapshot({ notes: [original] }), applyToDevice)).success
 		).toBe(true);
 
 		const oldSlot = requests
@@ -258,12 +253,7 @@ describe('client sync against the sqlite relay', () => {
 			return { success: true, data };
 		});
 
-		const afterReplace = await syncOpen(
-			client,
-			syncSnapshot({ notes: [replaced] }),
-			false,
-			applyToDevice
-		);
+		const afterReplace = await syncOpen(client, syncSnapshot({ notes: [replaced] }), applyToDevice);
 		expect(afterReplace.success, afterReplace.error).toBe(true);
 		expect(replacementStored).toBe(true);
 	});
@@ -283,7 +273,7 @@ describe('client sync against the sqlite relay', () => {
 		wire(client, relay, requests);
 		await putNote(TEST_WORKSPACE, local, [`note:${local.id}`, `attachment:${image.id}`]);
 
-		const uploaded = await syncOpen(client, syncSnapshot({ notes: [local] }), false, applyToDevice);
+		const uploaded = await syncOpen(client, syncSnapshot({ notes: [local] }), applyToDevice);
 		expect(uploaded.success, uploaded.error).toBe(true);
 		const afterAdd = client.usage?.storageBytes ?? 0;
 		expect(afterAdd).toBeGreaterThan(1_000);
@@ -292,7 +282,6 @@ describe('client sync against the sqlite relay', () => {
 		const deleted = await syncOpen(
 			client,
 			syncSnapshot({ tombstones: { [local.id]: Date.now() } }),
-			false,
 			applyToDevice
 		);
 		expect(deleted.success, deleted.error).toBe(true);
@@ -344,21 +333,15 @@ describe('workspace library and reminder history across devices', () => {
 		const [a, b] = devices;
 		const star = libraryEntry('star', 10);
 
-		const first = await syncOpen(
-			a.client,
-			syncSnapshot({ libraryItems: [star] }),
-			false,
-			passthrough
-		);
+		const first = await syncOpen(a.client, syncSnapshot({ libraryItems: [star] }), passthrough);
 		expect(first.success, first.error).toBe(true);
-		const pulled = await syncOpen(b.client, syncSnapshot(), false, passthrough);
+		const pulled = await syncOpen(b.client, syncSnapshot(), passthrough);
 		expect(pulled.snapshot?.libraryItems).toEqual([star]);
 
 		await markSyncOutbox(a.pid, ['library-item-tombstone:star']);
 		const deleted = await syncOpen(
 			a.client,
 			syncSnapshot({ libraryTombstones: { star: 20 } }),
-			false,
 			passthrough
 		);
 		expect(deleted.success, deleted.error).toBe(true);
@@ -368,12 +351,7 @@ describe('workspace library and reminder history across devices', () => {
 		);
 
 		// Device B still holds the item it pulled; the delete reaches it anyway.
-		const synced = await syncOpen(
-			b.client,
-			syncSnapshot({ libraryItems: [star] }),
-			false,
-			passthrough
-		);
+		const synced = await syncOpen(b.client, syncSnapshot({ libraryItems: [star] }), passthrough);
 		expect(synced.snapshot?.libraryItems).toEqual([]);
 		expect(synced.snapshot?.libraryTombstones).toEqual({ star: 20 });
 	});
@@ -384,22 +362,20 @@ describe('workspace library and reminder history across devices', () => {
 		await syncOpen(
 			a.client,
 			syncSnapshot({ libraryItems: [libraryEntry('star', 10)] }),
-			false,
 			passthrough
 		);
-		await syncOpen(b.client, syncSnapshot(), false, passthrough);
+		await syncOpen(b.client, syncSnapshot(), passthrough);
 
 		const edited = {
 			...libraryEntry('star', 30),
 			item: { ...libraryEntry('star', 30).item, name: 'Star' }
 		};
 		await markSyncOutbox(b.pid, ['library-item:star']);
-		await syncOpen(b.client, syncSnapshot({ libraryItems: [edited] }), false, passthrough);
+		await syncOpen(b.client, syncSnapshot({ libraryItems: [edited] }), passthrough);
 
 		const pulled = await syncOpen(
 			a.client,
 			syncSnapshot({ libraryItems: [libraryEntry('star', 10)] }),
-			false,
 			passthrough
 		);
 		expect(pulled.snapshot?.libraryItems).toEqual([edited]);

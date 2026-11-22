@@ -5,9 +5,15 @@
 // and caches link previews.
 
 import { openDB, type IDBPDatabase, type IDBPTransaction } from 'idb';
-import { copyImage, copyLabel, copyLinkPreview, copyNote } from '#lib/model/index.js';
+import {
+	copyImage,
+	copyLabel,
+	copyLinkPreview,
+	copyNote,
+	mergeTwoLabels,
+	mergeTwoNotes
+} from '#lib/model/index.js';
 import type { Label, LinkPreview, Note, NoteImage } from '#lib/types.js';
-import type { KanbanBoard } from '#lib/kanban.js';
 import { blobToDataUrl, dataUrlToBlob } from '#lib/imageBlob.js';
 import { workspaceLinkTag } from '#lib/noteLinks.js';
 import { sha256 } from '#lib/syncHash.js';
@@ -56,12 +62,6 @@ const dbPromises = new Map<string, Promise<IDBPDatabase>>();
 let deviceDbPromise: Promise<IDBPDatabase> | null = null;
 const noteChains = new Map<string, Promise<void>>();
 let deviceWriteChain: Promise<void> = Promise.resolve();
-/**
- * Bumped when a workspace's data is replaced whole: a write queued for it before
- * that is dropped. Per workspace, since others are written to at the same time.
- */
-const writeGenerations = new Map<string, number>();
-const writeGeneration = (pid: string): number => writeGenerations.get(pid) ?? 0;
 const outboxGenerations = new Map<string, number>();
 
 function enqueueDeviceWrite<T>(operation: () => Promise<T>): Promise<T> {
@@ -424,7 +424,6 @@ export async function closeDeviceDatabase(): Promise<void> {
 	deviceDbPromise = null;
 	deviceWriteChain = Promise.resolve();
 	noteChains.clear();
-	writeGenerations.clear();
 	outboxGenerations.clear();
 	departedProfiles.clear();
 	deletedProfiles.clear();
@@ -480,7 +479,7 @@ function detachNote(note: Note): Note {
 }
 
 /**
- * Attachment rows are written by `putImageBlobs` and `replaceAllNotes`. `hash` is the
+ * Attachment rows are written by `writeNote` and `rewriteWorkspace`. `hash` is the
  * version the bytes are: the content hash a note names its attachment by. A row from
  * before rows carried one is given it the first time it is read or listed.
  */
@@ -549,50 +548,81 @@ async function hydrateNoteImages(db: IDBPDatabase, note: Note): Promise<Note> {
 	};
 }
 
-async function putImageBlobs(pid: string, note: Note): Promise<void> {
-	const db = await getDB(pid);
-	for (const image of note.images ?? []) {
-		if (!image.dataUrl) continue;
-		const blob = await dataUrlToBlob(image.dataUrl);
-		const bytes = new Uint8Array(await blob.arrayBuffer());
-		const hash = image.contentHash ?? (await sha256(image.dataUrl));
-		await db.put(IMAGES_STORE, { mime: blob.type, bytes, hash }, `${note.id}::${image.id}`);
-	}
+type ImageRow = { key: string; value: StoredImage };
+
+/** An attachment's bytes as its row holds them. Decoded before a transaction opens: awaiting anything but a request inside one commits it. */
+async function imageRow(noteId: string, image: NoteImage): Promise<ImageRow> {
+	const blob = await dataUrlToBlob(image.dataUrl);
+	const bytes = new Uint8Array(await blob.arrayBuffer());
+	const hash = image.contentHash ?? (await sha256(image.dataUrl));
+	return { key: `${noteId}::${image.id}`, value: { mime: blob.type, bytes, hash } };
 }
 
-async function putNoteSnapshot(
+/** The keys of every attachment row of one note. */
+function imageKeysOf(noteId: string): IDBKeyRange {
+	return IDBKeyRange.bound(`${noteId}::`, `${noteId}::\uffff`);
+}
+
+/**
+ * Write one note as `decide` makes it from the copy stored at that moment; null
+ * writes nothing. The read, the note, its attachment bytes and its upload markers
+ * are one transaction, so nothing another window saves can land between the copy
+ * that was read and the one written, and a tab killed part-way leaves the note as
+ * it was. `candidate` is the copy whose bytes may be written: an attachment the
+ * stored copy wins is left with the bytes it has.
+ */
+async function writeNote(
 	pid: string,
-	note: Note,
-	syncOutboxKeys: string[] = []
-): Promise<void> {
+	candidate: Note,
+	decide: (stored: Note | undefined) => Note | null,
+	syncOutboxKeys: string[]
+): Promise<Note | null> {
 	const db = await getDB(pid);
-	await putImageBlobs(pid, note);
+	const id = candidate.id;
+	const rows = new Map<string, { dataUrl: string; row: ImageRow }>();
+	for (const image of candidate.images ?? []) {
+		if (image.dataUrl)
+			rows.set(image.id, { dataUrl: image.dataUrl, row: await imageRow(id, image) });
+	}
 	const dbName = resolveDbName(pid);
 	const previousGeneration = outboxGenerations.get(dbName) ?? null;
-	const ownPrefix = `${note.id}::`;
-	const existingKeys = ((await db.getAllKeys(IMAGES_STORE)) as string[]).filter((key) =>
-		key.startsWith(ownPrefix)
+	const tx = db.transaction(
+		syncOutboxKeys.length
+			? [NOTES_STORE, IMAGES_STORE, SYNC_STATE_STORE, SYNC_OUTBOX_STORE]
+			: [NOTES_STORE, IMAGES_STORE],
+		'readwrite'
 	);
-	const desiredKeys = new Set((note.images ?? []).map((image) => `${note.id}::${image.id}`));
-	const lean = detachNote(note);
-	const stores = syncOutboxKeys.length
-		? [NOTES_STORE, IMAGES_STORE, SYNC_STATE_STORE, SYNC_OUTBOX_STORE]
-		: [NOTES_STORE, IMAGES_STORE];
-	const tx = db.transaction(stores, 'readwrite');
 	try {
-		const incomingHasBytes = (note.images ?? []).some((image) => image.dataUrl);
-		if (incomingHasBytes || desiredKeys.size === 0) {
-			for (const key of existingKeys) {
-				if (!desiredKeys.has(key)) await tx.objectStore(IMAGES_STORE).delete(key);
+		const notes = tx.objectStore(NOTES_STORE);
+		const images = tx.objectStore(IMAGES_STORE);
+		const stored = (await notes.get(id)) as Note | undefined;
+		const decided = decide(stored ? plainNote(stored) : undefined);
+		if (!decided) {
+			await tx.done;
+			return null;
+		}
+		const note = plainNote(decided);
+		let wroteBytes = false;
+		for (const image of note.images ?? []) {
+			const held = rows.get(image.id);
+			if (!image.dataUrl || held?.dataUrl !== image.dataUrl) continue;
+			await images.put(held.row.value, held.row.key);
+			wroteBytes = true;
+		}
+		const listed = new Set((note.images ?? []).map((image) => `${id}::${image.id}`));
+		if (wroteBytes || listed.size === 0) {
+			for (const key of (await images.getAllKeys(imageKeysOf(id))) as string[]) {
+				if (!listed.has(key)) await images.delete(key);
 			}
 		}
-		await tx.objectStore(NOTES_STORE).put(lean);
+		await notes.put(detachNote(note));
 		if (syncOutboxKeys.length) {
 			const generation = await nextOutboxGeneration(tx, dbName);
 			const outbox = tx.objectStore(SYNC_OUTBOX_STORE);
 			for (const key of syncOutboxKeys) await outbox.put(generation, key);
 		}
 		await tx.done;
+		return note;
 	} catch (error) {
 		await abortWrite(tx, dbName, previousGeneration);
 		throw error;
@@ -727,56 +757,66 @@ export async function hydrateNoteAttachments(pid: string, note: Note): Promise<N
 	return hydrateNoteImages(db, note);
 }
 
+/**
+ * Write a note exactly as given, over what is stored: a first copy. Anything that
+ * changes a note that may be stored is saved with `saveNote` or `mergeNote`.
+ */
 export async function putNote(pid: string, note: Note, keys: Iterable<string> = []): Promise<void> {
 	const snapshot = plainNote(note);
 	const outboxKeys = uniqueOutboxKeys(keys);
-	const generation = writeGeneration(pid);
-	return enqueueNote(pid, snapshot.id, () =>
-		enqueueDeviceWrite(async () => {
-			if (generation !== writeGeneration(pid)) return;
-			await putNoteSnapshot(pid, snapshot, outboxKeys);
-		})
+	await enqueueNote(pid, snapshot.id, () =>
+		enqueueDeviceWrite(() => writeNote(pid, snapshot, () => snapshot, outboxKeys))
 	);
 }
 
 /**
- * Save a note as `merge` makes it from what is stored at that moment; null saves
- * nothing. It takes its turn among the saves of that note, so every save this
- * window asked for before it has landed and is what `merge` is given: a sync can
- * save what it pulled without going over an edit that was still on its way in.
+ * Save a note as `merge` makes it from the copy stored at that moment, queued to
+ * upload under `keys` in the same transaction; null saves nothing. `note` is the
+ * copy being brought in, whose bytes are written where the result keeps them. It
+ * takes its turn among this window's saves of that note, and reads and writes in
+ * one transaction, so a save from any window is either what `merge` is given or
+ * lands after it.
  */
 export function mergeNote(
 	pid: string,
-	id: string,
-	merge: (stored: Note | undefined) => Note | null
+	note: Note,
+	merge: (stored: Note | undefined) => Note | null,
+	keys: Iterable<string> = []
 ): Promise<Note | null> {
-	const generation = writeGeneration(pid);
-	return enqueueNote(pid, id, () =>
-		enqueueDeviceWrite(async () => {
-			if (generation !== writeGeneration(pid)) return null;
-			const db = await getDB(pid);
-			const stored = (await db.get(NOTES_STORE, id)) as Note | undefined;
-			const next = merge(stored ? plainNote(stored) : undefined);
-			if (next) await putNoteSnapshot(pid, plainNote(next));
-			return next;
-		})
+	const candidate = plainNote(note);
+	const outboxKeys = uniqueOutboxKeys(keys);
+	return enqueueNote(pid, candidate.id, () =>
+		enqueueDeviceWrite(() => writeNote(pid, candidate, merge, outboxKeys))
+	);
+}
+
+/**
+ * Save an edited note: merged with the copy stored at that moment, never over it.
+ * The database only moves forward, so whatever else saved the note meanwhile (a
+ * sync, another window) is kept, whichever of the two lands first.
+ */
+export async function saveNote(
+	pid: string,
+	note: Note,
+	keys: Iterable<string> = []
+): Promise<void> {
+	const snapshot = plainNote(note);
+	await mergeNote(
+		pid,
+		snapshot,
+		(stored) => (stored ? mergeTwoNotes(stored, snapshot) : snapshot),
+		keys
 	);
 }
 
 /** Both arguments are named: two strings are too easy to read the wrong way round. */
 export function deleteNote(pid: string, id: string): Promise<void> {
-	const generation = writeGeneration(pid);
 	return enqueueNote(pid, id, async () => {
 		await enqueueDeviceWrite(async () => {
-			if (generation !== writeGeneration(pid)) return;
 			const db = await getDB(pid);
-			const ownPrefix = `${id}::`;
-			const imageKeys = ((await db.getAllKeys(IMAGES_STORE)) as string[]).filter((key) =>
-				key.startsWith(ownPrefix)
-			);
 			const tx = db.transaction([NOTES_STORE, IMAGES_STORE], 'readwrite');
 			tx.objectStore(NOTES_STORE).delete(id);
-			for (const key of imageKeys) tx.objectStore(IMAGES_STORE).delete(key);
+			tx.objectStore(IMAGES_STORE).delete(imageKeysOf(id));
 			await tx.done;
 		});
 	});
@@ -789,7 +829,11 @@ export async function getAllLabels(pid: string): Promise<Label[]> {
 	return ((await db.getAll(LABELS_STORE)) as Label[]).map(plainLabel);
 }
 
-export async function putLabel(
+/**
+ * Save a label: the later of it and the copy stored at that moment is kept, so a
+ * rename a sync saved meanwhile is never gone over by an earlier one.
+ */
+export async function saveLabel(
 	pid: string,
 	label: Label,
 	syncOutboxKeys: Iterable<string> = []
@@ -805,37 +849,9 @@ export async function putLabel(
 			'readwrite'
 		);
 		try {
-			await tx.objectStore(LABELS_STORE).put(lean);
-			if (outboxKeys.length) {
-				const generation = await nextOutboxGeneration(tx, dbName);
-				const outbox = tx.objectStore(SYNC_OUTBOX_STORE);
-				for (const key of outboxKeys) await outbox.put(generation, key);
-			}
-			await tx.done;
-		} catch (error) {
-			await abortWrite(tx, dbName, previousGeneration);
-			throw error;
-		}
-	});
-}
-
-export async function deleteLabel(
-	pid: string,
-	id: string,
-	maybeKeys?: Iterable<string>
-): Promise<void> {
-	const syncOutboxKeys = maybeKeys ?? [];
-	const outboxKeys = uniqueOutboxKeys(syncOutboxKeys);
-	const dbName = resolveDbName(pid);
-	const previousGeneration = outboxGenerations.get(dbName) ?? null;
-	await enqueueDeviceWrite(async () => {
-		const db = await getDB(pid);
-		const tx = db.transaction(
-			outboxKeys.length ? [LABELS_STORE, SYNC_STATE_STORE, SYNC_OUTBOX_STORE] : [LABELS_STORE],
-			'readwrite'
-		);
-		try {
-			await tx.objectStore(LABELS_STORE).delete(id);
+			const labels = tx.objectStore(LABELS_STORE);
+			const stored = (await labels.get(lean.id)) as Label | undefined;
+			await labels.put(stored ? plainLabel(mergeTwoLabels(plainLabel(stored), lean)) : lean);
 			if (outboxKeys.length) {
 				const generation = await nextOutboxGeneration(tx, dbName);
 				const outbox = tx.objectStore(SYNC_OUTBOX_STORE);
@@ -895,36 +911,6 @@ export async function deleteLabelRecordingIt(
 	});
 }
 
-export async function writeSyncStateWithOutbox(
-	pid: string,
-	state: Iterable<readonly [key: string, value: unknown]>,
-	syncOutboxKeys: Iterable<string> = []
-): Promise<void> {
-	const entries = [...state];
-	const outboxKeys = uniqueOutboxKeys(syncOutboxKeys);
-	const dbName = resolveDbName(pid);
-	const previousGeneration = outboxGenerations.get(dbName) ?? null;
-	await enqueueDeviceWrite(async () => {
-		const db = await getDB(pid);
-		const tx = db.transaction(
-			outboxKeys.length ? [SYNC_STATE_STORE, SYNC_OUTBOX_STORE] : [SYNC_STATE_STORE],
-			'readwrite'
-		);
-		try {
-			const store = tx.objectStore(SYNC_STATE_STORE);
-			for (const [key, value] of entries) await store.put(value, key);
-			if (outboxKeys.length) {
-				const next = await nextOutboxGeneration(tx, dbName);
-				for (const key of outboxKeys) await tx.objectStore(SYNC_OUTBOX_STORE).put(next, key);
-			}
-			await tx.done;
-		} catch (error) {
-			await abortWrite(tx, dbName, previousGeneration);
-			throw error;
-		}
-	});
-}
-
 export async function mergeWorkspaceState<T extends Record<string, unknown>>(
 	pid: string,
 	keys: readonly string[],
@@ -961,17 +947,6 @@ export async function bulkPutNotes(pid: string, notes: Note[]): Promise<void> {
 	for (const note of notes) {
 		await putNote(pid, note);
 	}
-}
-
-export async function bulkPutLabels(pid: string, labels: Label[]): Promise<void> {
-	const generation = writeGeneration(pid);
-	await enqueueDeviceWrite(async () => {
-		if (generation !== writeGeneration(pid)) return;
-		const db = await getDB(pid);
-		const tx = db.transaction(LABELS_STORE, 'readwrite');
-		for (const label of labels) tx.store.put(plainLabel(label));
-		await tx.done;
-	});
 }
 
 /**
@@ -1013,87 +988,14 @@ export async function mergeStoredLabels(
 	});
 }
 
-export async function clearAllNotes(pid: string): Promise<void> {
-	await enqueueDeviceWrite(async () => {
-		const db = await getDB(pid);
-		const tx = db.transaction([NOTES_STORE, IMAGES_STORE], 'readwrite');
-		tx.objectStore(NOTES_STORE).clear();
-		tx.objectStore(IMAGES_STORE).clear();
-		await tx.done;
-	});
-}
-
-export async function clearAllLabels(pid: string): Promise<void> {
-	await enqueueDeviceWrite(async () => {
-		const db = await getDB(pid);
-		await db.clear(LABELS_STORE);
-	});
-}
-
-/**
- * Replace everything in a workspace with the given notes and labels, all at once.
- *
- * The clear and every write share one transaction: a quota error or a killed
- * tab part-way through leaves the workspace exactly as it was, never half of
- * the new set over none of the old one. Attachments are decoded before the
- * transaction opens, since awaiting anything but a request would commit it.
- * `onNoteCommitted` runs for each note once the whole set is durable.
- */
-export function replaceAllDeviceData(
-	pid: string,
-	notes: Note[],
-	labels: Label[],
-	onNoteCommitted?: (note: Note) => void | Promise<void>
-): Promise<void> {
-	const generation = writeGeneration(pid) + 1;
-	writeGenerations.set(pid, generation);
-	return enqueueDeviceWrite(async () => {
-		if (generation !== writeGeneration(pid)) return;
-		const db = await getDB(pid);
-		const rows: Array<{ lean: Note; blobs: Array<{ key: string; value: unknown }> }> = [];
-		for (const note of notes) {
-			const plain = plainNote(note);
-			const blobs: Array<{ key: string; value: unknown }> = [];
-			for (const image of plain.images ?? []) {
-				if (!image.dataUrl) continue;
-				const blob = await dataUrlToBlob(image.dataUrl);
-				const bytes = new Uint8Array(await blob.arrayBuffer());
-				const hash = image.contentHash ?? (await sha256(image.dataUrl));
-				blobs.push({ key: `${plain.id}::${image.id}`, value: { mime: blob.type, bytes, hash } });
-			}
-			rows.push({ lean: detachNote(plain), blobs });
-		}
-		const tx = db.transaction([NOTES_STORE, IMAGES_STORE, LABELS_STORE], 'readwrite');
-		try {
-			const noteStore = tx.objectStore(NOTES_STORE);
-			const imageStore = tx.objectStore(IMAGES_STORE);
-			const labelStore = tx.objectStore(LABELS_STORE);
-			await Promise.all([noteStore.clear(), imageStore.clear(), labelStore.clear()]);
-			for (const row of rows) {
-				for (const blob of row.blobs) await imageStore.put(blob.value, blob.key);
-				await noteStore.put(row.lean);
-			}
-			for (const label of labels) await labelStore.put(plainLabel(label));
-			await tx.done;
-		} catch (error) {
-			try {
-				tx.abort();
-			} catch {
-				// The transaction may already have aborted after a failed request.
-			}
-			await tx.done.catch(() => undefined);
-			throw error;
-		}
-		for (const note of notes) await onNoteCommitted?.(note);
-	});
-}
-
 /** A workspace as it is stored when `rewriteWorkspace` begins. */
 export type StoredWorkspace = {
 	noteIds: string[];
 	labels: Label[];
 	/** The workspace state asked for, by key; a key never written is undefined. */
 	state: Record<string, unknown>;
+	/** Moves on with every save that queues something to upload: see `uploadGeneration`. */
+	uploadGeneration: number;
 };
 
 /** Everything one rewrite of a workspace writes. */
@@ -1102,10 +1004,21 @@ export type WorkspaceRewrite = {
 	clear: boolean;
 	notes: Note[];
 	labels: Label[];
+	/** Notes to delete, with their attachments. */
+	dropNotes?: readonly string[];
+	dropLabels?: readonly string[];
 	state?: Record<string, unknown>;
 	dropState?: readonly string[];
 	/** Records to queue for upload, in the same transaction. */
 	outboxKeys?: Iterable<string>;
+};
+
+/** What a rewrite of a workspace writes, decided when it lands, and what it reads to decide. */
+export type RewritePlan = {
+	/** The notes it may write, whose bytes are decoded before it lands. */
+	notes: Note[];
+	stateKeys: string[];
+	land: (stored: StoredWorkspace) => WorkspaceRewrite;
 };
 
 /**
@@ -1125,15 +1038,11 @@ export async function rewriteWorkspace(
 	stateKeys: readonly string[],
 	plan: (stored: StoredWorkspace) => WorkspaceRewrite
 ): Promise<void> {
-	const blobs = new Map<string, Array<{ key: string; value: StoredImage }>>();
+	const blobs = new Map<string, ImageRow[]>();
 	for (const note of candidates) {
-		const rows: Array<{ key: string; value: StoredImage }> = [];
+		const rows: ImageRow[] = [];
 		for (const image of note.images ?? []) {
-			if (!image.dataUrl) continue;
-			const blob = await dataUrlToBlob(image.dataUrl);
-			const bytes = new Uint8Array(await blob.arrayBuffer());
-			const hash = image.contentHash ?? (await sha256(image.dataUrl));
-			rows.push({ key: `${note.id}::${image.id}`, value: { mime: blob.type, bytes, hash } });
+			if (image.dataUrl) rows.push(await imageRow(note.id, image));
 		}
 		blobs.set(note.id, rows);
 	}
@@ -1150,18 +1059,25 @@ export async function rewriteWorkspace(
 			const imageStore = tx.objectStore(IMAGES_STORE);
 			const labelStore = tx.objectStore(LABELS_STORE);
 			const stateStore = tx.objectStore(SYNC_STATE_STORE);
-			const [noteIds, labels, values] = await Promise.all([
+			const [noteIds, labels, values, generation] = await Promise.all([
 				noteStore.getAllKeys(),
 				labelStore.getAll(),
-				Promise.all(stateKeys.map((key) => stateStore.get(key)))
+				Promise.all(stateKeys.map((key) => stateStore.get(key))),
+				stateStore.get(OUTBOX_GENERATION_KEY)
 			]);
 			const rewrite = plan({
 				noteIds: noteIds.map(String),
 				labels: (labels as Label[]).map(plainLabel),
-				state: Object.fromEntries(stateKeys.map((key, index) => [key, values[index]]))
+				state: Object.fromEntries(stateKeys.map((key, index) => [key, values[index]])),
+				uploadGeneration: Number(generation ?? 0)
 			});
 			if (rewrite.clear)
 				await Promise.all([noteStore.clear(), imageStore.clear(), labelStore.clear()]);
+			for (const id of rewrite.dropNotes ?? []) {
+				await noteStore.delete(id);
+				await imageStore.delete(imageKeysOf(id));
+			}
+			for (const id of rewrite.dropLabels ?? []) await labelStore.delete(id);
 			for (const note of rewrite.notes) {
 				for (const blob of blobs.get(note.id) ?? []) await imageStore.put(blob.value, blob.key);
 				await noteStore.put(detachNote(note));
@@ -1317,6 +1233,16 @@ async function nextOutboxGeneration(
 	outboxGenerations.set(dbName, generation);
 	await tx.objectStore(SYNC_STATE_STORE).put(generation, OUTBOX_GENERATION_KEY);
 	return generation;
+}
+
+/**
+ * A number that moves on with every save, from any window, that queues something of
+ * this workspace to upload: every edit does. Read from the database, so two reads
+ * that agree had no such save between them.
+ */
+export async function uploadGeneration(pid: string): Promise<number> {
+	const db = await getDB(pid);
+	return Number((await db.get(SYNC_STATE_STORE, OUTBOX_GENERATION_KEY)) ?? 0);
 }
 
 export function getOutboxGeneration(pid: string): Promise<number> {

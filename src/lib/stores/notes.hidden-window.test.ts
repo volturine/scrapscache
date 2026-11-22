@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { putNote } from '#lib/db/idb.js';
+import { putNote, setSyncState } from '#lib/db/idb.js';
 import { createKanbanBoard } from '#lib/kanban.js';
-import { saveBoardsToDevice } from '#lib/syncTombstones.js';
+import { BOARDS_IDB } from '#lib/syncTombstones.js';
 import { readNotesMirror } from '#lib/noteStorage.js';
 import type { Note } from '#lib/types.js';
 import { notesStore } from './notes.svelte';
@@ -51,7 +51,7 @@ describe('a hidden window while another window syncs', () => {
 		// What another window saved after its sync.
 		await putNote(TEST_WORKSPACE, note('n1', 'saved elsewhere', 2));
 		// Its boards are on the device, as any workspace's are once it has been open.
-		await kanbanStore.persistSyncState(TEST_WORKSPACE);
+		await setSyncState(TEST_WORKSPACE, BOARDS_IDB, kanbanStore.boardsForSync());
 	});
 
 	afterEach(() => {
@@ -85,7 +85,7 @@ describe('a hidden window while another window syncs', () => {
 	// before would write them back over what the other window's sync saved.
 	it('re-reads the boards the other window saved', async () => {
 		const existing = kanbanStore.boardsForSync();
-		await saveBoardsToDevice(TEST_WORKSPACE, [
+		await setSyncState(TEST_WORKSPACE, BOARDS_IDB, [
 			...existing,
 			{ ...createKanbanBoard('Saved elsewhere'), id: 'board-from-elsewhere' }
 		]);
@@ -119,7 +119,6 @@ describe('a hidden window while another window syncs', () => {
 		vi.spyOn(syncStore, 'syncWorkspace').mockImplementation(async (_profile, local, saved) => {
 			sent.push(local.notes.map((item) => item.title));
 			await saved(local, TEST_WORKSPACE, {
-				readEnvelopes: 0,
 				relayHolds: () => true,
 				relayHas: () => undefined,
 				owes: async () => undefined

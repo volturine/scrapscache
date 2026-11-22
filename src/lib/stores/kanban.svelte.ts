@@ -81,8 +81,6 @@ export class KanbanStore {
 	#activeBoardId = $state<string>('');
 	#boardTombstones = $state<Record<string, number>>(readTombstones(syncStore.activePid));
 	private pendingDeviceWrites: Promise<void> = Promise.resolve();
-	/** The boards were replaced with the cloud's: the next save replaces what is stored. */
-	private replacePending = false;
 	#persistable = false;
 
 	get boards() {
@@ -217,52 +215,19 @@ export class KanbanStore {
 	}
 
 	/**
-	 * The workspace is named rather than guessed: a single outbox key is a string
-	 * too, so a signature that took either would sooner or later save one
-	 * workspace's boards into another's.
-	 */
-	async persistSyncState(pid: string, syncOutboxKeys: Iterable<string> = []): Promise<void> {
-		await this.save(pid, [...syncOutboxKeys]);
-	}
-
-	/**
 	 * Save the boards as they are now, in the order asked. They go on top of what is
-	 * stored at that moment, so boards a sync saved meanwhile are kept, unless this
-	 * device has just taken the cloud's boards in place of its own.
+	 * stored at that moment, so boards a sync saved meanwhile are kept.
 	 */
 	private save(pid: string, outboxKeys: string[]): Promise<void> {
 		const boards = this.boardsForSync();
 		const tombstones = this.boardTombstonesForSync();
-		const replace = this.replacePending;
-		this.replacePending = false;
 		const write = this.pendingDeviceWrites.then(() =>
-			writeKanbanState(
-				pid,
-				boards,
-				tombstones,
-				outboxKeys,
-				replace
-					? undefined
-					: (stored, mine, deleted) => mergeKanbanBoards(normalizeBoards(stored), mine, deleted)
+			writeKanbanState(pid, boards, tombstones, outboxKeys, (stored, mine, deleted) =>
+				mergeKanbanBoards(normalizeBoards(stored), mine, deleted)
 			)
 		);
 		this.pendingDeviceWrites = write.catch(() => undefined);
 		return write;
-	}
-
-	/** Used for the explicit “discard local data” link flow. */
-	replaceWithCloud(
-		remoteBoards: KanbanBoard[],
-		remoteTombstones: Record<string, number> = {}
-	): void {
-		this.replacePending = true;
-		this.boardTombstones = { ...remoteTombstones };
-		const boards = normalizeBoards(remoteBoards).filter(
-			(board) => (this.boardTombstones[board.id] || 0) < board.updatedAt
-		);
-		this.boards = boards.length ? boards : [createKanbanBoard()];
-		if (!this.boards.some((board) => board.id === this.activeBoardId))
-			this.activeBoardId = this.boards[0].id;
 	}
 
 	selectBoard(id: string): void {

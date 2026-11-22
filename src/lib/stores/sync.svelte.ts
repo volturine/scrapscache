@@ -32,6 +32,7 @@ import {
 	hydrateNoteImages,
 	isSyncRecordPayload,
 	syncRecordKey,
+	syncSnapshot,
 	type SyncRecord,
 	type SyncRecordPayload,
 	type SyncSnapshot
@@ -164,6 +165,11 @@ type SyncResult = {
 	refused?: boolean;
 	/** The relay was not reached, or did not answer: nothing here is wrong. */
 	unreachable?: boolean;
+	/**
+	 * After `readRelay`: the sync state of a device that holds exactly `snapshot`,
+	 * by its workspace state key. Whoever writes that copy commits this with it.
+	 */
+	control?: Record<string, unknown>;
 };
 
 /** A request that never got an answer, as `fetch` and the time limit report it. */
@@ -193,8 +199,7 @@ const UNREADABLE_ATTACHMENTS =
 /**
  * Applies what a flight pulled. The workspace is handed over with it: a flight
  * belongs to the workspace it started in, and the window may have moved to
- * another one by the time the bytes are decrypted. `readEnvelopes` counts the
- * envelopes this flight decrypted, whatever records they held.
+ * another one by the time the bytes are decrypted.
  */
 export type ApplyPulled = (
 	snapshot: SyncSnapshot,
@@ -204,7 +209,6 @@ export type ApplyPulled = (
 
 /** What a drained download tells the notes store about the relay. */
 export type PulledRelayState = {
-	readEnvelopes: number;
 	/** True when the relay holds this attachment version and a note there lists it. */
 	relayHolds: (id: string, hash: string) => boolean;
 	/** Record the version found when the relay was asked for an attachment by name. */
@@ -549,17 +553,21 @@ export class SyncStore {
 	}
 
 	/**
-	 * Sign the open workspace in afresh, recreating its relay account when it is
-	 * missing. Aborting `signal` gives it up, and so does a relay that goes silent:
-	 * what runs it holds the workspace's sync lock meanwhile.
+	 * Sign a workspace in afresh, recreating its relay account when it is missing.
+	 * Aborting `signal` gives it up, and so does a relay that goes silent: what runs
+	 * it holds the workspace's sync lock meanwhile.
 	 */
-	async reauthenticateForRecovery(turnstileToken?: string, signal?: AbortSignal): Promise<void> {
-		const account = this.account;
-		if (!account) throw new Error('No synced workspace is active');
+	async reauthenticateForRecovery(
+		profile: StoredProfile,
+		turnstileToken?: string,
+		signal?: AbortSignal
+	): Promise<void> {
+		if (!profile.syncKey) throw new Error('That workspace is not synced');
+		const account = identityFromSyncKey(profile.syncKey);
+		// Only this account starts over: a sign-in under way for another workspace is its own.
 		this.backgroundSessions.delete(account.accountId);
-		this.authenticationGeneration += 1;
-		this.pendingSessions.clear();
-		this.session = null;
+		this.pendingSessions.delete(account.accountId);
+		if (this.session?.accountId === account.accountId) this.session = null;
 		try {
 			await untilAborted(this.accessToken(account), signal);
 			return;
@@ -1129,24 +1137,21 @@ export class SyncStore {
 	}
 
 	/**
-	 * Read the account for the open workspace without uploading anything, for an
-	 * operation that rewrites the workspace from it: a pairing merge, taking the
-	 * cloud's copy, replacing the cloud's copy. `local` is what this window holds.
+	 * Read everything the relay holds for a workspace, sending nothing. It starts
+	 * from the beginning whatever this device has synced before, and nothing on this
+	 * device records that it was read: `snapshot` is the relay's copy, and `control`
+	 * the sync state of a device holding exactly that. For an operation that rewrites
+	 * the workspace from the relay's copy and commits both in one step.
 	 */
-	pullOpen(
-		local: SyncSnapshot,
-		applyPulled: ApplyPulled,
-		signal?: AbortSignal
-	): Promise<SyncResult> {
-		if (!this.account) return Promise.resolve({ success: false, error: 'Not linked' });
-		this.onSyncStart?.();
+	readRelay(profile: StoredProfile, signal: AbortSignal): Promise<SyncResult> {
+		if (!profile.syncKey) return Promise.resolve({ success: false, error: 'Not linked' });
 		return this.syncTarget(
-			{ account: this.account, pid: this.activePid },
-			local,
+			{ account: identityFromSyncKey(profile.syncKey), pid: profile.id },
+			syncSnapshot(),
 			true,
-			applyPulled,
+			undefined,
 			signal
-		).finally(() => this.onSyncEnd?.());
+		);
 	}
 
 	/**
@@ -1189,7 +1194,8 @@ export class SyncStore {
 	private async syncTarget(
 		{ account, pid }: SyncTarget,
 		local: SyncSnapshot,
-		pullOnly: boolean,
+		/** Only read the relay's copy: see `readRelay`. */
+		read: boolean,
 		applyPulled?: ApplyPulled,
 		signal?: AbortSignal
 	): Promise<SyncResult> {
@@ -1213,40 +1219,33 @@ export class SyncStore {
 			const quotaBlockedKeys = new Set<string>();
 			let quotaSingleUpload = false;
 			const keys = syncControlKeys(account.accountId);
+			// A read starts from nothing: what this device has synced before is not its business.
+			const stored = <T>(key: string): Promise<T | undefined> =>
+				read ? Promise.resolve(undefined) : getSyncState<T>(pid, key).catch(() => undefined);
 			let baseline: Record<string, string> = {};
-			try {
-				const durable = await getSyncState<unknown>(pid, keys.baseline);
-				if (durable && typeof durable === 'object' && !Array.isArray(durable))
-					baseline = Object.fromEntries(
-						Object.entries(durable).filter(
-							([key, value]) => typeof key === 'string' && typeof value === 'string'
-						)
-					);
-			} catch {
-				/* first sync */
-			}
+			const durable = await stored<unknown>(keys.baseline);
+			if (durable && typeof durable === 'object' && !Array.isArray(durable))
+				baseline = Object.fromEntries(
+					Object.entries(durable).filter(
+						([key, value]) => typeof key === 'string' && typeof value === 'string'
+					)
+				);
 			// What the relay holds of attachments is learned from what this device downloads
 			// and uploads. A device without that record starts over and downloads everything.
-			const knownRelay = await getSyncState<RelayAttachments>(pid, keys.relayAttachments).catch(
-				() => undefined
-			);
+			const knownRelay = await stored<RelayAttachments>(keys.relayAttachments);
 			if (!knownRelay?.versions || !knownRelay.listed) baseline = {};
 			const firstFullUpload = Object.keys(baseline).length === 0;
 			let relay: RelayAttachments =
 				firstFullUpload || !knownRelay ? emptyRelayAttachments() : knownRelay;
-			let recordIds =
-				(await getSyncState<Record<string, string>>(pid, keys.recordIds).catch(() => undefined)) ??
-				{};
+			let recordIds = (await stored<Record<string, string>>(keys.recordIds)) ?? {};
 			if (!recordIds || typeof recordIds !== 'object' || Array.isArray(recordIds)) recordIds = {};
 			// A first upload sends everything over several rounds, and a rewrite of the workspace or a
 			// closed tab may cut it short. Queued before it starts, what was not sent
 			// yet is sent by the sync after; otherwise only later edits would be.
-			if (firstFullUpload && !pullOnly) await markSyncOutbox(pid, currentRecordKeys(local));
+			if (firstFullUpload && !read) await markSyncOutbox(pid, currentRecordKeys(local));
 			const outboxSnapshotAt = await getOutboxGeneration(pid);
-			let outboxKeys = new Set(await getSyncOutboxKeys(pid).catch(() => []));
-			let cursor = Number(
-				(await getSyncState<number>(pid, keys.cursor).catch(() => undefined)) || 0
-			);
+			let outboxKeys = new Set(read ? [] : await getSyncOutboxKeys(pid).catch(() => []));
+			let cursor = Number((await stored<number>(keys.cursor)) || 0);
 			if (firstFullUpload && cursor > 0) cursor = 0;
 
 			let merged: SyncSnapshot = {
@@ -1290,7 +1289,7 @@ export class SyncStore {
 						planDeletableKeys({
 							recordIds,
 							snapshot: merged,
-							pullOnly,
+							pullOnly: read,
 							catchUpComplete: downloadsDrained
 						}),
 						merged.notes,
@@ -1314,20 +1313,15 @@ export class SyncStore {
 			};
 			const internallyMarkedOutbox = new Map<string, number>();
 			let poisonCount = 0;
-			let readEnvelopes = 0;
 			let stalledWrites = 0;
 			while (hasMore) {
 				if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
 				const startedWithDownloadsDrained = downloadsDrained;
 				const uploadKeys =
-					pullOnly || !downloadsDrained
-						? new Set<string>()
-						: firstFullUpload
-							? undefined
-							: outboxKeys;
+					read || !downloadsDrained ? new Set<string>() : firstFullUpload ? undefined : outboxKeys;
 				const currentRecords = await buildSyncRecords(merged, uploadKeys);
 				const metaUploadDue =
-					!pullOnly &&
+					!read &&
 					downloadsDrained &&
 					outboxKeys.has(PROFILE_META_KEY) &&
 					!quotaBlockedKeys.has(PROFILE_META_KEY) &&
@@ -1346,7 +1340,7 @@ export class SyncStore {
 				// The relay never lists an attachment version it does not hold: a request
 				// commits whole, so bytes travel in the same one as the notes that list them,
 				// and every note is sent listing only what the relay holds once it commits.
-				const uploading = pullOnly || !downloadsDrained ? [] : currentRecords;
+				const uploading = read || !downloadsDrained ? [] : currentRecords;
 				const relayHeld = relayHeldVersions(relay);
 				const noteRecords = uploading.filter((record) => record.payload.kind === 'note');
 				const listsAttachment = (record: SyncRecord, id: string, hash: string): boolean =>
@@ -1621,7 +1615,11 @@ export class SyncStore {
 							});
 							break;
 						case 'profile-meta':
-							if (typeof (record as { value?: { name?: unknown } }).value?.name === 'string')
+							// A read changes nothing on this device, the workspace's name included.
+							if (
+								!read &&
+								typeof (record as { value?: { name?: unknown } }).value?.name === 'string'
+							)
 								this.applySyncedProfileName(
 									(record as { value: { name: string } }).value.name,
 									pid
@@ -1670,7 +1668,6 @@ export class SyncStore {
 						continue;
 					}
 					decodedAny = true;
-					readEnvelopes += 1;
 					const ordered = [
 						...decodedRecords.filter((record) => record.kind === 'attachment'),
 						...decodedRecords.filter((record) => record.kind !== 'attachment')
@@ -1717,7 +1714,6 @@ export class SyncStore {
 				) {
 					if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
 					merged = await applyPulled(merged, pid, {
-						readEnvelopes,
 						relayHolds: (id, hash) => relayHeldVersions(relay).get(id) === hash,
 						relayHas: (id, hash) => {
 							if (hash === null) delete relay.versions[id];
@@ -1761,7 +1757,7 @@ export class SyncStore {
 				});
 				baseline = reconciled.baseline;
 				for (const key of reconciled.ackKeys) acknowledgedOutbox.add(key);
-				if (reconciled.dirtyKeys.length) {
+				if (reconciled.dirtyKeys.length && !read) {
 					const generation = await markSyncOutbox(pid, reconciled.dirtyKeys);
 					for (const key of reconciled.dirtyKeys) {
 						outboxKeys.add(key);
@@ -1809,23 +1805,25 @@ export class SyncStore {
 						internalAcknowledgements.set(markedAt, keysAtGeneration);
 					}
 					if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
-					await commitSyncControl(
-						pid,
-						[
-							[keys.cursor, cursor],
-							[keys.baseline, baseline],
-							[keys.recordIds, recordIds],
-							[keys.relayAttachments, relay]
-						],
-						[
-							{ keys: acknowledgedOutbox, through: outboxSnapshotAt },
-							...[...internalAcknowledgements].map(([markedAt, keysAtGeneration]) => ({
-								keys: keysAtGeneration,
-								through: markedAt
-							}))
-						]
-					);
-					if (open()) this.syncedCursor = cursor;
+					if (!read) {
+						await commitSyncControl(
+							pid,
+							[
+								[keys.cursor, cursor],
+								[keys.baseline, baseline],
+								[keys.recordIds, recordIds],
+								[keys.relayAttachments, relay]
+							],
+							[
+								{ keys: acknowledgedOutbox, through: outboxSnapshotAt },
+								...[...internalAcknowledgements].map(([markedAt, keysAtGeneration]) => ({
+									keys: keysAtGeneration,
+									through: markedAt
+								}))
+							]
+						);
+						if (open()) this.syncedCursor = cursor;
+					}
 					for (const keysAtGeneration of internalAcknowledgements.values()) {
 						for (const key of keysAtGeneration) internallyMarkedOutbox.delete(key);
 					}
@@ -1835,7 +1833,7 @@ export class SyncStore {
 					(key) => !acknowledgedOutbox.has(key) && !quotaBlockedKeys.has(key)
 				);
 				const remainingUploads =
-					!pullOnly &&
+					!read &&
 					((!startedWithDownloadsDrained && (firstFullUpload || pendingOutboxUpload)) ||
 						(!writesAccepted && (outgoing.length > 0 || deleteSlots.length > 0)) ||
 						uploadsLeft > 0);
@@ -1848,6 +1846,17 @@ export class SyncStore {
 			}
 
 			if (syncCancelled()) return { success: false, error: 'Sync was cancelled' };
+			if (read)
+				return {
+					success: true,
+					snapshot: merged,
+					control: {
+						[keys.cursor]: cursor,
+						[keys.baseline]: baseline,
+						[keys.recordIds]: recordIds,
+						[keys.relayAttachments]: relay
+					}
+				};
 			if (quotaBlockedKeys.size > 0 && poisonCount === 0)
 				return this.fail(
 					{

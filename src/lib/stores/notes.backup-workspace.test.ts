@@ -9,6 +9,7 @@ import { WORKSPACE_LOCK } from '#lib/webLock.js';
 import { profileCoordinator } from './profiles.svelte';
 import { syncStore } from './sync.svelte';
 import { kanbanStore } from './kanban.svelte';
+import { readCanvasLibrary } from '#lib/canvasLibrary.js';
 import { canvasLibraryStore } from './canvasLibrary';
 import { reminderHistoryStore } from './reminderHistory';
 import { reminderWakeId } from '#lib/model/index.js';
@@ -248,7 +249,7 @@ describe('backup and Keep import stay in the open workspace', () => {
 		});
 
 		expect(canvasLibraryStore.items()).toEqual([shape]);
-		expect(canvasLibraryStore.tombstonesForSync()).toHaveProperty('other');
+		expect((await readCanvasLibrary(workspaceB.id)).tombstones).toHaveProperty('other');
 		const [restored] = notesStore.notes;
 		// Already dismissed before the backup, so the restored note does not remind again.
 		expect(reminderHistoryStore.get(reminderWakeId(restored.id, reminder))).toMatchObject({

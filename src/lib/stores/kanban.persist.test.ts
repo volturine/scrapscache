@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createKanbanBoard, normalizeBoard } from '#lib/kanban.js';
+import { setSyncState } from '#lib/db/idb.js';
 import { syncStore } from '#lib/stores/sync.svelte.js';
-import { loadBoardsFromDevice, saveBoardsToDevice } from '#lib/syncTombstones.js';
+import { BOARDS_IDB, loadBoardsFromDevice } from '#lib/syncTombstones.js';
 import { KanbanStore } from './kanban.svelte';
 
 describe('board note filter persistence', () => {
@@ -26,7 +27,7 @@ describe('board note filter persistence', () => {
 		store.setNoteFilter(mine, { action: 'remove', labelIds: ['first'] });
 		await store.waitForPendingWrites();
 		const stored = await loadBoardsFromDevice<Array<{ id: string }>>(syncStore.activePid, []);
-		await saveBoardsToDevice(syncStore.activePid, [
+		await setSyncState(syncStore.activePid, BOARDS_IDB, [
 			...stored,
 			{ ...createKanbanBoard('Pulled by a sync'), id: 'pulled-meanwhile' }
 		]);

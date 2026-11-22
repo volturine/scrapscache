@@ -9,7 +9,7 @@
 //    settled with the relay, and tells everyone who asked meanwhile how it ended.
 //    One round of a workspace runs at a time, across windows. Workspaces do not
 //    wait for each other, and none interrupts another.
-// 3. Only something that rewrites a workspace (an import landing, a pairing merge,
+// 3. Only something that rewrites a workspace (an import landing, replacing the cloud copy,
 //    unlinking, deleting) interrupts its sync. Nothing is lost with the round: what
 //    it had not committed is still queued, and the lane goes again.
 // 4. A sync that could not reach the relay is tried again by itself, later each

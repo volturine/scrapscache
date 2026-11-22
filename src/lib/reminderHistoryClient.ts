@@ -20,8 +20,8 @@ export class ReminderStorageFullError extends Error {}
  * Independent of note-sync flights and their lock, cursor, outbox and status indicator.
  * Nothing stays connected and nothing polls: a workspace exchanges right after a
  * local receipt, before it shows a missed reminder, and when the app starts, is
- * shown again or comes back online. The open workspace then catches up; another
- * sends only what it has queued.
+ * shown again or comes back online. Every synced workspace does, whichever one a
+ * window shows: what another device handled is known here before it is opened.
  */
 export class ReminderHistoryClient {
 	private flights = new Map<string, { syncKey: string; promise: Promise<void> }>();
@@ -31,7 +31,6 @@ export class ReminderHistoryClient {
 	constructor(
 		private history: ReminderHistoryStore,
 		private profiles: () => Workspace[],
-		private activeId: () => string,
 		private send: (profile: Workspace, body: string) => Promise<Response>
 	) {}
 	exchange(pid: string): Promise<void> {
@@ -108,14 +107,6 @@ export class ReminderHistoryClient {
 		this.flights.set(pid, { syncKey: profile.syncKey, promise: flight });
 		return flight;
 	}
-	private sendQueued(pid: string): void {
-		void this.history
-			.hasPending(pid)
-			.then((pending) => {
-				if (pending) this.requestExchange(pid);
-			})
-			.catch(() => undefined);
-	}
 	private requestExchange(pid: string): void {
 		if (!this.attached) return;
 		// A workspace removed or unlinked since stops retrying.
@@ -153,16 +144,15 @@ export class ReminderHistoryClient {
 	attach(): () => void {
 		this.attached = true;
 		let refreshedAt = -Infinity;
-		// The open workspace catches up; another sends only what it has queued,
-		// such as receipts the service worker recorded while the app was closed.
+		// Every synced workspace catches up: it sends what it has queued, such as
+		// receipts the service worker recorded while the app was closed, and takes in
+		// what other devices handled.
 		const refresh = () => {
 			// Focus and visibility often arrive together when the app comes back.
 			if (Date.now() - refreshedAt < 1000) return;
 			refreshedAt = Date.now();
 			for (const profile of this.profiles()) {
-				if (!profile.syncKey) continue;
-				if (profile.id === this.activeId()) this.requestExchange(profile.id);
-				else this.sendQueued(profile.id);
+				if (profile.syncKey) this.requestExchange(profile.id);
 			}
 		};
 		const onVisible = () => {
@@ -198,7 +188,6 @@ export class ReminderHistoryClient {
 export const reminderHistoryClient = new ReminderHistoryClient(
 	reminderHistoryStore,
 	() => syncStore.profiles,
-	() => syncStore.activeId,
 	(profile, body) =>
 		syncStore.authorizedFetch(
 			'/api/sync/reminders',

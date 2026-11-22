@@ -13,7 +13,7 @@ import {
 	getOutboxGeneration,
 	hydrateNoteAttachments,
 	markSyncOutbox,
-	putLabel,
+	saveLabel,
 	putNote,
 	setSyncState
 } from './idb';
@@ -112,7 +112,7 @@ describe('durable sync outbox', () => {
 			createdAt: 1,
 			updatedAt: 1
 		};
-		await putLabel(TEST_WORKSPACE, label, ['label:atomic-label']);
+		await saveLabel(TEST_WORKSPACE, label, ['label:atomic-label']);
 		expect((await getAllLabels(TEST_WORKSPACE)).find(({ id }) => id === 'atomic-label')?.name).toBe(
 			'saved'
 		);
@@ -120,7 +120,7 @@ describe('durable sync outbox', () => {
 
 		await clearSyncOutbox(TEST_WORKSPACE, ['label:atomic-label']);
 		await expect(
-			putLabel(TEST_WORKSPACE, { ...label, name: 'must roll back' }, [
+			saveLabel(TEST_WORKSPACE, { ...label, name: 'must roll back' }, [
 				Number.NaN as unknown as string
 			])
 		).rejects.toThrow();
@@ -132,7 +132,7 @@ describe('durable sync outbox', () => {
 
 	it('commits label deletion, its tombstone, and outbox marker in one transaction', async () => {
 		const label = { id: 'deleted-label', name: 'Delete me', createdAt: 1, updatedAt: 1 };
-		await putLabel(TEST_WORKSPACE, label);
+		await saveLabel(TEST_WORKSPACE, label);
 		// A delete a sync saved meanwhile is kept, and a later delete of the same label stands.
 		await setSyncState(TEST_WORKSPACE, 'label-tombstones', {
 			'saved-meanwhile': 50,
@@ -151,7 +151,7 @@ describe('durable sync outbox', () => {
 		expect(await getSyncOutboxKeys(TEST_WORKSPACE)).toEqual([`label-tombstone:${label.id}`]);
 
 		await clearSyncOutbox(TEST_WORKSPACE, await getSyncOutboxKeys(TEST_WORKSPACE));
-		await putLabel(TEST_WORKSPACE, label);
+		await saveLabel(TEST_WORKSPACE, label);
 		await expect(
 			deleteLabelRecordingIt(TEST_WORKSPACE, label.id, 'label-tombstones', 300, [
 				Number.NaN as unknown as string
@@ -171,7 +171,7 @@ describe('durable sync outbox', () => {
 		await putNote(TEST_WORKSPACE, note('first'));
 		const edit = putNote(TEST_WORKSPACE, note('edited meanwhile'));
 		const seen: Array<string | undefined> = [];
-		const merged = mergeNote(TEST_WORKSPACE, 'atomic-note', (stored) => {
+		const merged = mergeNote(TEST_WORKSPACE, note('pulled'), (stored) => {
 			seen.push(stored?.title);
 			return stored ? { ...stored, title: `${stored.title}, with what was pulled` } : null;
 		});
@@ -184,7 +184,7 @@ describe('durable sync outbox', () => {
 
 		// Answering null saves nothing: a note deleted meanwhile stays deleted.
 		await deleteNote(TEST_WORKSPACE, 'atomic-note');
-		expect(await mergeNote(TEST_WORKSPACE, 'atomic-note', () => null)).toBeNull();
+		expect(await mergeNote(TEST_WORKSPACE, note('pulled'), () => null)).toBeNull();
 		expect((await getAllNotesMetadata(TEST_WORKSPACE)).some(({ id }) => id === 'atomic-note')).toBe(
 			false
 		);

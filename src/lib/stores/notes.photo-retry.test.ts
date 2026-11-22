@@ -53,7 +53,7 @@ describe('photo bytes across a failed save', () => {
 		vi.spyOn(console, 'error').mockImplementation(() => undefined);
 		const earlierSave = deferred<void>();
 		const putNote = vi
-			.spyOn(idb, 'putNote')
+			.spyOn(idb, 'saveNote')
 			// The text-only save, still queued when the photo is added.
 			.mockImplementationOnce(() => earlierSave.promise)
 			// The photo's own save: refused, as a full disk refuses it.

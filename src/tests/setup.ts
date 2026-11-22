@@ -8,7 +8,6 @@ import {
 	dropDatabase,
 	forgetReleasedProfiles
 } from '#lib/db/idb.js';
-import { resetTombstoneCaches } from '#lib/syncTombstones.js';
 import { installHorizontalWheel } from '#lib/horizontalWheel.js';
 import { resetEnv } from './env';
 import { seedTestKeyring } from './workspace';
@@ -111,7 +110,6 @@ if (typeof window !== 'undefined' && !window.matchMedia) {
 afterEach(async () => {
 	vi.useRealTimers();
 	resetEnv();
-	resetTombstoneCaches();
 	if (typeof sessionStorage !== 'undefined') sessionStorage.clear();
 	await closeDeviceDatabase();
 	// Every name is read before the first delete: a delete that stays blocked

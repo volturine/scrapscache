@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { strToU8 } from 'fflate';
-import { putLabel, putNote, waitForDeviceWrites } from '#lib/db/idb.js';
+import { saveLabel, putNote, waitForDeviceWrites } from '#lib/db/idb.js';
 import { BackupImportMode } from '#lib/backup.js';
 import { notesStore } from './notes.svelte';
 import { syncScheduler } from './syncScheduler';
@@ -25,7 +25,7 @@ describe('Google Keep takeout import', () => {
 	beforeEach(async () => {
 		localStorage.clear();
 		syncStore.account = null;
-		await putLabel(syncStore.activeId, {
+		await saveLabel(syncStore.activeId, {
 			id: 'existing-recipes',
 			name: 'Recipes',
 			createdAt: 1,

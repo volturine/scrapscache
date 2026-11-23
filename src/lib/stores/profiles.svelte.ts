@@ -6,7 +6,9 @@
 // device. Sync takes no part in a switch: every workspace syncs from its own
 // database whichever one a window shows. A change that takes a workspace's key or
 // data away is also a rewrite of that workspace, which its sync gives way to.
-import { syncStore, PROFILE_META_KEY } from './sync.svelte';
+import { syncStore } from './sync.svelte';
+import { relay } from '#lib/relayClient.js';
+import { PROFILE_META_KEY } from '#lib/relaySync.js';
 import { notesStore } from './notes.svelte';
 import { syncScheduler } from './syncScheduler';
 import { clearNotesMirror } from '#lib/noteStorage.js';
@@ -19,7 +21,7 @@ import {
 	profileForSyncKey,
 	type StoredProfile
 } from '#lib/profiles.js';
-import { randomOpaqueId } from '#lib/syncPairing.js';
+import { randomOpaqueId, identityFromSyncKey } from '#lib/syncPairing.js';
 import {
 	isProfileReleased,
 	LS_PROFILES,
@@ -143,7 +145,7 @@ export class ProfileCoordinator {
 		}
 		const refused = refusal(asked);
 		if (refused) return { success: false, error: refused };
-		const registered = await syncStore.registerAccount(turnstileToken);
+		const registered = await relay.registerAccount(turnstileToken);
 		if (!registered.success || !registered.account)
 			return { success: false, error: registered.error ?? 'Registration failed' };
 		const { account } = registered;
@@ -168,7 +170,7 @@ export class ProfileCoordinator {
 		);
 		// First sync can take a long time for a large workspace. Leave the
 		// change first so the UI can show the synced workspace immediately.
-		if (synced) void notesStore.syncWithCloudManual().catch(() => undefined);
+		if (synced) void syncScheduler.request(profileId);
 		return result;
 	}
 
@@ -205,7 +207,7 @@ export class ProfileCoordinator {
 				const asked = this.find(profileId);
 				if (isLocalWorkspace(asked)) return { success: true };
 				// The relay is asked before anything is held, like registering a new key.
-				const deleted = await syncStore.deleteRelayAccount(asked);
+				const deleted = await relay.deleteAccount(identityFromSyncKey(asked.syncKey));
 				if (!deleted.success) return deleted;
 			}
 			return await withWorkspaceLock(async () => {
@@ -332,8 +334,8 @@ export class ProfileCoordinator {
 	 * way for either workspace runs on from that workspace's database, undisturbed
 	 * (see the sync scheduler). The workspace arrived in is asked to sync without
 	 * holding up the caller: the switch is done once its notes are loaded. A caller
-	 * that needs the synced state joins that sync with
-	 * `notesStore.reconcileWithCloud()`; a failed sync shows on the sync indicator.
+	 * that needs the synced state joins that sync with `syncScheduler.catchUp`; a
+	 * failed sync shows on the sync indicator.
 	 */
 	async switchTo(profileId: string): Promise<Outcome> {
 		if (profileId === syncStore.activeId) return { success: true };
@@ -345,7 +347,7 @@ export class ProfileCoordinator {
 			return { success: true };
 		});
 		// Joins the catch-up its load already asked for instead of asking for another.
-		if (result.success && shouldSync) void notesStore.reconcileWithCloud();
+		if (result.success && shouldSync) void syncScheduler.catchUp(profileId);
 		return result;
 	}
 

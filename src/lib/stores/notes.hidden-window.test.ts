@@ -6,7 +6,7 @@ import { readNotesMirror } from '#lib/noteStorage.js';
 import type { Note } from '#lib/types.js';
 import { notesStore } from './notes.svelte';
 import { kanbanStore } from './kanban.svelte';
-import { syncStore } from './sync.svelte';
+import { relaySync, syncStore } from './sync.svelte';
 import { syncScheduler } from './syncScheduler';
 import { linkTestWorkspace, unlinkTestWorkspace } from '../../tests/syncing';
 import { TEST_WORKSPACE } from '../../tests/workspace';
@@ -145,7 +145,7 @@ describe('a hidden window while another window syncs', () => {
 		linkTestWorkspace();
 		// The sync sends what the database holds, which the other window's save is part of.
 		const sent: string[][] = [];
-		vi.spyOn(syncStore, 'syncWorkspace').mockImplementation(async (_profile, local, saved) => {
+		vi.spyOn(relaySync, 'sync').mockImplementation(async (_profile, local, saved) => {
 			sent.push(local.notes.map((item) => item.title));
 			await saved(local, TEST_WORKSPACE, {
 				relayHolds: () => true,
@@ -156,7 +156,7 @@ describe('a hidden window while another window syncs', () => {
 		});
 
 		try {
-			await notesStore.syncWithCloudManual();
+			await syncScheduler.request(syncStore.activeId);
 		} finally {
 			await syncScheduler.reset();
 			unlinkTestWorkspace();

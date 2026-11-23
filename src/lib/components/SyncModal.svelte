@@ -17,9 +17,17 @@
 	import { Progress } from '@ark-ui/svelte/progress';
 	import { createPairingUrl, formatPairingCode, normalizePairingCode } from '#lib/syncPairing.js';
 	import { appLinkBase } from '#lib/serverOrigin.svelte.js';
-	import { syncStore, type StartedDeviceLink } from '#lib/stores/sync.svelte.js';
+	import { syncStore } from '#lib/stores/sync.svelte.js';
+	import {
+		pollDeviceLink,
+		startDeviceLink,
+		startExistingDeviceLink,
+		type StartedDeviceLink
+	} from '#lib/deviceLink.js';
+	import type { SyncAccount } from '#lib/relayClient.js';
 	import { profileCoordinator } from '#lib/stores/profiles.svelte.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import { syncScheduler } from '#lib/stores/syncScheduler.js';
 	import { buildProfileMarkdownNotes, isLocalWorkspace } from '#lib/profiles.js';
 	import { buildNotesMarkdownZip } from '#lib/notesMarkdownExport.js';
 	import { estimateProfileBytes } from '#lib/db/idb.js';
@@ -63,6 +71,12 @@
 	let qrDataUrl = $state('');
 	let copyFlashTimer: ReturnType<typeof setTimeout> | null = null;
 	let waiting = $state<StartedDeviceLink | null>(null);
+	/**
+	 * The account whose key the link under way hands over. Taken when the link starts:
+	 * the key sent is the one of the workspace it was started for, whichever workspace
+	 * the window shows by the time the other device answers.
+	 */
+	let sharing: SyncAccount | null = null;
 	let now = $state(Date.now());
 	let timer: ReturnType<typeof setTimeout> | null = null;
 	let confirmation = $state<'delete' | 'force' | 'remove' | 'new-key' | null>(null);
@@ -309,13 +323,14 @@
 		error = '';
 		info = '';
 		const result = await runOperation('connect', 'Could not start connection', () =>
-			syncStore.startDeviceLink(normalized)
+			startDeviceLink(normalized)
 		);
 		if (!result) return;
 		if (!result.success || !result.link) {
 			error = friendlyError(result.error, 'Could not start connection');
 			return;
 		}
+		sharing = null;
 		waiting = result.link;
 		now = Date.now();
 		mode = 'waiting';
@@ -327,7 +342,7 @@
 		now = Date.now();
 		let result;
 		try {
-			result = await syncStore.pollDeviceLink(active);
+			result = await pollDeviceLink(active, sharing);
 		} catch (err) {
 			if (waiting?.id !== active.id) return;
 			stopWaiting();
@@ -385,14 +400,20 @@
 	async function startExistingConnection() {
 		error = '';
 		info = '';
+		const account = syncStore.account;
+		if (!account) {
+			error = 'Sync is not set up on this device';
+			return;
+		}
 		const result = await runOperation('connect', 'Could not start connection', () =>
-			syncStore.startExistingDeviceLink()
+			startExistingDeviceLink()
 		);
 		if (!result) return;
 		if (!result.success || !result.link) {
 			error = friendlyError(result.error, 'Could not start connection');
 			return;
 		}
+		sharing = account;
 		waiting = result.link;
 		now = Date.now();
 		mode = 'waiting';
@@ -462,7 +483,7 @@
 		info = '';
 		const account = syncStore.account;
 		const success = await runOperation('sync', 'Sync failed', () =>
-			notesStore.syncWithCloudManual()
+			syncScheduler.request(syncStore.activeId)
 		);
 		if (success === undefined) return;
 		// The window moved to another workspace meanwhile: that sync ended with the

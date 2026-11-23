@@ -7,7 +7,8 @@ vi.mock('#lib/imageThumb.js', async (importOriginal) => {
 
 import { clearSyncOutbox, getSyncOutboxKeys, markSyncOutbox, putNote } from '#lib/db/idb.js';
 import * as idb from '#lib/db/idb.js';
-import { syncStore } from './sync.svelte';
+import { relaySync, syncStore } from './sync.svelte';
+import { relay as appRelay } from '#lib/relayClient.js';
 import { syncSnapshot } from '#lib/syncRecords.js';
 import { notesStore } from './notes.svelte';
 import { syncScheduler } from './syncScheduler';
@@ -48,8 +49,8 @@ async function settleIndexedDb(): Promise<void> {
 }
 
 /** The relay's answer to each sync of the open workspace. */
-function relayAnswers(answer: typeof syncStore.syncWorkspace) {
-	return vi.spyOn(syncStore, 'syncWorkspace').mockImplementation(answer);
+function relayAnswers(answer: typeof relaySync.sync) {
+	return vi.spyOn(relaySync, 'sync').mockImplementation(answer);
 }
 
 describe('syncing when a note closes', () => {
@@ -71,17 +72,17 @@ describe('syncing when a note closes', () => {
 	});
 
 	it('skips the cloud request when there are no pending records', async () => {
-		const flush = vi.spyOn(notesStore, 'flushSync').mockResolvedValue(true);
+		const flush = vi.spyOn(syncScheduler, 'request').mockResolvedValue(true);
 
-		expect(await notesStore.syncPendingChanges()).toBe(false);
+		expect(await syncScheduler.flush(syncStore.activeId)).toBe(false);
 		expect(flush).not.toHaveBeenCalled();
 	});
 
 	it('flushes the debounce immediately when a record is pending', async () => {
 		await markSyncOutbox(TEST_WORKSPACE, ['note:note-1']);
-		const flush = vi.spyOn(notesStore, 'flushSync').mockResolvedValue(true);
+		const flush = vi.spyOn(syncScheduler, 'request').mockResolvedValue(true);
 
-		expect(await notesStore.syncPendingChanges()).toBe(true);
+		expect(await syncScheduler.flush(syncStore.activeId)).toBe(true);
 		expect(flush).toHaveBeenCalledOnce();
 	});
 
@@ -96,7 +97,7 @@ describe('syncing when a note closes', () => {
 		});
 
 		try {
-			expect(await notesStore.syncPendingChanges()).toBe(true);
+			expect(await syncScheduler.flush(syncStore.activeId)).toBe(true);
 		} finally {
 			syncStore.onSyncStart = null;
 			syncStore.onSyncEnd = null;
@@ -114,7 +115,7 @@ describe('syncing when a note closes', () => {
 		});
 		syncScheduler.changed(TEST_WORKSPACE);
 
-		expect(await notesStore.syncWithCloudManual()).toBe(true);
+		expect(await syncScheduler.request(syncStore.activeId)).toBe(true);
 		await vi.advanceTimersByTimeAsync(10_000);
 
 		expect(sync).toHaveBeenCalledOnce();
@@ -131,7 +132,7 @@ describe('syncing when a note closes', () => {
 		// Its card scrolls into view, then the next sync runs.
 		await notesStore.ensureNoteAttachments(note.id);
 
-		expect(await notesStore.flushSync()).toBe(true);
+		expect(await syncScheduler.request(syncStore.activeId)).toBe(true);
 		expect(syncStore.lastError).toBeNull();
 		expect(notesStore.lastPersistError).toBeNull();
 	});
@@ -144,7 +145,7 @@ describe('syncing when a note closes', () => {
 		vi.spyOn(idb, 'hydrateNoteAttachments').mockRejectedValue(new Error('read failed'));
 		relayAnswers(async () => ({ success: true, snapshot: syncSnapshot() }));
 
-		expect(await notesStore.flushSync()).toBe(true);
+		expect(await syncScheduler.request(syncStore.activeId)).toBe(true);
 		expect(syncStore.lastError).toBe(
 			'Synced, but some photos could not be prepared for upload. They will retry on the next sync.'
 		);
@@ -155,8 +156,8 @@ describe('syncing when a note closes', () => {
 		const note = noteWithPhoto('');
 		await putNote(TEST_WORKSPACE, note);
 		notesStore.notes = [note];
-		vi.spyOn(syncStore, 'reauthenticateForRecovery').mockResolvedValue();
-		vi.spyOn(syncStore, 'readRelay').mockResolvedValue({
+		vi.spyOn(appRelay, 'reauthenticate').mockResolvedValue();
+		vi.spyOn(relaySync, 'read').mockResolvedValue({
 			success: true,
 			snapshot: syncSnapshot(),
 			control: { cursor: 4 }
@@ -180,8 +181,8 @@ describe('syncing when a note closes', () => {
 		await idb.waitForDeviceWrites(TEST_WORKSPACE);
 		// Memory holds the note without its bytes, as after any durable write.
 		notesStore.notes = [noteWithPhoto('')];
-		vi.spyOn(syncStore, 'reauthenticateForRecovery').mockResolvedValue();
-		vi.spyOn(syncStore, 'readRelay').mockResolvedValue({
+		vi.spyOn(appRelay, 'reauthenticate').mockResolvedValue();
+		vi.spyOn(relaySync, 'read').mockResolvedValue({
 			success: true,
 			snapshot: syncSnapshot(),
 			control: { cursor: 4 }
@@ -207,7 +208,7 @@ describe('syncing when a note closes', () => {
 		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 		const sync = relayAnswers(async () => ({ success: true, snapshot: syncSnapshot() }));
 
-		expect(await notesStore.flushSync()).toBe(true);
+		expect(await syncScheduler.request(syncStore.activeId)).toBe(true);
 		await vi.advanceTimersByTimeAsync(10 * 60_000);
 
 		expect(sync).toHaveBeenCalledOnce();
@@ -220,7 +221,7 @@ describe('syncing when a note closes', () => {
 		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 		const sync = relayAnswers(async () => ({ success: false, error: 'Sync network error' }));
 
-		expect(await notesStore.flushSync()).toBe(false);
+		expect(await syncScheduler.request(syncStore.activeId)).toBe(false);
 		// Not at once: whoever asked has been told, and the relay will not answer now.
 		await vi.advanceTimersByTimeAsync(3_000);
 		expect(sync).toHaveBeenCalledTimes(1);
@@ -240,7 +241,7 @@ describe('syncing when a note closes', () => {
 		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 		const sync = relayAnswers(async () => ({ success: false, error: 'Sync network error' }));
 
-		expect(await notesStore.flushSync()).toBe(false);
+		expect(await syncScheduler.request(syncStore.activeId)).toBe(false);
 		await vi.advanceTimersByTimeAsync(10 * 60_000);
 
 		expect(sync).toHaveBeenCalledOnce();
@@ -256,7 +257,7 @@ describe('syncing when a note closes', () => {
 			refused: true
 		}));
 
-		expect(await notesStore.flushSync()).toBe(false);
+		expect(await syncScheduler.request(syncStore.activeId)).toBe(false);
 		await vi.advanceTimersByTimeAsync(10 * 60_000);
 
 		expect(sync).toHaveBeenCalledOnce();
@@ -272,7 +273,7 @@ describe('syncing when a note closes', () => {
 			await clearSyncOutbox(TEST_WORKSPACE, ['note:note-1']);
 			return { success: true, snapshot: syncSnapshot() };
 		});
-		await notesStore.flushSync();
+		await syncScheduler.request(syncStore.activeId);
 		reachable = true;
 
 		window.dispatchEvent(new Event('online'));
@@ -290,7 +291,7 @@ describe('syncing when a note closes', () => {
 			'Synced, but some photos could not be prepared for upload. They will retry on the next sync.';
 		relayAnswers(async () => ({ success: true, snapshot: syncSnapshot() }));
 
-		expect(await notesStore.flushSync()).toBe(true);
+		expect(await syncScheduler.request(syncStore.activeId)).toBe(true);
 		expect(syncStore.lastError).toBeNull();
 	});
 });

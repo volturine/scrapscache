@@ -4,6 +4,7 @@
 	import { onMount } from 'svelte';
 	import { syncAttentions, type SyncAttentionTone } from '#lib/syncAttention.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import { syncScheduler } from '#lib/stores/syncScheduler.js';
 	import { syncStore } from '#lib/stores/sync.svelte.js';
 	import { uiStore } from '#lib/stores/ui.svelte.js';
 	import { button } from 'styled-system/recipes';
@@ -64,7 +65,8 @@
 
 	function act() {
 		if (!shown) return;
-		if (shown.action === 'retry') void notesStore.syncWithCloudManual().catch(() => undefined);
+		if (shown.action === 'retry')
+			void syncScheduler.request(syncStore.activeId).catch(() => undefined);
 		else if (shown.action === 'open-settings') uiStore.syncOpen = true;
 	}
 

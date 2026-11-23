@@ -1,4 +1,5 @@
-import { syncStore, type SyncAccount } from '#lib/stores/sync.svelte.js';
+import type { SyncAccount } from '#lib/relayClient.js';
+import { syncStore } from '#lib/stores/sync.svelte.js';
 import { syncScheduler } from '#lib/stores/syncScheduler.js';
 import { createSyncIdentity } from '#lib/syncPairing.js';
 import { TEST_WORKSPACE } from './workspace';

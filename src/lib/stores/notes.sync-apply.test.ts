@@ -25,8 +25,9 @@ import { loadBoardsFromDevice } from '#lib/syncTombstones.js';
 import * as syncTombstones from '#lib/syncTombstones.js';
 import { writeNotesMirror } from '#lib/noteStorage.js';
 import { notesStore } from './notes.svelte';
-import { SYNC_LOCK } from './syncScheduler';
-import { syncStore } from './sync.svelte';
+import { SYNC_LOCK, syncScheduler } from './syncScheduler';
+import { relaySync, syncStore } from './sync.svelte';
+import { relay as appRelay } from '#lib/relayClient.js';
 import { syncSnapshot, type SyncSnapshot } from '#lib/syncRecords.js';
 import { mergeTwoNotes } from '#lib/model/index.js';
 import type { Note } from '#lib/types.js';
@@ -73,7 +74,7 @@ describe('notes store sync apply', () => {
 		// What the window shows plays no part: the copy is taken from the database.
 		notesStore.notes = [];
 		await putNote(TEST_WORKSPACE, local);
-		vi.spyOn(syncStore, 'reauthenticateForRecovery').mockResolvedValue();
+		vi.spyOn(appRelay, 'reauthenticate').mockResolvedValue();
 		const remote = syncSnapshot({
 			notes: [
 				{
@@ -85,7 +86,7 @@ describe('notes store sync apply', () => {
 				remoteNote('cloud-only')
 			]
 		});
-		const read = vi.spyOn(syncStore, 'readRelay').mockImplementation(async () => {
+		const read = vi.spyOn(relaySync, 'read').mockImplementation(async () => {
 			// Reading the cloud's copy changes nothing on this device.
 			expect(await getSyncState(TEST_WORKSPACE, keys.cursor)).toBeUndefined();
 			return {
@@ -95,24 +96,22 @@ describe('notes store sync apply', () => {
 			};
 		});
 		// The upload sends what the database holds by then.
-		const sync = vi
-			.spyOn(syncStore, 'syncWorkspace')
-			.mockImplementation(async (_profile, local) => {
-				const { notes, tombstones } = local;
-				expect(notes.map((note) => note.title)).toEqual(['This device wins']);
-				expect(notes[0].fieldTimes!.title).toBeGreaterThan(6000);
-				expect(tombstones['cloud-only']).toBeGreaterThan(6000);
-				// The sync state of the copy that was read landed with the notes, and every
-				// record is queued: the upload sends what differs without downloading again.
-				expect(await getSyncState(TEST_WORKSPACE, keys.cursor)).toBe(2);
-				expect(await getSyncState(TEST_WORKSPACE, keys.baseline)).toEqual({
-					'note:shared': 'cloud-fingerprint'
-				});
-				expect(await getSyncOutboxKeys(TEST_WORKSPACE)).toEqual(
-					expect.arrayContaining(['note:shared', 'note-tombstone:cloud-only'])
-				);
-				return { success: true, snapshot: local };
+		const sync = vi.spyOn(relaySync, 'sync').mockImplementation(async (_profile, local) => {
+			const { notes, tombstones } = local;
+			expect(notes.map((note) => note.title)).toEqual(['This device wins']);
+			expect(notes[0].fieldTimes!.title).toBeGreaterThan(6000);
+			expect(tombstones['cloud-only']).toBeGreaterThan(6000);
+			// The sync state of the copy that was read landed with the notes, and every
+			// record is queued: the upload sends what differs without downloading again.
+			expect(await getSyncState(TEST_WORKSPACE, keys.cursor)).toBe(2);
+			expect(await getSyncState(TEST_WORKSPACE, keys.baseline)).toEqual({
+				'note:shared': 'cloud-fingerprint'
 			});
+			expect(await getSyncOutboxKeys(TEST_WORKSPACE)).toEqual(
+				expect.arrayContaining(['note:shared', 'note-tombstone:cloud-only'])
+			);
+			return { success: true, snapshot: local };
+		});
 		expect(await notesStore.forcePushWorkspace(TEST_WORKSPACE)).toEqual({ success: true });
 		expect(read).toHaveBeenCalledOnce();
 		expect(sync).toHaveBeenCalled();
@@ -129,13 +128,13 @@ describe('notes store sync apply', () => {
 			images: [{ id: 'shot', mime: 'image/png', dataUrl, createdAt: 1 }]
 		};
 		await putNote(TEST_WORKSPACE, kept);
-		vi.spyOn(syncStore, 'reauthenticateForRecovery').mockResolvedValue();
-		vi.spyOn(syncStore, 'readRelay').mockResolvedValue({
+		vi.spyOn(appRelay, 'reauthenticate').mockResolvedValue();
+		vi.spyOn(relaySync, 'read').mockResolvedValue({
 			success: true,
 			snapshot: syncSnapshot({ tombstones: { 'deleted-in-cloud': 9_000 } }),
 			control: {}
 		});
-		vi.spyOn(syncStore, 'syncWorkspace').mockImplementation(async (_profile, local) => ({
+		vi.spyOn(relaySync, 'sync').mockImplementation(async (_profile, local) => ({
 			success: true,
 			snapshot: local
 		}));
@@ -165,13 +164,13 @@ describe('notes store sync apply', () => {
 		linkTestWorkspace();
 		const local = { ...remoteNote('edited-meanwhile'), title: 'Before' };
 		await putNote(TEST_WORKSPACE, local);
-		vi.spyOn(syncStore, 'reauthenticateForRecovery').mockResolvedValue();
-		vi.spyOn(syncStore, 'readRelay').mockResolvedValue({
+		vi.spyOn(appRelay, 'reauthenticate').mockResolvedValue();
+		vi.spyOn(relaySync, 'read').mockResolvedValue({
 			success: true,
 			snapshot: syncSnapshot(),
 			control: {}
 		});
-		vi.spyOn(syncStore, 'syncWorkspace').mockImplementation(async (_profile, local) => ({
+		vi.spyOn(relaySync, 'sync').mockImplementation(async (_profile, local) => ({
 			success: true,
 			snapshot: local
 		}));
@@ -200,10 +199,8 @@ describe('notes store sync apply', () => {
 		const local = remoteNote('unchanged');
 		notesStore.notes = [local];
 		await putNote(TEST_WORKSPACE, local);
-		vi.spyOn(syncStore, 'reauthenticateForRecovery').mockRejectedValue(
-			new Error('Server unavailable')
-		);
-		const read = vi.spyOn(syncStore, 'readRelay');
+		vi.spyOn(appRelay, 'reauthenticate').mockRejectedValue(new Error('Server unavailable'));
+		const read = vi.spyOn(relaySync, 'read');
 		expect(await notesStore.forcePushWorkspace(TEST_WORKSPACE)).toEqual({
 			success: false,
 			error: 'Server unavailable'
@@ -243,7 +240,7 @@ describe('notes store sync apply', () => {
 		const pulledBoard = { ...createKanbanBoard('Pulled board'), id: 'pulled-board' };
 
 		vi.spyOn(
-			syncStore as unknown as {
+			appRelay as unknown as {
 				sendSyncRequest(
 					path: string,
 					payload: string
@@ -302,7 +299,7 @@ describe('notes store sync apply', () => {
 			};
 		});
 
-		expect(await notesStore.syncWithCloudManual()).toBe(true);
+		expect(await syncScheduler.request(syncStore.activeId)).toBe(true);
 		expect(notesStore.lastPersistError).toBeNull();
 		expect(
 			(await getAllNotesMetadata(TEST_WORKSPACE)).map(({ id, title }) => ({ id, title }))
@@ -359,7 +356,7 @@ describe('notes store sync apply', () => {
 		};
 		Object.defineProperty(navigator, 'locks', { configurable: true, value: locks });
 		vi.spyOn(
-			syncStore as unknown as {
+			appRelay as unknown as {
 				sendSyncRequest(
 					path: string,
 					payload: string
@@ -398,7 +395,7 @@ describe('notes store sync apply', () => {
 		await setSyncState(TEST_WORKSPACE, keys.baseline, { 'note:note-1': 'stale' });
 
 		try {
-			expect(await notesStore.syncWithCloudManual()).toBe(true);
+			expect(await syncScheduler.request(syncStore.activeId)).toBe(true);
 			expect(maxDepth).toBe(1);
 		} finally {
 			Object.defineProperty(navigator, 'locks', { configurable: true, value: undefined });
@@ -499,7 +496,7 @@ describe('notes store sync apply', () => {
 		await deleteSyncState(TEST_WORKSPACE, keys.recordIds);
 
 		vi.spyOn(
-			syncStore as unknown as {
+			appRelay as unknown as {
 				sendSyncRequest(
 					path: string,
 					payload: string
@@ -577,7 +574,7 @@ describe('notes store sync apply', () => {
 			};
 		});
 
-		expect(await notesStore.syncWithCloudManual()).toBe(true);
+		expect(await syncScheduler.request(syncStore.activeId)).toBe(true);
 		const stored = (await getAllNotesMetadata(TEST_WORKSPACE)).find((item) => item.id === 'note-1');
 		expect(stored).toBeDefined();
 		const hydrated = await hydrateNoteAttachments(TEST_WORKSPACE, stored!);
@@ -666,6 +663,74 @@ describe('edits made while a sync saves', () => {
 			await vi.advanceTimersByTimeAsync(1_000);
 			await vi.waitFor(async () => expect(await idb.getAllLabels(TEST_WORKSPACE)).toEqual([]));
 			expect(await getSyncOutboxKeys(TEST_WORKSPACE)).toContain(`label-tombstone:${label.id}`);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('tries again what was asked for a label last, whichever save failed last', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		try {
+			const label = notesStore.createLabel('Asked twice')!;
+			await vi.waitFor(async () =>
+				expect((await idb.getAllLabels(TEST_WORKSPACE)).map(({ id }) => id)).toEqual([label.id])
+			);
+			let failRename: (reason: Error) => void = () => undefined;
+			vi.spyOn(idb, 'saveLabel').mockImplementationOnce(
+				() => new Promise((_resolve, reject) => (failRename = reject))
+			);
+			vi.spyOn(syncTombstones, 'deleteLabelWithTombstone').mockRejectedValueOnce(
+				new Error('Storage full')
+			);
+
+			// The rename is still being saved when the delete is asked for, and fails after it.
+			notesStore.renameLabel(label.id, 'Renamed first');
+			notesStore.removeLabel(label.id);
+			await vi.waitFor(() => expect(notesStore.lastPersistError).toMatch(/Could not delete label/));
+			failRename(new Error('Storage full'));
+			await vi.waitFor(() => expect(notesStore.lastPersistError).toMatch(/Could not save label/));
+
+			await vi.advanceTimersByTimeAsync(1_500);
+			await vi.waitFor(async () => expect(await idb.getAllLabels(TEST_WORKSPACE)).toEqual([]));
+			expect(await getSyncOutboxKeys(TEST_WORKSPACE)).toContain(`label-tombstone:${label.id}`);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('still tries a failed label delete again when an earlier rename lands meanwhile', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		try {
+			const label = notesStore.createLabel('Renamed, then deleted')!;
+			await vi.waitFor(async () =>
+				expect((await idb.getAllLabels(TEST_WORKSPACE)).map(({ id }) => id)).toEqual([label.id])
+			);
+			const save = idb.saveLabel;
+			let landRename: () => void = () => undefined;
+			vi.spyOn(idb, 'saveLabel').mockImplementationOnce(async (...args) => {
+				await new Promise<void>((resolve) => (landRename = resolve));
+				return save(...args);
+			});
+			vi.spyOn(syncTombstones, 'deleteLabelWithTombstone').mockRejectedValueOnce(
+				new Error('Storage full')
+			);
+
+			notesStore.renameLabel(label.id, 'Renamed first');
+			notesStore.removeLabel(label.id);
+			await vi.waitFor(() => expect(notesStore.lastPersistError).toMatch(/Could not delete label/));
+			// The rename lands while the delete waits to be tried again.
+			landRename();
+			await vi.waitFor(async () =>
+				expect(await getSyncOutboxKeys(TEST_WORKSPACE)).toContain(`label:${label.id}`)
+			);
+
+			await vi.advanceTimersByTimeAsync(1_500);
+			await vi.waitFor(async () =>
+				expect(await getSyncOutboxKeys(TEST_WORKSPACE)).toContain(`label-tombstone:${label.id}`)
+			);
+			expect(await idb.getAllLabels(TEST_WORKSPACE)).toEqual([]);
 		} finally {
 			vi.useRealTimers();
 		}

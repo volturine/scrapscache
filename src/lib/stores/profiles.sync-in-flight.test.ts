@@ -4,7 +4,8 @@ import { createSyncIdentity } from '#lib/syncPairing.js';
 import { ProfileCoordinator } from './profiles.svelte';
 import { notesStore } from './notes.svelte';
 import { SYNC_LOCK, syncScheduler } from './syncScheduler';
-import { syncStore } from './sync.svelte';
+import { relaySync, syncStore } from './sync.svelte';
+import { relay as appRelay } from '#lib/relayClient.js';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 
 // A sync runs for as long as the relay takes to answer. On a poor connection that
@@ -97,7 +98,7 @@ async function open(target: StoredProfile, others: StoredProfile[]) {
 /** Start a sync and wait until its request is out and unanswered. */
 async function syncAgainstSilentRelay(): Promise<{ flight: Promise<boolean> }> {
 	relay.answers = false;
-	const flight = notesStore.syncWithCloudManual();
+	const flight = syncScheduler.request(syncStore.activeId);
 	await vi.waitFor(() => expect(requests).toHaveLength(1));
 	// Wrapped: returning the flight itself would wait for it.
 	return { flight };
@@ -111,10 +112,7 @@ describe.each([
 		requests = [];
 		vi.stubGlobal('XMLHttpRequest', RelayXhr);
 		if (webLocks) vi.stubGlobal('navigator', { ...navigator, locks: serialLocks() });
-		vi.spyOn(
-			syncStore as unknown as { accessToken(): Promise<string> },
-			'accessToken'
-		).mockResolvedValue('token');
+		vi.spyOn(appRelay, 'accessToken').mockResolvedValue('token');
 	});
 
 	afterEach(async () => {
@@ -164,8 +162,8 @@ describe.each([
 		await open(syncing, [other]);
 		const { flight: left } = await syncAgainstSilentRelay();
 		const synced: string[] = [];
-		const syncWorkspace = syncStore.syncWorkspace.bind(syncStore);
-		vi.spyOn(syncStore, 'syncWorkspace').mockImplementation((profile, ...rest) => {
+		const syncWorkspace = relaySync.sync.bind(relaySync);
+		vi.spyOn(relaySync, 'sync').mockImplementation((profile, ...rest) => {
 			synced.push(profile.id);
 			return syncWorkspace(profile, ...rest);
 		});
@@ -174,7 +172,7 @@ describe.each([
 		expect(await new ProfileCoordinator().switchTo(other.id)).toEqual({ success: true });
 
 		// Its own sync starts and ends while the first workspace's request is still out.
-		expect(await notesStore.reconcileWithCloud()).toBe(true);
+		expect(await syncScheduler.catchUp(syncStore.activeId)).toBe(true);
 		expect(synced).toEqual([other.id]);
 		expect(requests[0].aborted).toBe(false);
 		expect(syncScheduler.syncing(syncing.id)).toBe(true);

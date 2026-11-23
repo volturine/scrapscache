@@ -42,23 +42,29 @@ function connection() {
 	const controller = new AbortController();
 	const onSeq = vi.fn();
 	const onOpen = vi.fn(() => true);
-	const store = {
-		isLoggedIn: true,
+	const relay = {
 		authorizedFetch: vi.fn(),
-		connectionToken: vi.fn(async () => ({ token: 't'.repeat(43), refused }))
+		connectionToken: vi.fn(async () => ({ token: 't'.repeat(43), refused })),
+		clientId: vi.fn((_accountId: string) => 'window-1')
 	};
-	return { store, refused, controller, onSeq, onOpen };
+	const account = {
+		syncKey: 'sync-key',
+		accountId: 'account-1',
+		authPublicKey: 'key',
+		pairingCode: ''
+	};
+	return { relay, account, refused, controller, onSeq, onOpen };
 }
 
 async function open(parts: ReturnType<typeof connection>) {
 	const done = openSyncEvents({
-		store: parts.store,
-		clientId: 'window-1',
+		relay: parts.relay,
+		account: parts.account,
 		signal: parts.controller.signal,
 		onOpen: parts.onOpen,
 		onSeq: parts.onSeq
 	});
-	await vi.waitFor(() => expect(parts.store.connectionToken).toHaveBeenCalled());
+	await vi.waitFor(() => expect(parts.relay.connectionToken).toHaveBeenCalled());
 	await Promise.resolve();
 	return { done, socket: FakeSocket.last };
 }
@@ -70,7 +76,9 @@ describe('the Workers live change socket', () => {
 		expect(socket.protocols).toEqual(['scrapscache-sync', 't'.repeat(43)]);
 		expect(socket.url.protocol).toBe('ws:');
 		expect(socket.url.pathname).toBe('/api/sync/events');
-		expect(Object.fromEntries(socket.url.searchParams)).toEqual({ clientId: 'window-1' });
+		expect(Object.fromEntries(socket.url.searchParams)).toEqual({
+			clientId: parts.relay.clientId(parts.account.accountId)
+		});
 		expect(socket.url.href).not.toContain('t'.repeat(43));
 		socket.close();
 	});

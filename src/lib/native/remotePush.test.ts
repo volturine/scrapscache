@@ -36,10 +36,10 @@ vi.mock('#lib/stores/sync.svelte.js', () => ({
 	syncStore: {
 		get profiles() {
 			return relay.profiles;
-		},
-		authorizedFetch: relay.fetch
+		}
 	}
 }));
+vi.mock('#lib/relayClient.js', () => ({ relay: { authorizedFetch: relay.fetch } }));
 vi.mock('#lib/serverOrigin.svelte.js', () => ({ serverOrigin: () => relay.server }));
 vi.mock('#lib/syncPairing.js', () => ({
 	identityFromSyncKey: (syncKey: string) => ({ accountId: `account-of-${syncKey}` })

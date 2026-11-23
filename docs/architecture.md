@@ -44,7 +44,11 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
 | Components     | `src/lib/components/`                                      | Editors, feed, sidebar, sync UI, backup dialogs                 |
 | Note model     | `src/lib/model/`                                           | Note types, edits, merge, body CRDT; shared with the MCP server |
 | Notes state    | `src/lib/stores/notes.svelte.ts`                           | CRUD, search, trash, labels                                     |
-| Sync state     | `src/lib/stores/sync.svelte.ts`                            | Pairing, auto-sync, cloud status                                |
+| Sync state     | `src/lib/stores/sync.svelte.ts`                            | Keyring, open workspace, sync status per workspace              |
+| Relay client   | `src/lib/relayClient.ts`                                   | Sign-ins and requests, per account                              |
+| Sync engine    | `src/lib/relaySync.ts`, `src/lib/workspaceSync.ts`         | One sync of a workspace: relay delta, database read and save    |
+| Sync scheduler | `src/lib/stores/syncScheduler.ts`                          | When each workspace syncs; one lane per workspace               |
+| Device pairing | `src/lib/deviceLink.ts`                                    | Rendezvous and sealed key handover                              |
 | Kanban         | `src/lib/stores/kanban.svelte.ts`, `src/lib/kanban.ts`     | Boards and columns                                              |
 | IndexedDB      | `src/lib/db/idb.ts`                                        | Persistence, outbox, replace/import; one database per workspace |
 | Workspaces     | `src/lib/profiles.ts`, `src/lib/stores/profiles.svelte.ts` | Sync-key keyring, workspace switching, dataset handover         |
@@ -226,7 +230,7 @@ with, in its database by the time it is shown.
 
 Replacing the cloud copy ("force push") has the shape an import has. The relay's
 copy is read first, with nothing held and nothing recorded on this device
-(`readRelay`). Then one transaction stamps this device's copy past the one that
+(`relaySync.read`). Then one transaction stamps this device's copy past the one that
 was read, records the sync state of that copy, and queues every record; an
 ordinary sync sends whatever differs. It lands over what it read, so it refuses to
 land when anything was saved in the workspace since, and is planned again. A tab
@@ -262,8 +266,10 @@ Notifications are one switch for the whole app (the browser's permission), but
 each synced workspace gets a push subscription of its own: a service worker
 registration under `/push/<workspace id>/`, with its own push address and a
 device id derived per account from a secret that never leaves the device. The
-relay therefore cannot tell that two accounts belong to the same browser; the
-push provider still can. Removing or unlinking a workspace removes its
+name a window gives the relay so its own changes are not signalled back to it
+(`x-sync-client-id`) is a different random one for each account too. The relay
+therefore cannot tell from any identifier that two accounts belong to the same
+browser; the network address still shows it, and the push provider can tell. Removing or unlinking a workspace removes its
 subscription only.
 
 The keyring itself — id, display name, and sync key per workspace — is held in

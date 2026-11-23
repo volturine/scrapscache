@@ -10,9 +10,16 @@ vi.mock('#lib/editorContext.js', () => ({
 	useEditorActions: () => ({ startNewNote: vi.fn(), closeNote: vi.fn() })
 }));
 
-import { syncStore, type StartedDeviceLink } from '#lib/stores/sync.svelte.js';
+const deviceLink = vi.hoisted(() => ({ startDeviceLink: vi.fn(), pollDeviceLink: vi.fn() }));
+vi.mock('#lib/deviceLink.js', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/deviceLink.js')>()),
+	...deviceLink
+}));
+
+import { relaySync, syncStore } from '#lib/stores/sync.svelte.js';
+import type { StartedDeviceLink } from '#lib/deviceLink.js';
 import { notesStore } from '#lib/stores/notes.svelte.js';
-import { syncScheduler } from '#lib/stores/syncScheduler.js';
+import { CAUGHT_UP_MS, syncScheduler } from '#lib/stores/syncScheduler.js';
 import { syncSnapshot } from '#lib/syncRecords.js';
 import {
 	linkTestWorkspace,
@@ -81,8 +88,8 @@ describe('Topbar sync status', () => {
 			syncCode: 'ABCD1234EFGH5678',
 			pake: { ephemeralSecret: 'secret', share: 'share' }
 		};
-		const start = vi.spyOn(syncStore, 'startDeviceLink').mockResolvedValue({ success: true, link });
-		vi.spyOn(syncStore, 'pollDeviceLink').mockReturnValue(new Promise(() => undefined));
+		const start = deviceLink.startDeviceLink.mockResolvedValue({ success: true, link });
+		deviceLink.pollDeviceLink.mockReturnValue(new Promise(() => undefined));
 		render(Topbar);
 
 		location.hash = `pair=${link.syncCode}`;
@@ -139,25 +146,25 @@ describe('Topbar sync status', () => {
 		expect(icon?.classList.contains('scrapscache-sync-icon-active')).toBe(false);
 	});
 
-	it('notifies sync indicator to spin during syncWithCloud and flushSync', async () => {
+	it('notifies sync indicator to spin during a catch-up and a sync request', async () => {
 		const startSpy = vi.fn();
 		const endSpy = vi.fn();
 		syncStore.onSyncStart = startSpy;
 		syncStore.onSyncEnd = endSpy;
 		linkTestWorkspace();
-		vi.spyOn(syncStore, 'syncWorkspace').mockImplementation(async () => {
+		vi.spyOn(relaySync, 'sync').mockImplementation(async () => {
 			expect(startSpy).toHaveBeenCalledOnce();
 			return { success: true, snapshot: syncSnapshot() };
 		});
 
-		await notesStore.syncWithCloud();
+		await syncScheduler.catchUp(syncStore.activeId, CAUGHT_UP_MS);
 		expect(startSpy).toHaveBeenCalledOnce();
 		expect(endSpy).toHaveBeenCalledOnce();
 
 		startSpy.mockClear();
 		endSpy.mockClear();
 
-		await notesStore.flushSync();
+		await syncScheduler.request(syncStore.activeId);
 		expect(startSpy).toHaveBeenCalledOnce();
 		expect(endSpy).toHaveBeenCalledOnce();
 	});

@@ -46,7 +46,8 @@ import { photoMarker } from '#lib/photoMarker.js';
 import type { Note, NoteImage } from '#lib/types.js';
 import { sha256 } from '#lib/syncHash.js';
 import { seedTestKeyring, TEST_WORKSPACE } from '../../tests/workspace';
-import { syncOpen } from '../../tests/openSync';
+import { syncOpen, syncParts } from '../../tests/openSync';
+import { relay as appRelay } from '#lib/relayClient.js';
 import { linkTestWorkspace, unlinkTestWorkspace } from '../../tests/syncing';
 import * as settling from '#lib/attachmentSettling.js';
 
@@ -113,7 +114,9 @@ function wire(
 	relay: RelayStore,
 	options: { limit?: number; afterUpload?: () => Promise<void>; cursors?: number[] } = {}
 ): void {
-	vi.spyOn(client as unknown as { sendSyncRequest: Send }, 'sendSyncRequest').mockImplementation(
+	// The app's own store syncs through the app's relay client; any other through its own.
+	const sender = client === syncStore ? appRelay : syncParts(client).relay;
+	vi.spyOn(sender as unknown as { sendSyncRequest: Send }, 'sendSyncRequest').mockImplementation(
 		async (_path, payload) => {
 			const body = JSON.parse(payload) as {
 				cursor: number;
@@ -173,7 +176,7 @@ async function otherDevice(
 
 /** This device is the app's own stores: the phone in these cases. */
 async function phoneSync(): Promise<void> {
-	expect(await notesStore.syncWithCloudManual()).toBe(true);
+	expect(await syncScheduler.request(syncStore.activeId)).toBe(true);
 }
 
 /** What the phone holds on disk for a note, attachments in full; null when it has no such note. */
@@ -340,7 +343,7 @@ describe('attachments across devices', () => {
 		wire(syncStore, relay, { cursors: phoneCursors });
 		askedByName = 0;
 		// The history route, answered by the same relay.
-		vi.spyOn(syncStore, 'authorizedFetch').mockImplementation(async (input) => {
+		vi.spyOn(appRelay, 'authorizedFetch').mockImplementation(async (input) => {
 			const url = new URL(String(input), 'https://relay.test');
 			const slot = url.searchParams.get('slot');
 			const at = url.searchParams.get('at');
@@ -673,8 +676,8 @@ describe('attachments across devices', () => {
 			notesStore.togglePin('trip');
 			await notesStore.flushNote('trip');
 
-			vi.mocked(syncStore.authorizedFetch).mockRejectedValueOnce(new Error('offline'));
-			expect(await notesStore.syncWithCloudManual()).toBe(false);
+			vi.mocked(appRelay.authorizedFetch).mockRejectedValueOnce(new Error('offline'));
+			expect(await syncScheduler.request(syncStore.activeId)).toBe(false);
 			expect((await onTheRelay('trip')).pinned).toBe(false);
 
 			// The next sync asks again and goes through.
@@ -696,13 +699,13 @@ describe('attachments across devices', () => {
 			await notesStore.flushNote('trip');
 
 			let unanswered: AbortSignal | null | undefined;
-			vi.mocked(syncStore.authorizedFetch).mockImplementationOnce((_input, init) => {
+			vi.mocked(appRelay.authorizedFetch).mockImplementationOnce((_input, init) => {
 				unanswered = init?.signal;
 				return new Promise<Response>((_resolve, reject) => {
 					init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
 				});
 			});
-			const flight = notesStore.syncWithCloudManual();
+			const flight = syncScheduler.request(syncStore.activeId);
 			await vi.waitFor(() => expect(unanswered).toBeTruthy());
 
 			let duringHandover: { pinned?: boolean; bytes: Record<string, string> } | undefined;

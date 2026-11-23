@@ -25,7 +25,9 @@ import type { Note } from '#lib/types.js';
 import { notesStore } from './notes.svelte';
 import { syncScheduler } from './syncScheduler';
 import { profileCoordinator } from './profiles.svelte';
-import { PROFILE_META_KEY, syncStore, type SyncAccount } from './sync.svelte';
+import { syncStore } from './sync.svelte';
+import { PROFILE_META_KEY } from '#lib/relaySync.js';
+import { relay as appRelay, type SyncAccount } from '#lib/relayClient.js';
 import { kanbanStore } from './kanban.svelte';
 import { createKanbanBoard } from '#lib/kanban.js';
 import { seedTestKeyring, TEST_WORKSPACE } from '../../tests/workspace';
@@ -166,7 +168,7 @@ describe('a workspace that is not open', () => {
 		stopAnsweringAfterUpload = false;
 		unanswered = 0;
 		vi.spyOn(
-			syncStore as unknown as { sendSyncRequest: Send },
+			appRelay as unknown as { sendSyncRequest: Send },
 			'sendSyncRequest'
 		).mockImplementation(async (_path, payload, _bytes, _indicate, account, signal) => {
 			requests.push(account.accountId);
@@ -198,7 +200,7 @@ describe('a workspace that is not open', () => {
 			}
 			return { success: true, data };
 		});
-		vi.spyOn(syncStore, 'authorizedFetch').mockImplementation(async () =>
+		vi.spyOn(appRelay, 'authorizedFetch').mockImplementation(async () =>
 			Response.json({ error: 'Not found' }, { status: 404 })
 		);
 		syncStore.profiles = [left, here];
@@ -263,7 +265,7 @@ describe('a workspace that is not open', () => {
 		let relayAsked = false;
 		let answer: () => void = () => undefined;
 		const waiting = new Promise<void>((resolve) => (answer = resolve));
-		vi.spyOn(syncStore, 'authorizedFetch').mockImplementation(async () => {
+		vi.spyOn(appRelay, 'authorizedFetch').mockImplementation(async () => {
 			relayAsked = true;
 			await waiting;
 			return Response.json({ error: 'Not found' }, { status: 404 });
@@ -379,7 +381,7 @@ describe('a workspace that is not open', () => {
 		await putNote(left.id, note('unsent', 'Refused by the relay'), ['note:unsent']);
 		await waitForDeviceWrites(left.id);
 		vi.spyOn(
-			syncStore as unknown as { sendSyncRequest: Send },
+			appRelay as unknown as { sendSyncRequest: Send },
 			'sendSyncRequest'
 		).mockResolvedValueOnce({ success: false, error: 'Account storage is full' });
 
@@ -427,7 +429,7 @@ describe('a workspace that is not open', () => {
 		expect(notesStore.notes.map((item) => item.title)).toEqual(['Theirs']);
 		expect(kanbanStore.boards.map((board) => board.name)).toEqual(['Their board']);
 		// Opening it sends nothing of this device's own.
-		expect(await notesStore.flushSync()).toBe(true);
+		expect(await syncScheduler.request(syncStore.activeId)).toBe(true);
 		const records = await relayRecords(paired);
 		expect(
 			records.flatMap((record) => (record.kind === 'board' ? [record.value.name] : []))
@@ -519,7 +521,7 @@ describe('a workspace that is not open', () => {
 		await waitForDeviceWrites(synced.id);
 
 		// The open workspace syncs start to end while the other one's request is still out.
-		expect(await notesStore.syncWithCloudManual()).toBe(true);
+		expect(await syncScheduler.request(syncStore.activeId)).toBe(true);
 		expect(await relayNoteTitles(openIdentity)).toEqual(['In the open workspace']);
 		expect(requests.filter((account) => account === identity.accountId)).toHaveLength(1);
 		expect(syncScheduler.syncing(left.id)).toBe(true);
@@ -531,7 +533,7 @@ describe('a workspace that is not open', () => {
 		silent.add(identity.accountId);
 		notesStore.createNote({ title: 'Written on a bad connection' });
 		await waitForDeviceWrites(left.id);
-		const flight = notesStore.syncWithCloudManual();
+		const flight = syncScheduler.request(syncStore.activeId);
 		await vi.waitFor(() => expect(requests).toHaveLength(1));
 
 		expect(await profileCoordinator.switchTo(here.id)).toEqual({ success: true });

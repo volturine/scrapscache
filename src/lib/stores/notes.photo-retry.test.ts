@@ -37,14 +37,8 @@ describe('photo bytes across a failed save', () => {
 
 	afterEach(async () => {
 		vi.restoreAllMocks();
-		const internals = notesStore as unknown as {
-			noteRetryTimers: Map<string, ReturnType<typeof setTimeout>>;
-			noteRetryAttempts: Map<string, number>;
-		};
 		await syncScheduler.reset();
-		for (const timer of internals.noteRetryTimers.values()) clearTimeout(timer);
-		internals.noteRetryTimers.clear();
-		internals.noteRetryAttempts.clear();
+		(notesStore as unknown as { noteRetries: { clear(): void } }).noteRetries.clear();
 		notesStore.notes = [];
 		notesStore.lastPersistError = null;
 	});

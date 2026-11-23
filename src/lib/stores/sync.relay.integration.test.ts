@@ -17,7 +17,7 @@ import type { Note, NoteImage } from '#lib/types.js';
 import { sha256 } from '#lib/syncHash.js';
 import type { CanvasLibraryEntry } from '#lib/canvasLibrary.js';
 import { seedTestKeyring, TEST_WORKSPACE } from '../../tests/workspace';
-import { syncOpen } from '../../tests/openSync';
+import { syncOpen, syncParts } from '../../tests/openSync';
 
 afterEach(() => cleanupTestDbs());
 
@@ -72,7 +72,7 @@ function wire(
 	requests: Array<{ envelopes: unknown[]; deleteSlots: Array<{ id: string; slot: string }> }>
 ): void {
 	vi.spyOn(
-		client as unknown as {
+		syncParts(client).relay as unknown as {
 			sendSyncRequest(
 				path: string,
 				payload: string
@@ -195,7 +195,7 @@ describe('client sync against the sqlite relay', () => {
 		await putNote(TEST_WORKSPACE, replaced, [`note:${replaced.id}`, `attachment:${newImage.id}`]);
 		let replacementStored = false;
 		vi.spyOn(
-			client as unknown as {
+			syncParts(client).relay as unknown as {
 				sendSyncRequest(
 					path: string,
 					payload: string

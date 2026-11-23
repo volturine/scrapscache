@@ -8,7 +8,8 @@ import { stripPhotoMarkers } from '#lib/photoMarker.js';
 import { attachmentToImage } from '#lib/syncRecords.js';
 import { sha256 } from '#lib/syncHash.js';
 import { cloneNote } from '#lib/utils.js';
-import type { PulledRelayState, SyncAccount } from '#lib/stores/sync.svelte.js';
+import type { SyncAccount } from '#lib/relayClient.js';
+import type { PulledRelayState } from '#lib/relaySync.js';
 
 /**
  * What settling decided for attachment versions a note listed, keyed by note id,

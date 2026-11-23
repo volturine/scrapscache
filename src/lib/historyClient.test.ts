@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSyncIdentity, encryptSyncPayload } from '#lib/syncPairing.js';
 import { sha256 } from '#lib/syncHash.js';
-import { syncStore } from '#lib/stores/sync.svelte.js';
+import { relay } from '#lib/relayClient.js';
 import { unboundSyncEnvelope } from '../tests/unboundEnvelope';
 import { hydrateHistoryNote, loadCurrentAttachment, loadNoteHistory } from './historyClient';
 
@@ -39,7 +39,7 @@ describe('encrypted note history', () => {
 			unboundSyncEnvelope(account.syncKey, payload),
 			encryptSyncPayload(account.syncKey, payload, otherSlot)
 		]) {
-			vi.spyOn(syncStore, 'authorizedFetch').mockResolvedValueOnce(
+			vi.spyOn(relay, 'authorizedFetch').mockResolvedValueOnce(
 				respond({ versions: [{ historyId: 1, savedAt: 1, id: 'v', ciphertext }] })
 			);
 			await expect(loadNoteHistory(account, 'old-note')).rejects.toThrow(
@@ -63,7 +63,7 @@ describe('encrypted note history', () => {
 		const version = note('old-note', {
 			images: [{ id: attachment.id, mime: attachment.mime, createdAt: 1, hash: attachment.hash }]
 		});
-		const fetch = vi.spyOn(syncStore, 'authorizedFetch').mockImplementation(async (path) =>
+		const fetch = vi.spyOn(relay, 'authorizedFetch').mockImplementation(async (path) =>
 			String(path).includes('&at=')
 				? respond({
 						id: 'old-attachment',
@@ -128,7 +128,7 @@ describe('encrypted note history', () => {
 		};
 		const sealed = (value: typeof oldImage) =>
 			encryptSyncPayload(account.syncKey, { kind: 'attachment', value }, imageSlot);
-		vi.spyOn(syncStore, 'authorizedFetch').mockImplementation(async (path) =>
+		vi.spyOn(relay, 'authorizedFetch').mockImplementation(async (path) =>
 			String(path).includes('&at=')
 				? respond({ id: 'new', slot: imageSlot, ciphertext: sealed(newImage) })
 				: respond({
@@ -165,7 +165,7 @@ describe('encrypted note history', () => {
 		const account = createSyncIdentity();
 		const otherSlot = await sha256(`${account.syncKey}\u0000note:other-note`);
 		// A relay serves another record's version in this note's list.
-		vi.spyOn(syncStore, 'authorizedFetch').mockResolvedValue(
+		vi.spyOn(relay, 'authorizedFetch').mockResolvedValue(
 			respond({
 				versions: [
 					{
@@ -188,7 +188,7 @@ describe('encrypted note history', () => {
 
 	it('opens a version whose attachment was deleted since, counting what is missing', async () => {
 		const account = createSyncIdentity();
-		vi.spyOn(syncStore, 'authorizedFetch').mockImplementation(async (path) =>
+		vi.spyOn(relay, 'authorizedFetch').mockImplementation(async (path) =>
 			String(path).includes('&at=')
 				? respond({ error: 'Envelope not found' }, 404)
 				: respond({ versions: [] })
@@ -222,7 +222,7 @@ describe('encrypted note history', () => {
 	it('drops a request for an attachment when the sync asking for it gives up', async () => {
 		const account = createSyncIdentity();
 		let requested: AbortSignal | null | undefined;
-		vi.spyOn(syncStore, 'authorizedFetch').mockImplementation((_path, init) => {
+		vi.spyOn(relay, 'authorizedFetch').mockImplementation((_path, init) => {
 			requested = init?.signal;
 			return new Promise<Response>((_resolve, reject) => {
 				init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));

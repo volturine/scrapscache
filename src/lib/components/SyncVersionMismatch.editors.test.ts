@@ -6,7 +6,9 @@ import { createSyncIdentity } from '#lib/syncPairing.js';
 import { CANVAS_MIME } from '#lib/canvasAttachment.js';
 import type { Note } from '#lib/types.js';
 import { notesStore } from '#lib/stores/notes.svelte.js';
-import { syncStore, SYNC_VERSION_MISMATCH_MESSAGE } from '#lib/stores/sync.svelte.js';
+import { syncStore } from '#lib/stores/sync.svelte.js';
+import { relay, SYNC_VERSION_MISMATCH_MESSAGE } from '#lib/relayClient.js';
+import { syncScheduler } from '#lib/stores/syncScheduler.js';
 import CanvasEditor from './CanvasEditor.svelte';
 import NoteEditor from './NoteEditor.svelte';
 
@@ -52,7 +54,8 @@ type SyncTransport = {
 		path: string,
 		payload: string,
 		uploadBytes: number,
-		indicate: boolean
+		indicate: boolean,
+		account: unknown
 	): Promise<{ success: boolean; status?: number; error?: string }>;
 	accessToken(account: unknown): Promise<string>;
 };
@@ -105,9 +108,9 @@ function storedNote(): Note {
 }
 
 async function requestMismatch() {
-	const transport = syncStore as unknown as SyncTransport;
+	const transport = relay as unknown as SyncTransport;
 	vi.spyOn(transport, 'accessToken').mockResolvedValue('token');
-	return transport.sendSyncRequest(SYNC_DELTA_PATH, '{}', 2, false);
+	return transport.sendSyncRequest(SYNC_DELTA_PATH, '{}', 2, false, syncStore.account);
 }
 
 function stubReload() {
@@ -140,7 +143,7 @@ beforeEach(() => {
 	vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
 	vi.spyOn(notesStore, 'flushNote').mockResolvedValue();
 	vi.spyOn(notesStore, 'discardIfEmpty').mockResolvedValue();
-	vi.spyOn(notesStore, 'syncPendingChanges').mockResolvedValue(false);
+	vi.spyOn(syncScheduler, 'flush').mockResolvedValue(false);
 	canvasModule.mountExcalidraw.mockImplementation(async (node: HTMLElement) => {
 		const surface = document.createElement('div');
 		surface.dataset.testid = 'fake-canvas-surface';

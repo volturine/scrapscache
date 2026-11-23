@@ -7,7 +7,9 @@ import {
 import { DEFAULT_SERVER_ORIGIN } from '#lib/serverOrigin.svelte.js';
 import { createSyncIdentity } from '#lib/syncPairing.js';
 import { STALE_MODULE_RELOAD_KEY } from '#lib/staleModuleReload.js';
-import { SYNC_VERSION_MISMATCH_MESSAGE, SyncStore } from './sync.svelte';
+import { SyncStore, serverChanged, syncEventsClient, syncStore } from './sync.svelte';
+import { SYNC_VERSION_MISMATCH_MESSAGE, relay } from '#lib/relayClient.js';
+import { syncParts } from '../../tests/openSync';
 
 type Reply =
 	| { network: true }
@@ -78,19 +80,20 @@ type Transport = {
 		uploadBytes: number,
 		shown: () => boolean,
 		account?: unknown,
-		signal?: AbortSignal
+		signal?: AbortSignal,
+		cancelled?: () => boolean
 	): Promise<{ success: boolean; status?: number; error?: string; retryAfterSeconds?: number }>;
 	accessToken(): Promise<string>;
 };
 
 function transport(store: SyncStore): Transport {
-	const internals = store as unknown as Transport;
-	vi.spyOn(internals, 'accessToken').mockResolvedValue('token');
-	return internals;
+	const relay = syncParts(store).relay as unknown as Transport;
+	vi.spyOn(relay, 'accessToken').mockResolvedValue('token');
+	return relay;
 }
 
 async function send(store: SyncStore) {
-	const pending = transport(store).sendSyncRequest(SYNC_DELTA_PATH, '{}', 2, hidden);
+	const pending = transport(store).sendSyncRequest(SYNC_DELTA_PATH, '{}', 2, hidden, store.account);
 	await vi.runAllTimersAsync();
 	return pending;
 }
@@ -126,20 +129,33 @@ describe('sync transport', () => {
 		expect(opened).toEqual([`${DEFAULT_SERVER_ORIGIN}${SYNC_DELTA_PATH}`]);
 	});
 
-	it('forgets its sessions and reconnects when the server setting moves', async () => {
-		const held = store as unknown as {
+	it('forgets sign-ins and sync state, and reconnects, when the server setting moves', async () => {
+		const held = relay as unknown as {
 			sessions: Map<string, unknown>;
 			pendingSessions: Map<string, unknown>;
 		};
 		held.sessions.set('a', { accessToken: 'old-server', expiresAt: Date.now() + 60_000 });
 		held.pendingSessions.set('a', Promise.resolve('old-server'));
-		store.onAccountChange = vi.fn();
+		const workspace = {
+			id: 'moved-server',
+			name: 'Moved',
+			syncKey: createSyncIdentity().syncKey,
+			createdAt: 1
+		};
+		const before = syncStore.profiles;
+		syncStore.profiles = [...before, workspace];
+		syncStore.state(workspace.id).lastError = 'The old server said no';
+		const accountChanged = vi.spyOn(syncEventsClient, 'accountChanged');
+		try {
+			serverChanged();
 
-		store.serverChanged();
-
-		expect(held.sessions.size).toBe(0);
-		expect(held.pendingSessions.size).toBe(0);
-		expect(store.onAccountChange).toHaveBeenCalledOnce();
+			expect(held.sessions.size).toBe(0);
+			expect(held.pendingSessions.size).toBe(0);
+			expect(syncStore.stateOf(workspace.id).lastError).toBeNull();
+			expect(accountChanged).toHaveBeenCalledOnce();
+		} finally {
+			syncStore.profiles = before;
+		}
 		// The store's own device reads run on the faked clock.
 		await vi.runAllTimersAsync();
 	});
@@ -204,7 +220,7 @@ describe('sync transport', () => {
 		});
 
 		it('stops waiting for a sign-in the relay has not answered', async () => {
-			const internals = store as unknown as Transport;
+			const internals = syncParts(store).relay as unknown as Transport;
 			vi.spyOn(internals, 'accessToken').mockReturnValue(new Promise(() => undefined));
 			const round = new AbortController();
 			const pending = internals.sendSyncRequest(
@@ -251,7 +267,13 @@ describe('sync transport', () => {
 	describe('a request the relay goes silent on', () => {
 		const sendSilent = async () => {
 			replies = [{ silent: true }];
-			const pending = transport(store).sendSyncRequest(SYNC_DELTA_PATH, '{}', 2, hidden);
+			const pending = transport(store).sendSyncRequest(
+				SYNC_DELTA_PATH,
+				'{}',
+				2,
+				hidden,
+				store.account
+			);
 			await vi.advanceTimersByTimeAsync(0);
 			expect(sends).toBe(1);
 			return pending;
@@ -317,11 +339,12 @@ describe('sync transport', () => {
 						)
 				)
 			);
-			const pending = (store as unknown as Transport).sendSyncRequest(
+			const pending = (syncParts(store).relay as unknown as Transport).sendSyncRequest(
 				SYNC_DELTA_PATH,
 				'{}',
 				2,
-				hidden
+				hidden,
+				store.account
 			);
 			await vi.advanceTimersByTimeAsync(60_000);
 
@@ -496,7 +519,17 @@ describe('sync transport', () => {
 
 	it('drops the retry once the workspace leaves this account', async () => {
 		replies = [{ network: true }, { status: 200, body: {} }];
-		const pending = transport(store).sendSyncRequest(SYNC_DELTA_PATH, '{}', 2, hidden);
+		const account = store.account;
+		// The sync that sent the request decides when it is given up.
+		const pending = transport(store).sendSyncRequest(
+			SYNC_DELTA_PATH,
+			'{}',
+			2,
+			hidden,
+			account,
+			undefined,
+			() => store.account !== account
+		);
 		await vi.advanceTimersByTimeAsync(0);
 		store.account = createSyncIdentity();
 		await vi.runAllTimersAsync();

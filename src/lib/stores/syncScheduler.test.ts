@@ -12,7 +12,8 @@ import { clearSyncOutbox, getSyncOutboxKeys, markSyncOutbox } from '#lib/db/idb.
 import type { StoredProfile } from '#lib/profiles.js';
 import { createSyncIdentity, randomOpaqueId } from '#lib/syncPairing.js';
 import { syncSnapshot, type SyncSnapshot } from '#lib/syncRecords.js';
-import { syncStore, type SyncOutcome } from './sync.svelte';
+import type { SyncOutcome } from '#lib/relaySync.js';
+import { syncStore } from './sync.svelte';
 import { syncScheduler } from './syncScheduler';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 
@@ -295,5 +296,94 @@ describe('the sync scheduler', () => {
 
 		expect(await Promise.all([asked, caughtUp])).toEqual([true, true]);
 		expect(rounds).toEqual(['open', 'open']);
+	});
+
+	it('syncs a workspace at once only when it has something to send', async () => {
+		expect(await syncScheduler.flush(open.id)).toBe(false);
+		expect(rounds).toEqual([]);
+
+		expect(await syncScheduler.flush(other.id)).toBe(true);
+		expect(rounds).toEqual(['other']);
+	});
+
+	it('syncs when the relay says a workspace changed, unless this device already has that', async () => {
+		syncStore.syncedCursor = 7;
+
+		expect(await syncScheduler.heard(open.id, 7)).toBe(true);
+		expect(await syncScheduler.heard(open.id, 3)).toBe(true);
+		expect(rounds).toEqual([]);
+
+		expect(await syncScheduler.heard(open.id, 8)).toBe(true);
+		// A connection that has just opened names no position: it always asks.
+		expect(await syncScheduler.heard(open.id)).toBe(true);
+		// What one workspace has says nothing of another.
+		expect(await syncScheduler.heard(other.id, 7)).toBe(true);
+		expect(rounds).toEqual(['open', 'open', 'other']);
+	});
+
+	describe('when the app is put away', () => {
+		const show = (state: 'hidden' | 'visible') => {
+			Object.defineProperty(document, 'visibilityState', { value: state, configurable: true });
+			document.dispatchEvent(new Event('visibilitychange'));
+		};
+
+		afterEach(() => {
+			Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+		});
+
+		it('sends what was waiting for changes to pause, in every workspace, at once', async () => {
+			syncScheduler.changed(other.id);
+			syncScheduler.changed(third.id);
+			expect(rounds).toEqual([]);
+
+			show('hidden');
+
+			await vi.waitFor(() => expect([...rounds].sort()).toEqual(['other', 'third']));
+			await vi.waitFor(() => expect(syncScheduler.syncing(other.id)).toBe(false));
+			expect(await getSyncOutboxKeys(other.id)).toEqual([]);
+		});
+
+		it('sends it when the page is closed, too', async () => {
+			syncScheduler.changed(other.id);
+
+			window.dispatchEvent(new Event('pagehide'));
+
+			await vi.waitFor(() => expect(rounds).toEqual(['other']));
+		});
+
+		it('tries a round again at once when it began before the app was shown again', async () => {
+			await clearSyncOutbox(other.id, await getSyncOutboxKeys(other.id));
+			const frozen = hold(other);
+			const asked = syncScheduler.request(other.id);
+			await vi.waitFor(() => expect(rounds).toEqual(['other']));
+			show('hidden');
+			await new Promise((resolve) => setTimeout(resolve, 5));
+
+			show('visible');
+			// The request the page was frozen with is given up by the browser.
+			frozen.answer('failed');
+
+			expect(await asked).toBe(false);
+			// Nothing is queued in it, and it still catches up: its failure was the freeze's.
+			// (Being shown again also has the other workspaces catch up.)
+			await vi.waitFor(() =>
+				expect(rounds.filter((round) => round === 'other')).toEqual(['other', 'other'])
+			);
+		});
+
+		it('leaves a workspace alone that has nothing waiting, or waits to try the relay again', async () => {
+			driver.sync.mockImplementationOnce(async (profile) => {
+				rounds.push(name(profile.id) ?? '?');
+				return 'failed';
+			});
+			expect(await syncScheduler.request(other.id)).toBe(false);
+			expect(rounds).toEqual(['other']);
+
+			show('hidden');
+			await new Promise((resolve) => setTimeout(resolve, 20));
+
+			// `other` waits for its next try, and nothing was asked of `open` or `third`.
+			expect(rounds).toEqual(['other']);
+		});
 	});
 });

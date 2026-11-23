@@ -17,7 +17,9 @@ import { unregisterReminderDevice } from '#lib/reminderWake.js';
 import { ProfileCoordinator, profileCoordinator } from './profiles.svelte';
 import { notesStore } from './notes.svelte';
 import { SYNC_LOCK, syncScheduler } from './syncScheduler';
-import { PROFILE_META_KEY, syncStore } from './sync.svelte';
+import { syncStore } from './sync.svelte';
+import { PROFILE_META_KEY } from '#lib/relaySync.js';
+import { relay } from '#lib/relayClient.js';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 import { WORKSPACE_LOCK, withWorkspaceLock } from '#lib/webLock.js';
 
@@ -91,7 +93,7 @@ describe('workspace changes', () => {
 		syncStore.activateProfile(local);
 		await putNote(local.id, note('local-note'));
 		stubChange();
-		const sync = vi.spyOn(notesStore, 'syncWithCloudManual').mockReturnValue(new Promise(() => {}));
+		const sync = vi.spyOn(syncScheduler, 'request').mockReturnValue(new Promise(() => {}));
 		vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ ok: true }));
 
 		const result = await new ProfileCoordinator().startSync(local.id, 'Field notes');
@@ -116,7 +118,7 @@ describe('workspace changes', () => {
 		await putNote(retired.id, note('kept-note'));
 		const oldAccount = syncStore.account!.accountId;
 		stubChange();
-		const sync = vi.spyOn(notesStore, 'syncWithCloudManual').mockReturnValue(new Promise(() => {}));
+		const sync = vi.spyOn(syncScheduler, 'request').mockReturnValue(new Promise(() => {}));
 		const cleared = vi.spyOn(syncStore, 'clearAccountControlPlane');
 		const register = vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ ok: true }));
 
@@ -158,7 +160,7 @@ describe('workspace changes', () => {
 		syncStore.profiles = [current, other];
 		syncStore.activateProfile(current);
 		stubChange();
-		const sync = vi.spyOn(notesStore, 'syncWithCloudManual');
+		const sync = vi.spyOn(syncScheduler, 'request');
 		vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ ok: true }));
 
 		const result = await new ProfileCoordinator().startSync(other.id);
@@ -242,7 +244,7 @@ describe('workspace changes', () => {
 		syncStore.activateProfile(active);
 		await putNote(active.id, note('synced-note'));
 		const reload = stubChange();
-		const deleteCloud = vi.spyOn(syncStore, 'deleteRelayAccount');
+		const deleteCloud = vi.spyOn(relay, 'deleteAccount');
 
 		const result = await new ProfileCoordinator().unlink(active.id);
 
@@ -280,7 +282,7 @@ describe('workspace changes', () => {
 		await putNote(active.id, note('kept-note'));
 		stubChange();
 		const request = vi
-			.spyOn(syncStore, 'authorizedFetch')
+			.spyOn(relay, 'authorizedFetch')
 			.mockResolvedValue(new Response(null, { status: 204 }));
 
 		const result = await new ProfileCoordinator().unlink(active.id, true);
@@ -304,7 +306,7 @@ describe('workspace changes', () => {
 		syncStore.profiles = [active];
 		syncStore.activateProfile(active);
 		stubChange();
-		vi.spyOn(syncStore, 'authorizedFetch').mockResolvedValue(
+		vi.spyOn(relay, 'authorizedFetch').mockResolvedValue(
 			Response.json({ error: 'Relay unavailable' }, { status: 503 })
 		);
 
@@ -382,7 +384,7 @@ describe('workspace changes', () => {
 		syncStore.activateProfile(current);
 		await putNote(current.id, note('stay'));
 		const reload = stubChange();
-		const register = vi.spyOn(syncStore, 'registerAccount');
+		const register = vi.spyOn(relay, 'registerAccount');
 
 		const result = await new ProfileCoordinator().createLocal();
 
@@ -402,7 +404,7 @@ describe('workspace changes', () => {
 		syncStore.profiles = [local, synced];
 		syncStore.activateProfile(synced);
 		const reload = stubChange();
-		const sync = vi.spyOn(notesStore, 'reconcileWithCloud').mockResolvedValue(true);
+		const sync = vi.spyOn(syncScheduler, 'catchUp').mockResolvedValue(true);
 
 		expect(await new ProfileCoordinator().switchTo(local.id)).toEqual({ success: true });
 		expect(syncStore.activeId).toBe(local.id);
@@ -423,9 +425,7 @@ describe('workspace changes', () => {
 		syncStore.profiles = [local, synced];
 		syncStore.activateProfile(local);
 		stubChange();
-		const sync = vi
-			.spyOn(notesStore, 'reconcileWithCloud')
-			.mockReturnValue(new Promise(() => undefined));
+		const sync = vi.spyOn(syncScheduler, 'catchUp').mockReturnValue(new Promise(() => undefined));
 
 		expect(await new ProfileCoordinator().switchTo(synced.id)).toEqual({ success: true });
 		expect(syncStore.activeId).toBe(synced.id);

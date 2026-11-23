@@ -4,6 +4,7 @@ import { tick } from 'svelte';
 import { createSyncIdentity } from '#lib/syncPairing.js';
 import { notesStore } from '#lib/stores/notes.svelte.js';
 import { syncStore } from '#lib/stores/sync.svelte.js';
+import { syncScheduler } from '#lib/stores/syncScheduler.js';
 import { uiStore } from '#lib/stores/ui.svelte.js';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 import SyncAttentionBanner from './SyncAttentionBanner.svelte';
@@ -77,7 +78,7 @@ describe('SyncAttentionBanner', () => {
 	});
 
 	it('offers a retry for a sync error and goes away when dismissed, until a new error', async () => {
-		const retry = vi.spyOn(notesStore, 'syncWithCloudManual').mockResolvedValue(true);
+		const retry = vi.spyOn(syncScheduler, 'request').mockResolvedValue(true);
 		render(SyncAttentionBanner);
 
 		syncStore.lastError = 'TypeError: Failed to fetch';

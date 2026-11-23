@@ -9,7 +9,7 @@
 		normalizeServerOrigin,
 		serverSetting
 	} from '#lib/serverOrigin.svelte.js';
-	import { syncStore } from '#lib/stores/sync.svelte.js';
+	import { serverChanged } from '#lib/stores/sync.svelte.js';
 	import { serverPromptStyles as styles } from '$panda/styles';
 	import { cx } from 'styled-system/css';
 	import { button, dialog, input } from 'styled-system/recipes';
@@ -77,7 +77,7 @@
 		if (!origin) return;
 		const previous = serverSetting.origin;
 		if (!serverSetting.set(origin)) return;
-		if (serverSetting.origin !== previous) syncStore.serverChanged();
+		if (serverSetting.origin !== previous) serverChanged();
 		onClose();
 	}
 </script>

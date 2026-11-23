@@ -3,7 +3,8 @@ import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NoteHistoryEntry } from '#lib/historyClient.js';
 import { notesStore } from '#lib/stores/notes.svelte.js';
-import { syncStore } from '#lib/stores/sync.svelte.js';
+import { relaySync, syncStore } from '#lib/stores/sync.svelte.js';
+import { syncScheduler } from '#lib/stores/syncScheduler.js';
 import type { SyncNote } from '#lib/syncRecords.js';
 import type { Note } from '#lib/types.js';
 import NoteEditor from './NoteEditor.svelte';
@@ -46,7 +47,7 @@ const earlier: NoteHistoryEntry = {
 beforeEach(() => {
 	vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
 	Element.prototype.scrollIntoView = vi.fn();
-	vi.spyOn(notesStore, 'syncPendingChanges').mockResolvedValue(true);
+	vi.spyOn(syncScheduler, 'flush').mockResolvedValue(true);
 	syncStore.account = {
 		syncKey: 'test-key',
 		accountId: 'test-account',
@@ -124,11 +125,11 @@ describe('NoteEditor time travel', () => {
 	it('uploads what came before a restore as its own version, then starts a new one', async () => {
 		const ends = [vi.fn(), vi.fn()];
 		const begin = vi
-			.spyOn(syncStore, 'beginEditSession')
+			.spyOn(relaySync, 'beginEditSession')
 			.mockReturnValueOnce(ends[0])
 			.mockReturnValueOnce(ends[1]);
 		const order: string[] = [];
-		vi.spyOn(notesStore, 'syncPendingChanges').mockImplementation(async () => {
+		vi.spyOn(syncScheduler, 'flush').mockImplementation(async () => {
 			order.push('sync');
 			return true;
 		});

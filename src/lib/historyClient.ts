@@ -9,12 +9,12 @@ import { sha256 } from '#lib/syncHash.js';
 import { RELAY_SILENCE_MS, withinTime } from '#lib/syncRetry.js';
 import type { Note, NoteImage } from '#lib/types.js';
 import type { HistoryEnvelope, HistoryList } from '#lib/syncHistory.js';
-import { syncStore, type SyncAccount } from '#lib/stores/sync.svelte.js';
+import { relay, type SyncAccount } from '#lib/relayClient.js';
 
 export type NoteHistoryEntry = { historyId: number; savedAt: number; note: SyncNote };
 
 async function read<T>(path: string, account: SyncAccount, signal?: AbortSignal): Promise<T> {
-	const response = await syncStore.authorizedFetch(path, { cache: 'no-store', signal }, account);
+	const response = await relay.authorizedFetch(path, { cache: 'no-store', signal }, account);
 	if (!response.ok) throw new Error('Could not load sync history.');
 	return response.json() as Promise<T>;
 }
@@ -24,7 +24,7 @@ async function readOptional<T>(
 	account: SyncAccount,
 	signal?: AbortSignal
 ): Promise<T | null> {
-	const response = await syncStore.authorizedFetch(path, { cache: 'no-store', signal }, account);
+	const response = await relay.authorizedFetch(path, { cache: 'no-store', signal }, account);
 	if (response.status === 404) return null;
 	if (!response.ok) throw new Error('Could not load sync history.');
 	return response.json() as Promise<T>;

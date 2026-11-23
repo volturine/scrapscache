@@ -5,10 +5,10 @@ export class SyncEventsUpgradeRequired extends Error {}
 
 /** Server-sent events, as the Node relay serves them. Resolves when the stream ends. */
 export async function openSyncEvents(connection: SyncEventsConnection): Promise<void> {
-	const { store, clientId, signal } = connection;
+	const { relay, account, signal } = connection;
 	// A path: authorizedFetch resolves it against the server itself.
-	const path = `/api/sync/events?clientId=${encodeURIComponent(clientId)}`;
-	const response = await store.authorizedFetch(path, { signal });
+	const path = `/api/sync/events?clientId=${encodeURIComponent(relay.clientId(account.accountId))}`;
+	const response = await relay.authorizedFetch(path, { signal }, account);
 	if (response.status === 426) throw new SyncEventsUpgradeRequired();
 	if (!response.ok || !response.body) {
 		throw new Error(`SSE error: ${response.status}`);

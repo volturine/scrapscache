@@ -1,17 +1,27 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createSyncIdentity, formatPairingCode } from '#lib/syncPairing.js';
+import { createSyncIdentity, formatPairingCode, identityFromSyncKey } from '#lib/syncPairing.js';
 import type { StoredProfile } from '#lib/profiles.js';
 import { notesStore } from '#lib/stores/notes.svelte.js';
 import { profileCoordinator } from '#lib/stores/profiles.svelte.js';
-import {
-	syncStore,
-	SYNC_VERSION_MISMATCH_MESSAGE,
-	type StartedDeviceLink
-} from '#lib/stores/sync.svelte.js';
+import { syncStore } from '#lib/stores/sync.svelte.js';
+import { SYNC_VERSION_MISMATCH_MESSAGE } from '#lib/relayClient.js';
+import type { StartedDeviceLink } from '#lib/deviceLink.js';
+import { syncScheduler } from '#lib/stores/syncScheduler.js';
 import SyncModal from './SyncModal.svelte';
 import { loadTurnstileNeed, type TurnstileNeed } from '#lib/turnstileOrigin.js';
+
+// The pairing calls of the sync dialog, each replaced by the test that uses it.
+const deviceLink = vi.hoisted(() => ({
+	startDeviceLink: vi.fn(),
+	startExistingDeviceLink: vi.fn(),
+	pollDeviceLink: vi.fn()
+}));
+vi.mock('#lib/deviceLink.js', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/deviceLink.js')>()),
+	...deviceLink
+}));
 
 // The sync server says whether it wants a Turnstile token; most tests use one that does not.
 vi.mock('#lib/turnstileOrigin.js', () => ({
@@ -58,6 +68,7 @@ describe('SyncModal profile interactions', () => {
 
 	beforeEach(() => {
 		vi.restoreAllMocks();
+		for (const mock of Object.values(deviceLink)) mock.mockReset();
 		localStorage.clear();
 		home = { id: 'device-local', name: 'Home', syncKey: '', createdAt: 0 };
 		main = profile('profile-main', 'Main', 1);
@@ -72,7 +83,7 @@ describe('SyncModal profile interactions', () => {
 	});
 
 	it('keeps an incompatibility message visible after a failed manual sync', async () => {
-		const sync = vi.spyOn(notesStore, 'syncWithCloudManual').mockImplementation(async () => {
+		const sync = vi.spyOn(syncScheduler, 'request').mockImplementation(async () => {
 			syncStore.lastError = SYNC_VERSION_MISMATCH_MESSAGE;
 			return false;
 		});
@@ -325,7 +336,7 @@ describe('SyncModal profile interactions', () => {
 	});
 
 	it('asks for a new key when a sync finds the key retired, and creates it', async () => {
-		vi.spyOn(notesStore, 'syncWithCloudManual').mockImplementation(async () => {
+		vi.spyOn(syncScheduler, 'request').mockImplementation(async () => {
 			syncStore.keyRetired = true;
 			syncStore.lastError = 'This sync key was deleted from the cloud.';
 			return false;
@@ -462,7 +473,7 @@ describe('SyncModal profile interactions', () => {
 	});
 
 	it('releases the UI after an unexpected sync rejection', async () => {
-		vi.spyOn(notesStore, 'syncWithCloudManual').mockRejectedValueOnce(new Error('relay failed'));
+		vi.spyOn(syncScheduler, 'request').mockRejectedValueOnce(new Error('relay failed'));
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
 		const button = screen.getByRole('button', { name: 'Sync now' }) as HTMLButtonElement;
@@ -625,7 +636,7 @@ describe('SyncModal profile interactions', () => {
 
 	it('shows syncing once on the button for a sync started from the modal', async () => {
 		const manualSync = deferred<boolean>();
-		vi.spyOn(notesStore, 'syncWithCloudManual').mockReturnValueOnce(manualSync.promise);
+		vi.spyOn(syncScheduler, 'request').mockReturnValueOnce(manualSync.promise);
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Sync now' }));
@@ -663,7 +674,7 @@ describe('SyncModal profile interactions', () => {
 
 	it('switches workspace while a sync started from the modal still waits', async () => {
 		const onClose = vi.fn();
-		vi.spyOn(notesStore, 'syncWithCloudManual').mockReturnValueOnce(new Promise(() => undefined));
+		vi.spyOn(syncScheduler, 'request').mockReturnValueOnce(new Promise(() => undefined));
 		const switchTo = vi.spyOn(profileCoordinator, 'switchTo').mockResolvedValue({ success: true });
 		render(SyncModal, { props: { onClose } });
 
@@ -743,8 +754,8 @@ describe('SyncModal profile interactions', () => {
 				receivedSyncKey: string;
 			}>();
 			const handover = deferred<{ outcome: 'linked'; error?: string }>();
-			vi.spyOn(syncStore, 'startDeviceLink').mockResolvedValue({ success: true, link });
-			vi.spyOn(syncStore, 'pollDeviceLink').mockReturnValue(poll.promise);
+			deviceLink.startDeviceLink.mockResolvedValue({ success: true, link });
+			deviceLink.pollDeviceLink.mockReturnValue(poll.promise);
 			const receive = vi
 				.spyOn(profileCoordinator, 'receiveLinkedKey')
 				.mockReturnValue(handover.promise);
@@ -778,8 +789,8 @@ describe('SyncModal profile interactions', () => {
 			syncCode: 'ABCD1234EFGH5678',
 			pake: { ephemeralSecret: 'secret', share: 'share' }
 		};
-		const start = vi.spyOn(syncStore, 'startDeviceLink').mockResolvedValue({ success: true, link });
-		vi.spyOn(syncStore, 'pollDeviceLink').mockReturnValue(new Promise(() => undefined));
+		const start = deviceLink.startDeviceLink.mockResolvedValue({ success: true, link });
+		deviceLink.pollDeviceLink.mockReturnValue(new Promise(() => undefined));
 
 		render(SyncModal, {
 			props: { onClose: vi.fn(), initialPairingCode: 'ABCD-1234-EFGH-5678' }
@@ -815,9 +826,8 @@ describe('SyncModal profile interactions', () => {
 			linked: boolean;
 			expired: boolean;
 		}>();
-		vi.spyOn(syncStore, 'startExistingDeviceLink').mockResolvedValue({ success: true, link });
-		const poll = vi
-			.spyOn(syncStore, 'pollDeviceLink')
+		deviceLink.startExistingDeviceLink.mockResolvedValue({ success: true, link });
+		const poll = deviceLink.pollDeviceLink
 			.mockImplementationOnce(() => firstPoll.promise)
 			.mockResolvedValue({ success: true, linked: false, expired: false });
 		render(SyncModal, { props: { onClose: vi.fn() } });
@@ -838,6 +848,34 @@ describe('SyncModal profile interactions', () => {
 		expect(poll).toHaveBeenCalledTimes(2);
 	});
 
+	it('hands over the key of the workspace the link was started for, whichever is open by then', async () => {
+		vi.useFakeTimers();
+		const link: StartedDeviceLink = {
+			id: 'link-1',
+			expiresAt: Date.now() + 60_000,
+			role: 'existing',
+			syncCode: 'ABCD1234EFGH5678',
+			pake: { ephemeralSecret: 'secret', share: 'share' }
+		};
+		deviceLink.startExistingDeviceLink.mockResolvedValue({ success: true, link });
+		const poll = deviceLink.pollDeviceLink.mockResolvedValue({
+			success: true,
+			linked: false,
+			expired: false
+		});
+		render(SyncModal, { props: { onClose: vi.fn() } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Connect another device' }));
+		await waitFor(() => expect(poll).toHaveBeenCalledTimes(1));
+		expect(poll.mock.calls[0][1]).toEqual(identityFromSyncKey(main.syncKey));
+
+		// The window moves to another workspace while the other device is waited for.
+		syncStore.activateProfile(side);
+		await vi.advanceTimersByTimeAsync(1_500);
+
+		expect(poll).toHaveBeenCalledTimes(2);
+		expect(poll.mock.calls[1][1]).toEqual(identityFromSyncKey(main.syncKey));
+	});
+
 	it('copies the one-time code when it is pressed, and keeps the link button as it is', async () => {
 		const link: StartedDeviceLink = {
 			id: 'link-1',
@@ -846,8 +884,8 @@ describe('SyncModal profile interactions', () => {
 			syncCode: 'HKB4RW7CY75S4VCY',
 			pake: { ephemeralSecret: 'secret', share: 'share' }
 		};
-		vi.spyOn(syncStore, 'startExistingDeviceLink').mockResolvedValue({ success: true, link });
-		vi.spyOn(syncStore, 'pollDeviceLink').mockResolvedValue({
+		deviceLink.startExistingDeviceLink.mockResolvedValue({ success: true, link });
+		deviceLink.pollDeviceLink.mockResolvedValue({
 			success: true,
 			linked: false,
 			expired: false

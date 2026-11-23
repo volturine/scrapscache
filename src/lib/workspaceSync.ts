@@ -60,13 +60,9 @@ import {
 import { canvasLibraryStore } from '#lib/stores/canvasLibrary.js';
 import { kanbanStore } from '#lib/stores/kanban.svelte.js';
 import { reminderHistoryStore } from '#lib/stores/reminderHistory.js';
-import {
-	syncOutcome,
-	syncStore,
-	type PulledRelayState,
-	type SyncAccount,
-	type SyncOutcome
-} from '#lib/stores/sync.svelte.js';
+import type { SyncAccount } from '#lib/relayClient.js';
+import { syncOutcome, type PulledRelayState, type SyncOutcome } from '#lib/relaySync.js';
+import { relaySync, syncStore } from '#lib/stores/sync.svelte.js';
 
 function storedBoards(value: unknown): KanbanBoard[] {
 	return Array.isArray(value)
@@ -289,7 +285,7 @@ export async function syncWorkspace(
 			labels: withoutTombstoned(stored.labels, stored.labelTombstones)
 		};
 		if (signal.aborted) return 'failed';
-		const result = await syncStore.syncWorkspace(
+		const result = await relaySync.sync(
 			profile,
 			local,
 			(snapshot, _pid, pulled) =>
@@ -312,7 +308,7 @@ const BYTES_LANDING_MS = 15_000;
 
 /**
  * What makes this device's copy of a workspace the relay's. `remote` and `control`
- * are what `readRelay` answered. Decided from what the database holds now: every
+ * are what `relaySync.read` answered. Decided from what the database holds now: every
  * record is stamped past the relay's copy, and what only the relay holds is
  * deleted. It lands with the sync state of the copy that was read and with every
  * record queued, so the sync after it sends whatever differs and downloads nothing

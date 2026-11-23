@@ -14,6 +14,8 @@
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { getAppOverlayHost, portalToAppOverlay } from '#lib/appViewport.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import { syncStore } from '#lib/stores/sync.svelte.js';
+	import { syncScheduler } from '#lib/stores/syncScheduler.js';
 	import { selectionStore } from '#lib/stores/selection.svelte.js';
 	import { reminderStore } from '#lib/stores/reminders.svelte.js';
 	import { NOTE_COLOR_ORDER, type Note, type NoteColor, NOTE_COLOR_NAMES } from '#lib/types.js';
@@ -377,7 +379,7 @@
 						onApply={(r, repeat) => {
 							notesStore.setReminder(note.id, r, repeat);
 							reminderStore.sync(notesStore.notes);
-							void notesStore.flushSync();
+							void syncScheduler.request(syncStore.activeId);
 							reminderDialogOpen = false;
 						}}
 						onClose={() => {

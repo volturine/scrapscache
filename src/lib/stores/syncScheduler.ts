@@ -18,6 +18,7 @@
 // 5. Every workspace catches up with the relay at the same moments: when the app
 //    starts, when it is shown again, when the connection comes back. What other
 //    devices changed in a workspace is in its database before anyone opens it.
+//    When the app is put away, what waits for changes to pause is sent at once.
 // 6. The cloud icon turns while a round runs, whichever workspace it is for.
 import { SvelteMap } from 'svelte/reactivity';
 import type { AttachmentDecisions } from '#lib/attachmentSettling.js';
@@ -27,7 +28,8 @@ import { backoffDelay, type Backoff } from '#lib/syncRetry.js';
 import type { SyncSnapshot } from '#lib/syncRecords.js';
 import { withLock } from '#lib/webLock.js';
 import { syncWorkspace } from '#lib/workspaceSync.js';
-import { syncStore, type SyncOutcome } from '#lib/stores/sync.svelte.js';
+import type { SyncOutcome } from '#lib/relaySync.js';
+import { syncStore } from '#lib/stores/sync.svelte.js';
 
 /** Web lock, one per workspace, serializing its sync rounds and rewrites across every window. */
 export const SYNC_LOCK = 'scrapscache-sync';
@@ -94,6 +96,8 @@ export class SyncScheduler {
 	/** The lanes in flight, for the interface to read. */
 	private flights = new SvelteMap<string, Promise<boolean>>();
 	private channel: BroadcastChannel | null = null;
+	/** When the app was last shown again after being put away. */
+	private shownAt = 0;
 
 	/**
 	 * A sync saved into a workspace's database. A window showing that workspace shows
@@ -108,7 +112,7 @@ export class SyncScheduler {
 	onRewritten: ((pid: string) => unknown) | null = null;
 
 	constructor() {
-		syncStore.onWorkspaceOwes = (pid) => this.changed(pid, SYNC_OWING_MS);
+		syncStore.onQueued = (pid) => this.changed(pid);
 		if (typeof window === 'undefined') return;
 		if ('BroadcastChannel' in window) {
 			this.channel = new BroadcastChannel(SYNC_CHANNEL);
@@ -129,8 +133,22 @@ export class SyncScheduler {
 			void this.catchUpAll(0);
 		});
 		document.addEventListener('visibilitychange', () => {
-			if (document.visibilityState !== 'hidden') void this.catchUpAll();
+			if (document.visibilityState === 'hidden') return this.sendNow();
+			this.shownAt = Date.now();
+			void this.catchUpAll();
 		});
+		window.addEventListener('pagehide', () => this.sendNow());
+	}
+
+	/**
+	 * The app is being put away, and may not run again before it is closed: every
+	 * workspace waiting for its changes to pause syncs at once instead. One waiting
+	 * to try an unreachable relay again keeps its wait.
+	 */
+	private sendNow(): void {
+		for (const [pid, lane] of this.lanes) {
+			if (lane.timer && lane.failures === 0) void this.request(pid);
+		}
 	}
 
 	/** True from when a sync of this workspace is asked for until it has settled. */
@@ -151,6 +169,26 @@ export class SyncScheduler {
 		const { promise } = lane.flight;
 		void this.pump(pid, lane);
 		return promise;
+	}
+
+	/** Sync a workspace now if it has something to send. False when it has nothing queued. */
+	async flush(pid: string): Promise<boolean> {
+		if (!this.syncs(pid) || (await this.queued(pid)).length === 0) return false;
+		return this.request(pid);
+	}
+
+	/**
+	 * The relay said a workspace changed, and how far along it is now when it said
+	 * so. Nothing is asked when this device already has that.
+	 */
+	heard(pid: string, relayCursor?: number): Promise<boolean> {
+		if (
+			typeof relayCursor === 'number' &&
+			relayCursor > 0 &&
+			relayCursor <= syncStore.stateOf(pid).syncedCursor
+		)
+			return Promise.resolve(this.syncs(pid));
+		return this.request(pid);
 	}
 
 	/**
@@ -405,6 +443,10 @@ export class SyncScheduler {
 		if (end === 'gone') {
 			this.cancelTimer(lane);
 			this.lanes.delete(pid);
+		} else if (end === 'failed' && lane.triedAt < this.shownAt) {
+			// The round began before the app was shown again: a browser may have frozen
+			// its request with the page. That it failed says nothing of the relay now.
+			if (!lane.timer) this.wake(pid, lane, 0);
 		} else if (end === 'failed') {
 			lane.failures += 1;
 			if (!lane.timer && (await this.queued(pid)).length > 0)

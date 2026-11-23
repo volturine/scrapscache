@@ -18,7 +18,8 @@
 	} from '#lib/noteVersionChange.js';
 	import type { Note } from '#lib/types.js';
 	import { formatActivityRelative } from '#lib/utils.js';
-	import { syncStore, type SyncAccount } from '#lib/stores/sync.svelte.js';
+	import { syncStore } from '#lib/stores/sync.svelte.js';
+	import type { SyncAccount } from '#lib/relayClient.js';
 
 	let {
 		account,

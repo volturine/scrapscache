@@ -20,7 +20,7 @@
 	import { getAllNotesMetadata } from '#lib/db/idb.js';
 	import { withoutTombstoned } from '#lib/model/index.js';
 	import { readStoredTombstones } from '#lib/syncTombstones.js';
-	import { syncScheduler } from '#lib/stores/syncScheduler.js';
+	import { CAUGHT_UP_MS, syncScheduler } from '#lib/stores/syncScheduler.js';
 	import { preloadVapidPublicKey } from '#lib/reminderWake.js';
 	import { registerServiceWorker } from '#lib/serviceWorker.js';
 	import { provideEditorActions } from '#lib/editorContext.js';
@@ -99,11 +99,6 @@
 		if (!(await switchToWorkspace(pid))) return;
 		if (editingId !== noteId) await closeEditingNote();
 		openEditor(noteId);
-	}
-
-	/** Open a workspace whose reminder fired before its note synced, and pull that note. */
-	async function openWorkspace(pid: string) {
-		if (await switchToWorkspace(pid)) void notesStore.triggerSync();
 	}
 
 	/** Receipts reconcile on their own channel, even while note sync is busy. */
@@ -207,7 +202,7 @@
 			}
 			// The switch syncs in the background; a note only on the relay arrives with it.
 			if (!notesStore.notes.some((note) => note.id === link.noteId))
-				await notesStore.reconcileWithCloud();
+				await syncScheduler.catchUp(workspace.id);
 		}
 		if (!notesStore.notes.some((note) => note.id === link.noteId)) {
 			noteLinkProblem = `This note isn't in ${syncStore.activeProfile?.name ?? 'this workspace'}. It may have been deleted, or it hasn't synced to this device yet.`;
@@ -244,7 +239,8 @@
 		notesStore.onProfileReload = (pid, notes) => reminderStore.activateProfile(pid, notes);
 		void notesStore.init().then(async () => {
 			await notesStore.refreshProfileEffects();
-			if (syncStore.isLoggedIn) await notesStore.syncWithCloud();
+			// A note only the relay has yet is here once the catch-up the load asked for ends.
+			await syncScheduler.catchUp(syncStore.activeId, CAUGHT_UP_MS);
 			await openNoteFromLink();
 		});
 		// Pasting a link into this tab only changes the fragment; nothing reloads.
@@ -267,13 +263,8 @@
 			if (editingId === null && readNoteLink(new URL(window.location.href))) noteFromHistory = true;
 		};
 		window.addEventListener('popstate', onPopState);
-		const onForeground = () => {
-			if (document.visibilityState === 'hidden') return;
-			if (syncStore.isLoggedIn) void notesStore.syncWithCloud();
-		};
-		document.addEventListener('visibilitychange', onForeground);
 		const stopSyncEvents = syncEventsClient.subscribe((seq?: number) => {
-			void notesStore.triggerSync(seq);
+			void syncScheduler.heard(syncStore.activeId, seq);
 			if (syncStore.activeId) void reminderStore.syncRemoteWakes(syncStore.activeId);
 		});
 		const stopReminderHistory = reminderHistoryClient.attach();
@@ -289,7 +280,9 @@
 				withoutTombstoned(await getAllNotesMetadata(pid), (await readStoredTombstones(pid)).notes),
 			reconcile: reconcileReminders,
 			openNote: (pid, noteId) => void openNoteInWorkspace(pid, noteId),
-			openWorkspace: (pid) => void openWorkspace(pid),
+			// A reminder fired before its note synced: the workspace is shown and pulls it.
+			openWorkspace: (pid) =>
+				void switchToWorkspace(pid).then((shown) => shown && syncScheduler.request(pid)),
 			triggerSync: (pid) => void syncScheduler.request(pid)
 		});
 		void preloadVapidPublicKey();
@@ -318,7 +311,6 @@
 			nativeStopped = true;
 			stopNative?.();
 			applyEditorOpen(false);
-			document.removeEventListener('visibilitychange', onForeground);
 			stopReminders();
 			stopReminderHistory();
 		};

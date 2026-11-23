@@ -18,6 +18,12 @@ export const transientRetry: Backoff = { base: 500, factor: 2, max: 5_000, times
 /** Live sync events: from 2 seconds, half again longer each time, at most 30 seconds. */
 export const reconnectBackoff: Backoff = { base: 2_000, factor: 1.5, max: 30_000 };
 
+/** A save to this device's database that failed: from 1 second, doubling, at most 30 seconds. */
+export const saveRetry: Backoff = { base: 1_000, factor: 2, max: 30_000 };
+
+/** Reminder receipts the relay did not take: from 2 seconds, doubling, at most 30 seconds. */
+export const receiptRetry: Backoff = { base: 2_000, factor: 2, max: 30_000 };
+
 /** The wait before retry number `retry` (counting from 0), in milliseconds. */
 export function backoffDelay(backoff: Backoff, retry: number, random = Math.random): number {
 	const step = Math.min(backoff.base * backoff.factor ** retry, backoff.max);
@@ -103,4 +109,65 @@ export async function retryTransient<A>(
 		result = await attempt();
 	}
 	return result;
+}
+
+/**
+ * Work that failed and is tried again by itself, by what it is for: one wait per
+ * key, longer after each failure in a row, until an attempt `succeeded`.
+ */
+export class Retries {
+	private waits = new Map<
+		string,
+		{ timer: ReturnType<typeof setTimeout> | null; failures: number; again: () => void }
+	>();
+
+	constructor(private readonly backoff: Backoff) {}
+
+	/** `key` is being tried now: a wait for it is over, and what it has failed so far still counts. */
+	trying(key: string): void {
+		const wait = this.waits.get(key);
+		if (!wait?.timer) return;
+		clearTimeout(wait.timer);
+		wait.timer = null;
+	}
+
+	/** `key` failed: run `again` after its next wait. During a wait, only what runs is replaced. */
+	failed(key: string, again: () => void): void {
+		const wait = this.waits.get(key) ?? { timer: null, failures: 0, again };
+		this.waits.set(key, wait);
+		wait.again = again;
+		if (wait.timer !== null) return;
+		wait.timer = setTimeout(
+			() => {
+				wait.timer = null;
+				wait.again();
+			},
+			backoffDelay(this.backoff, wait.failures)
+		);
+		wait.failures += 1;
+	}
+
+	/**
+	 * An attempt at `key` got through: its next failure starts over. A wait that a
+	 * later failure of the same key started meanwhile stands, as that one's first.
+	 */
+	succeeded(key: string): void {
+		const wait = this.waits.get(key);
+		if (!wait) return;
+		if (wait.timer === null) this.waits.delete(key);
+		else wait.failures = 1;
+	}
+
+	/** `key` is no longer wanted: nothing waits for it, and its next failure starts over. */
+	settled(key: string): void {
+		const wait = this.waits.get(key);
+		if (wait?.timer) clearTimeout(wait.timer);
+		this.waits.delete(key);
+	}
+
+	/** Every key is settled. */
+	clear(): void {
+		for (const wait of this.waits.values()) if (wait.timer) clearTimeout(wait.timer);
+		this.waits.clear();
+	}
 }

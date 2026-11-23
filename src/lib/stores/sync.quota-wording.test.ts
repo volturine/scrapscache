@@ -5,7 +5,7 @@ import * as idb from '#lib/db/idb.js';
 import { SyncStore } from './sync.svelte';
 import { syncSnapshot } from '#lib/syncRecords.js';
 import { seedTestKeyring, TEST_WORKSPACE } from '../../tests/workspace';
-import { syncOpen } from '../../tests/openSync';
+import { syncOpen, syncParts } from '../../tests/openSync';
 
 type RequestResult = { success: boolean; data?: Record<string, unknown>; error?: string };
 
@@ -68,7 +68,7 @@ describe('quota isolation independent of server error wording', () => {
 		store.account = account;
 		const local = note('note-1', [attachment('ok'), attachment('huge')]);
 		vi.spyOn(
-			store as unknown as {
+			syncParts(store).relay as unknown as {
 				sendSyncRequest(
 					path: string,
 					payload: string

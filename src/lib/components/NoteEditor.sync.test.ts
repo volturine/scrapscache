@@ -3,7 +3,8 @@ import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Note } from '#lib/types.js';
 import { notesStore } from '#lib/stores/notes.svelte.js';
-import { syncStore } from '#lib/stores/sync.svelte.js';
+import { relaySync, syncStore } from '#lib/stores/sync.svelte.js';
+import { syncScheduler } from '#lib/stores/syncScheduler.js';
 import NoteEditor from './NoteEditor.svelte';
 
 function note(partial: Partial<Note> = {}): Note {
@@ -89,7 +90,7 @@ beforeEach(() => {
 	vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
 	vi.spyOn(notesStore, 'flushNote').mockResolvedValue();
 	vi.spyOn(notesStore, 'discardIfEmpty').mockResolvedValue();
-	vi.spyOn(notesStore, 'syncPendingChanges').mockResolvedValue(false);
+	vi.spyOn(syncScheduler, 'flush').mockResolvedValue(false);
 	notesStore.notes = [note()];
 });
 
@@ -116,9 +117,9 @@ describe('NoteEditor draft and synced changes', () => {
 
 	it('keeps one history version open until the closing sync has uploaded', async () => {
 		const endSession = vi.fn();
-		const begin = vi.spyOn(syncStore, 'beginEditSession').mockReturnValue(endSession);
+		const begin = vi.spyOn(relaySync, 'beginEditSession').mockReturnValue(endSession);
 		let finishSync!: (synced: boolean) => void;
-		vi.spyOn(notesStore, 'syncPendingChanges').mockReturnValue(
+		vi.spyOn(syncScheduler, 'flush').mockReturnValue(
 			new Promise((resolve) => (finishSync = resolve))
 		);
 		const { container, close, unmount } = openEditor();

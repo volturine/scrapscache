@@ -5,13 +5,14 @@ import {
 	type ReminderPage
 } from '#lib/reminderChannel.js';
 import { reminderHistoryStore, type ReminderHistoryStore } from '#lib/stores/reminderHistory.js';
+import { relay } from '#lib/relayClient.js';
 import { syncStore } from '#lib/stores/sync.svelte.js';
 import { identityFromSyncKey } from '#lib/syncPairing.js';
 import { isProfileReleased } from '#lib/db/idb.js';
 import type { StoredProfile } from '#lib/profiles.js';
+import { Retries, receiptRetry } from '#lib/syncRetry.js';
 
 type Workspace = Pick<StoredProfile, 'id' | 'syncKey'>;
-type Retry = { timer: ReturnType<typeof setTimeout> | null; backoff: number };
 
 /** The relay's receipt storage for this account is full; retrying will not help until something changes. */
 export class ReminderStorageFullError extends Error {}
@@ -27,7 +28,7 @@ export class ReminderHistoryClient {
 	private flights = new Map<string, { syncKey: string; promise: Promise<void> }>();
 	private again = new Set<string>();
 	private attached = false;
-	private retries = new Map<string, Retry>();
+	private retries = new Retries(receiptRetry);
 	constructor(
 		private history: ReminderHistoryStore,
 		private profiles: () => Workspace[],
@@ -111,35 +112,19 @@ export class ReminderHistoryClient {
 		if (!this.attached) return;
 		// A workspace removed or unlinked since stops retrying.
 		if (!this.profiles().some((profile) => profile.id === pid && profile.syncKey)) {
-			const stale = this.retries.get(pid);
-			if (stale?.timer != null) clearTimeout(stale.timer);
-			this.retries.delete(pid);
+			this.retries.settled(pid);
 			return;
 		}
-		const retry = this.retries.get(pid) ?? { timer: null, backoff: 2000 };
-		this.retries.set(pid, retry);
-		if (retry.timer !== null) {
-			clearTimeout(retry.timer);
-			retry.timer = null;
-		}
-		void this.exchange(pid)
-			.then(() => {
-				if (this.retries.get(pid) !== retry) return;
-				if (retry.timer !== null) clearTimeout(retry.timer);
-				retry.timer = null;
-				retry.backoff = 2000;
-			})
-			.catch((error: unknown) => {
-				if (this.retries.get(pid) !== retry || retry.timer !== null) return;
+		this.retries.trying(pid);
+		void this.exchange(pid).then(
+			() => this.retries.succeeded(pid),
+			(error: unknown) => {
 				// A full relay stays full: the next receipt, focus or reconnect tries again.
-				if (error instanceof ReminderStorageFullError) return;
+				if (!this.attached || error instanceof ReminderStorageFullError) return;
 				// Failure retries only. Successful idle streams never fetch on a timer.
-				retry.timer = setTimeout(() => {
-					retry.timer = null;
-					this.requestExchange(pid);
-				}, retry.backoff);
-				retry.backoff = Math.min(retry.backoff * 2, 30_000);
-			});
+				this.retries.failed(pid, () => this.requestExchange(pid));
+			}
+		);
 	}
 	attach(): () => void {
 		this.attached = true;
@@ -173,9 +158,6 @@ export class ReminderHistoryClient {
 		refresh();
 		return () => {
 			this.attached = false;
-			for (const retry of this.retries.values()) {
-				if (retry.timer !== null) clearTimeout(retry.timer);
-			}
 			this.retries.clear();
 			window.removeEventListener('online', refresh);
 			window.removeEventListener('focus', refresh);
@@ -189,7 +171,7 @@ export const reminderHistoryClient = new ReminderHistoryClient(
 	reminderHistoryStore,
 	() => syncStore.profiles,
 	(profile, body) =>
-		syncStore.authorizedFetch(
+		relay.authorizedFetch(
 			'/api/sync/reminders',
 			{
 				method: 'POST',

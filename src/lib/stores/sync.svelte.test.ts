@@ -18,11 +18,14 @@ import {
 	SYNC_PROTOCOL_HEADER,
 	SYNC_PROTOCOL_VERSION
 } from '#lib/model/protocol.js';
-import { HISTORY_RECHECK_MS, SyncStore, syncOutcome, syncStore } from './sync.svelte';
+import { SyncStore } from './sync.svelte';
+import { HISTORY_RECHECK_MS, syncOutcome } from '#lib/relaySync.js';
+import { mcpWorkspaceStatuses } from '#lib/mcpWorkspaces.js';
+import { relay, type SyncAccount } from '#lib/relayClient.js';
 import { syncSnapshot, type SyncSnapshot } from '#lib/syncRecords.js';
 import { unboundSyncEnvelope } from '../../tests/unboundEnvelope';
 import { seedTestKeyring, TEST_WORKSPACE } from '../../tests/workspace';
-import { syncOpen } from '../../tests/openSync';
+import { syncOpen, syncParts } from '../../tests/openSync';
 
 type RequestPayload = {
 	cursor: number;
@@ -129,7 +132,7 @@ function createHarness(
 	store.account = account;
 	const requests: RequestPayload[] = [];
 	vi.spyOn(
-		store as unknown as {
+		relayOf(store) as unknown as {
 			sendSyncRequest(
 				path: string,
 				payload: string
@@ -145,6 +148,9 @@ function createHarness(
 }
 
 type Sessions = { sessions: Map<string, { accessToken: string; expiresAt: number }> };
+
+/** The relay client a test's store signs in and sends through. */
+const relayOf = (store: SyncStore) => syncParts(store).relay;
 
 /** A store on a device that holds these keys, with the first one's workspace open. */
 async function storeHolding(...accounts: SyncIdentity[]): Promise<SyncStore> {
@@ -209,10 +215,12 @@ describe('client sync state machine', () => {
 				Response.json({ accessToken: 'session-token', expiresAt: Date.now() + 60_000 })
 			);
 		vi.stubGlobal('fetch', fetchMock);
-		const privateStore = store as unknown as { accessToken(): Promise<string> };
+		const privateStore = relayOf(store) as unknown as {
+			accessToken(account: SyncAccount): Promise<string>;
+		};
 
-		await expect(privateStore.accessToken()).resolves.toBe('session-token');
-		await expect(privateStore.accessToken()).resolves.toBe('session-token');
+		await expect(privateStore.accessToken(store.account!)).resolves.toBe('session-token');
+		await expect(privateStore.accessToken(store.account!)).resolves.toBe('session-token');
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 		expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
 			'/api/sync/auth/challenge',
@@ -235,9 +243,13 @@ describe('client sync state machine', () => {
 			.fn()
 			.mockResolvedValueOnce(Response.json({ error: 'conflict' }, { status: 409 }));
 		vi.stubGlobal('fetch', fetchMock);
-		const privateStore = store as unknown as { accessToken(): Promise<string> };
+		const privateStore = relayOf(store) as unknown as {
+			accessToken(account: SyncAccount): Promise<string>;
+		};
 
-		await expect(privateStore.accessToken()).rejects.toThrow('Could not start sync authentication');
+		await expect(privateStore.accessToken(store.account!)).rejects.toThrow(
+			'Could not start sync authentication'
+		);
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 
@@ -264,7 +276,7 @@ describe('client sync state machine', () => {
 			);
 		});
 		vi.stubGlobal('fetch', fetchMock);
-		const privateStore = store as unknown as Sessions & {
+		const privateStore = relayOf(store) as unknown as Sessions & {
 			accessToken(account: SyncIdentity): Promise<string>;
 		};
 
@@ -302,9 +314,11 @@ describe('client sync state machine', () => {
 					)
 				)
 		);
-		const privateStore = store as unknown as Sessions & { accessToken(): Promise<string> };
-		const pending = privateStore.accessToken();
-		store.serverChanged();
+		const privateStore = relayOf(store) as unknown as Sessions & {
+			accessToken(account: SyncAccount): Promise<string>;
+		};
+		const pending = privateStore.accessToken(store.account!);
+		relayOf(store).serverChanged();
 		releaseChallenge?.(
 			new Response(JSON.stringify({ challengeId: 'late', challenge: 'challenge' }))
 		);
@@ -331,7 +345,7 @@ describe('client sync state machine', () => {
 				.mockResolvedValueOnce(new Response(null, { status: 204 }))
 		);
 
-		const response = await store.authorizedFetch(
+		const response = await relayOf(store).authorizedFetch(
 			'/api/sync/push/wakes',
 			{ method: 'DELETE' },
 			account
@@ -359,7 +373,7 @@ describe('client sync state machine', () => {
 				new Response(JSON.stringify({ accessToken: 'kept-token', expiresAt: Date.now() + 60_000 }))
 			);
 		vi.stubGlobal('fetch', fetchMock);
-		const privateStore = store as unknown as {
+		const privateStore = relayOf(store) as unknown as {
 			accessToken(account: SyncIdentity): Promise<string>;
 		};
 
@@ -376,12 +390,12 @@ describe('client sync state machine', () => {
 	it('hands the live socket a token that a refusal drops', async () => {
 		const account = createSyncIdentity();
 		const store = await storeHolding(account);
-		const { sessions } = store as unknown as Sessions;
+		const { sessions } = relayOf(store) as unknown as Sessions;
 		sessions.set(account.accountId, {
 			accessToken: 'cached-token',
 			expiresAt: Date.now() + 60_000
 		});
-		const { token, refused } = await store.connectionToken();
+		const { token, refused } = await relayOf(store).connectionToken(store.account!);
 		expect(token).toBe('cached-token');
 		refused();
 		expect(sessions.size).toBe(0);
@@ -409,7 +423,7 @@ describe('client sync state machine', () => {
 					)
 				)
 		);
-		const privateStore = store as unknown as {
+		const privateStore = relayOf(store) as unknown as {
 			accessToken(account: typeof background): Promise<string>;
 		};
 		const pending = privateStore.accessToken(background);
@@ -426,7 +440,7 @@ describe('client sync state machine', () => {
 	it('reauthenticates and retries an authorized request once after a rejected session', async () => {
 		const account = createSyncIdentity();
 		const store = await storeHolding(account);
-		(store as unknown as Sessions).sessions.set(account.accountId, {
+		(relayOf(store) as unknown as Sessions).sessions.set(account.accountId, {
 			accessToken: 'stale-token',
 			expiresAt: Date.now() + 60_000
 		});
@@ -447,7 +461,7 @@ describe('client sync state machine', () => {
 		});
 		vi.stubGlobal('fetch', fetchMock);
 
-		const response = await store.authorizedFetch('/resource');
+		const response = await relayOf(store).authorizedFetch('/resource', {}, store.account!);
 
 		expect(response.status).toBe(204);
 		expect(resourceTokens).toEqual(['Bearer stale-token', 'Bearer fresh-token']);
@@ -465,7 +479,9 @@ describe('client sync state machine', () => {
 			vi.fn(async () => Response.json({ error: 'deleted', retired: true }, { status: 410 }))
 		);
 
-		await expect(store.authorizedFetch('/resource')).rejects.toThrow(/deleted from the cloud/);
+		await expect(relayOf(store).authorizedFetch('/resource', {}, store.account!)).rejects.toThrow(
+			/deleted from the cloud/
+		);
 		expect(store.keyRetired).toBe(true);
 	});
 
@@ -477,19 +493,20 @@ describe('client sync state machine', () => {
 			vi.fn(async () => Response.json({ error: 'Sync account not found' }, { status: 404 }))
 		);
 
-		await expect(store.authorizedFetch('/resource')).rejects.toThrow();
+		await expect(relayOf(store).authorizedFetch('/resource', {}, store.account!)).rejects.toThrow();
 		expect(store.keyRetired).toBe(false);
 	});
 
 	it('reauthenticates and retries the same delta request once after HTTP 401', async () => {
 		const account = createSyncIdentity();
 		const store = await storeHolding(account);
-		const privateStore = store as unknown as Sessions & {
+		const privateStore = relayOf(store) as unknown as Sessions & {
 			sendSyncRequest(
 				path: string,
 				payload: string,
 				uploadBytes: number,
-				progress: () => void
+				progress: () => void,
+				account: SyncAccount
 			): Promise<{ success: boolean; status?: number; data?: RelayData }>;
 			sendSyncRequestWithToken(
 				path: string,
@@ -522,7 +539,7 @@ describe('client sync state machine', () => {
 		);
 
 		await expect(
-			privateStore.sendSyncRequest(SYNC_DELTA_PATH, '{}', 0, () => undefined)
+			privateStore.sendSyncRequest(SYNC_DELTA_PATH, '{}', 0, () => undefined, store.account!)
 		).resolves.toEqual({
 			success: true,
 			data: emptyData()
@@ -627,7 +644,7 @@ describe('client sync state machine', () => {
 		};
 		store.profiles = [profile];
 
-		const read = await store.readRelay(profile, new AbortController().signal);
+		const read = await syncParts(store).engine.read(profile, new AbortController().signal);
 
 		expect(read.success, read.error).toBe(true);
 		// From the beginning, whatever this device had synced, and with nothing sent.
@@ -1731,7 +1748,7 @@ describe('client sync state machine', () => {
 			})
 		);
 
-		const statuses = await store.getMcpWorkspaceStatuses();
+		const statuses = await mcpWorkspaceStatuses(store.profiles);
 
 		expect(statuses['pending-mcp']).toEqual({ state: 'ready' });
 		expect(statuses['ready-mcp']).toEqual({ state: 'ready' });
@@ -1813,7 +1830,7 @@ describe('client sync state machine', () => {
 			};
 		};
 
-		const endSession = store.beginEditSession('note-1');
+		const endSession = syncParts(store).engine.beginEditSession('note-1');
 		const first = await save('draft');
 		// The version saved before the note opened stays in the history.
 		expect(first).toMatchObject({ expectedId: 'before-open' });
@@ -1841,7 +1858,7 @@ describe('a photo kept for note history', () => {
 
 	/** Answers history reads with the given versions of note-1, and counts them. */
 	function serveHistory(account: SyncIdentity, versions: () => Note[] | null) {
-		return vi.spyOn(syncStore, 'authorizedFetch').mockImplementation(async (input) => {
+		return vi.spyOn(relay, 'authorizedFetch').mockImplementation(async (input) => {
 			if (!String(input).startsWith('/api/sync/history')) throw new Error(`unexpected ${input}`);
 			const current = versions();
 			if (!current) return new Response('', { status: 503 });

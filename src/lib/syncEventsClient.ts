@@ -1,23 +1,17 @@
 import { openSyncEvents } from '#lib/syncEventsTransport.js';
-import { uid } from '#lib/model/index.js';
+import type { RelayClient, SyncAccount } from '#lib/relayClient.js';
 import { backoffDelay, reconnectBackoff, wait } from '#lib/syncRetry.js';
 
 export type SyncNudgeListener = (seq?: number) => void;
 
-export interface SyncStoreLike {
-	readonly isLoggedIn: boolean;
-	authorizedFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
-	/**
-	 * An access token for a connection that cannot carry the `Authorization`
-	 * header. `refused` drops it, so the next connection signs in again.
-	 */
-	connectionToken?(): Promise<{ token: string; refused(): void }>;
-}
+/** What a live connection asks of the relay client. */
+export type LiveRelay = Pick<RelayClient, 'authorizedFetch' | 'connectionToken' | 'clientId'>;
 
 /** One live connection, whichever transport carries it. */
 export type SyncEventsConnection = {
-	store: SyncStoreLike;
-	clientId: string;
+	relay: LiveRelay;
+	/** The account whose changes it carries. */
+	account: SyncAccount;
 	signal: AbortSignal;
 	/** The connection is open. False when it is no longer wanted and should close. */
 	onOpen(): boolean;
@@ -30,14 +24,12 @@ export class SyncEventsClient {
 	private connection: AbortController | null = null;
 	private readonly listeners = new Set<SyncNudgeListener>();
 	private cleanupDomListeners: (() => void) | null = null;
-	readonly clientId: string;
 
+	/** `account` answers which account this window shows, or null when it syncs with none. */
 	constructor(
-		private readonly syncStore: SyncStoreLike,
-		clientId?: string
+		private readonly relay: LiveRelay,
+		private readonly account: () => SyncAccount | null
 	) {
-		this.clientId = clientId ?? uid();
-
 		if (typeof window !== 'undefined' && typeof document !== 'undefined') {
 			const onVisibility = () => this.updateState();
 			const onOnline = () => this.updateState();
@@ -70,7 +62,7 @@ export class SyncEventsClient {
 		const isOnline = typeof navigator === 'undefined' || navigator.onLine !== false;
 		const isVisible = typeof document === 'undefined' || document.visibilityState === 'visible';
 		const shouldConnect =
-			this.listeners.size > 0 && this.syncStore.isLoggedIn && isVisible && isOnline;
+			this.listeners.size > 0 && this.account() !== null && isVisible && isOnline;
 
 		if (shouldConnect) {
 			if (!this.active) {
@@ -113,7 +105,7 @@ export class SyncEventsClient {
 
 	private wanted(): boolean {
 		const isVisible = typeof document === 'undefined' || document.visibilityState === 'visible';
-		return this.active && this.syncStore.isLoggedIn && isVisible;
+		return this.active && this.account() !== null && isVisible;
 	}
 
 	/**
@@ -122,10 +114,12 @@ export class SyncEventsClient {
 	 */
 	private async session(signal: AbortSignal): Promise<boolean> {
 		let opened = false;
+		const account = this.account();
+		if (!account) return false;
 		try {
 			await openSyncEvents({
-				store: this.syncStore,
-				clientId: this.clientId,
+				relay: this.relay,
+				account,
 				signal,
 				onOpen: () => {
 					if (signal.aborted) return false;

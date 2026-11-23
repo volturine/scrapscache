@@ -74,7 +74,8 @@ describe('receipt exchanges without a connection', () => {
 		const stop = client.attach();
 		try {
 			await vi.waitFor(() => expect(exchange).toHaveBeenCalledTimes(2));
-			await vi.advanceTimersByTimeAsync(2000);
+			// The first wait is about two seconds, a fifth either way.
+			await vi.advanceTimersByTimeAsync(2400);
 			// Only the outage came back; the full account waits for the next change.
 			expect(exchange).toHaveBeenCalledTimes(3);
 			await vi.advanceTimersByTimeAsync(10 * 60_000);

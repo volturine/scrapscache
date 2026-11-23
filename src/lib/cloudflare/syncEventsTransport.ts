@@ -14,13 +14,12 @@ const SESSION_EXPIRED = 4401;
  * socket closes.
  */
 export async function openSyncEvents(connection: SyncEventsConnection): Promise<void> {
-	const { store, clientId, signal } = connection;
-	if (!store.connectionToken) throw new Error('Live changes need a connection token');
-	const session = await store.connectionToken();
+	const { relay, account, signal } = connection;
+	const session = await relay.connectionToken(account);
 	if (signal.aborted) return;
 	const url = new URL(serverUrl('/api/sync/events'), location.href);
 	url.protocol = url.protocol === 'http:' ? 'ws:' : 'wss:';
-	url.searchParams.set('clientId', clientId);
+	url.searchParams.set('clientId', relay.clientId(account.accountId));
 	const socket = new WebSocket(url, [SYNC_EVENTS_PROTOCOL, session.token]);
 	await new Promise<void>((resolve) => {
 		let opened = false;

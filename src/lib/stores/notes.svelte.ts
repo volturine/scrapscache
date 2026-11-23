@@ -38,7 +38,8 @@ import {
 	type AttachmentDecisions
 } from '#lib/attachmentSettling.js';
 import { AttachmentHydrationQueue } from '#lib/attachmentHydrationQueue.js';
-import { syncStore } from '#lib/stores/sync.svelte.js';
+import { relaySync, syncStore } from '#lib/stores/sync.svelte.js';
+import { relay } from '#lib/relayClient.js';
 import { clearBoardsMirror, kanbanStore } from '#lib/stores/kanban.svelte.js';
 import { actionUndo } from '#lib/stores/actionUndo.svelte.js';
 import { composerStore } from '#lib/stores/composer.svelte.js';
@@ -88,7 +89,8 @@ import { loadLazyModule } from '#lib/staleModuleReload.js';
 import { noteRecordKeys } from '#lib/syncEngine.js';
 import { planBackupImport, planKeepImport } from '#lib/workspaceImport.js';
 import { identityFromSyncKey } from '#lib/syncPairing.js';
-import { CAUGHT_UP_MS, syncScheduler } from '#lib/stores/syncScheduler.js';
+import { syncScheduler } from '#lib/stores/syncScheduler.js';
+import { Retries, saveRetry } from '#lib/syncRetry.js';
 import { withWorkspaceLock } from '#lib/webLock.js';
 import { planRelayReplacement, readWorkspace, WorkspaceChanged } from '#lib/workspaceSync.js';
 import type { StoredProfile } from '#lib/profiles.js';
@@ -167,7 +169,6 @@ export class NotesStore {
 	constructor() {
 		this.notes = readNotesMirror(this.pid);
 		this.labels = readLabelsMirror(this.pid);
-		syncStore.onLocalDataChange = () => this.scheduleSyncPush();
 		syncScheduler.onSynced = (pid, saved) => this.show(pid, saved);
 		syncScheduler.onRewritten = (pid) => this.showRewritten(pid);
 		if (this.notes.length > 0) this.loaded = true;
@@ -415,7 +416,7 @@ export class NotesStore {
 			await saveNote(pid, note, noteRecordKeys(note));
 			settlePendingNotes({ [note.id]: noteForLocalStorage(note) }, pid);
 			this.lastPersistError = null;
-			this.scheduleSyncPush();
+			syncScheduler.changed(this.pid);
 			bytesLanded();
 		} catch (err) {
 			this.recordPersistenceError(`Could not save note ${id}`, err);
@@ -1074,11 +1075,9 @@ export class NotesStore {
 	async reloadForProfile(): Promise<void> {
 		actionUndo.clear();
 		this.cancelScheduledMirror();
-		for (const timer of this.noteRetryTimers.values()) clearTimeout(timer);
-		this.noteRetryTimers.clear();
+		this.noteRetries.clear();
 		for (const held of this.noteRetryHolds.values()) held.forEach((landed) => landed());
 		this.noteRetryHolds.clear();
-		this.noteRetryAttempts.clear();
 		this.attachmentLoads.clear();
 		this.visibleAttachmentQueue.clear();
 		this.lastPersistError = null;
@@ -1266,7 +1265,9 @@ export class NotesStore {
 	}
 
 	/** Label saves that failed and wait to be tried again, by workspace and label. */
-	private labelRetries = new Map<string, ReturnType<typeof setTimeout>>();
+	private labelRetries = new Retries(saveRetry);
+	/** What was last asked for each label that has not been saved yet, by workspace and label. */
+	private labelsAsked = new Map<string, Label | number>();
 
 	/** Save a label as this window holds it now, or its delete. */
 	private persistLabel(id: string): void {
@@ -1279,38 +1280,33 @@ export class NotesStore {
 	/**
 	 * Save a label, or the time it was deleted, with the upload marker in the same
 	 * step. One that failed is tried again, later each time, whichever workspace the
-	 * window shows by then: nothing else would save it before the next start, and
-	 * saves merge, so one that lands late cannot go over a later one.
+	 * window shows by then: nothing else would save it before the next start. What is
+	 * tried again is what was asked for last, whichever save failed last.
 	 */
-	private writeLabel(pid: string, id: string, change: Label | number, attempt = 0): void {
+	private writeLabel(pid: string, id: string, change: Label | number): void {
 		const slot = `${pid}\n${id}`;
-		const forget = () => {
-			clearTimeout(this.labelRetries.get(slot));
-			this.labelRetries.delete(slot);
-		};
-		forget();
+		this.labelsAsked.set(slot, change);
+		this.labelRetries.trying(slot);
 		const deleting = typeof change === 'number';
 		const saved: Promise<unknown> = deleting
 			? deleteLabelWithTombstone(pid, id, change, [`label-tombstone:${id}`])
 			: saveLabel(pid, change, [`label:${id}`]);
 		void saved.then(
-			() => syncScheduler.changed(pid),
+			() => {
+				if (this.labelsAsked.get(slot) === change) this.labelsAsked.delete(slot);
+				// A later change that failed while this one was under way keeps its wait.
+				this.labelRetries.succeeded(slot);
+				syncScheduler.changed(pid);
+			},
 			(err) => {
 				const failure = deleting ? 'Could not delete label' : 'Could not save label';
 				if (pid === this.pid) this.recordPersistenceError(failure, err);
 				else console.error(`[notes] ${failure}`, err);
-				if (isProfileReleased(pid)) return;
-				forget();
-				this.labelRetries.set(
-					slot,
-					setTimeout(
-						() => {
-							this.labelRetries.delete(slot);
-							this.writeLabel(pid, id, change, attempt + 1);
-						},
-						Math.min(30_000, 1_000 * 2 ** attempt)
-					)
-				);
+				const asked = this.labelsAsked.get(slot);
+				if (isProfileReleased(pid) || asked === undefined) {
+					this.labelsAsked.delete(slot);
+					this.labelRetries.settled(slot);
+				} else this.labelRetries.failed(slot, () => this.writeLabel(pid, id, asked));
 			}
 		);
 	}
@@ -1381,10 +1377,10 @@ export class NotesStore {
 		console.error(`[notes] ${context}`, err);
 	}
 
-	private noteRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+	/** Note saves that failed and wait to be tried again, by note. */
+	private noteRetries = new Retries(saveRetry);
 	/** The holds on the attachment-writes lock that each waiting retry carries. */
 	private noteRetryHolds = new Map<string, Array<() => void>>();
-	private noteRetryAttempts = new Map<string, number>();
 	/** The workspace another window synced while this one was hidden and skipped re-reading. */
 	private staleWhileHidden: string | null = null;
 	/** The workspace another window rewrote while this one was hidden. */
@@ -1409,32 +1405,30 @@ export class NotesStore {
 	 */
 	private scheduleNoteRetry(id: string, bytesLanded: () => void = () => undefined): void {
 		this.noteRetryHolds.set(id, [...(this.noteRetryHolds.get(id) ?? []), bytesLanded]);
-		if (this.noteRetryTimers.has(id)) return;
-		const attempt = this.noteRetryAttempts.get(id) ?? 0;
-		const delay = Math.min(30_000, 1_000 * 2 ** attempt);
-		const timer = setTimeout(() => {
-			this.noteRetryTimers.delete(id);
+		this.noteRetries.failed(id, () => {
 			const held = this.noteRetryHolds.get(id) ?? [];
 			this.noteRetryHolds.delete(id);
 			const allLanded = () => held.forEach((landed) => landed());
 			const note = this.notes.find((item) => item.id === id);
-			if (!note) return allLanded();
+			if (!note) {
+				this.noteRetries.succeeded(id);
+				return allLanded();
+			}
 			const pid = this.pid;
 			saveNote(pid, note, noteRecordKeys(note))
 				.then(() => {
 					settlePendingNotes({ [id]: noteForLocalStorage(note) }, pid);
-					this.noteRetryAttempts.delete(id);
+					// A write that failed while this one was under way keeps its own wait.
+					this.noteRetries.succeeded(id);
 					this.lastPersistError = null;
-					this.scheduleSyncPush();
+					syncScheduler.changed(pid);
 					allLanded();
 				})
 				.catch((err) => {
-					this.noteRetryAttempts.set(id, attempt + 1);
 					this.recordPersistenceError(`Could not retry note ${id}`, err);
 					this.scheduleNoteRetry(id, allLanded);
 				});
-		}, delay);
-		this.noteRetryTimers.set(id, timer);
+		});
 	}
 
 	/** Replay localStorage notes/labels that never landed in IndexedDB after a crash. */
@@ -1473,7 +1467,7 @@ export class NotesStore {
 				})
 			)
 		).then(() => settlePendingNotes(landed, pid));
-		this.scheduleSyncPush();
+		syncScheduler.changed(this.pid);
 	}
 
 	/**
@@ -1515,24 +1509,6 @@ export class NotesStore {
 	}
 
 	/** What changed here has to reach the relay: the open workspace syncs once changes pause. */
-	private scheduleSyncPush(): void {
-		syncScheduler.changed(this.pid);
-	}
-
-	/** Sync the open workspace now, without waiting for changes to pause. */
-	flushSync(): Promise<boolean> {
-		return syncScheduler.request(this.pid);
-	}
-
-	/** Flush durable local changes when leaving a note, without a no-op cloud request. */
-	async syncPendingChanges(): Promise<boolean> {
-		if (!syncStore.isLoggedIn) return false;
-		await syncStore.waitForOutboxWrites();
-		const pending = await getSyncOutboxKeys(this.pid).catch(() => []);
-		if (pending.length === 0) return false;
-		return this.flushSync();
-	}
-
 	private async notesForMemory(notes: Note[]): Promise<Note[]> {
 		return Promise.all(
 			notes.map(async (note) => ({
@@ -1659,8 +1635,8 @@ export class NotesStore {
 		if (!profile?.syncKey || isProfileReleased(pid))
 			return { success: false, error: 'That workspace is not synced' };
 		try {
-			await syncStore.reauthenticateForRecovery(profile, turnstileToken);
-			const cloud = await syncStore.readRelay(profile, new AbortController().signal);
+			await relay.reauthenticate(identityFromSyncKey(profile.syncKey), turnstileToken);
+			const cloud = await relaySync.read(profile, new AbortController().signal);
 			const { snapshot, control } = cloud;
 			if (!cloud.success || !snapshot || !control)
 				throw new Error(
@@ -1690,36 +1666,6 @@ export class NotesStore {
 			success: false,
 			error: syncStore.stateOf(pid).lastError ?? 'Replacing the cloud copy did not finish'
 		};
-	}
-
-	syncWithCloudManual(): Promise<boolean> {
-		return this.flushSync();
-	}
-
-	/** Settle with the cloud once: join the sync under way, or start one. */
-	reconcileWithCloud(): Promise<boolean> {
-		return syncScheduler.catchUp(this.pid);
-	}
-
-	/**
-	 * A reason to sync now: a live nudge from another device, a reminder, a workspace
-	 * just opened. Skipped when this device already has what the nudge is about.
-	 */
-	triggerSync(serverSeq?: number): Promise<boolean> {
-		if (!syncStore.isLoggedIn) return Promise.resolve(false);
-		if (typeof serverSeq === 'number' && serverSeq > 0 && serverSeq <= syncStore.syncedCursor) {
-			return Promise.resolve(true);
-		}
-		return syncScheduler.request(this.pid);
-	}
-
-	/**
-	 * Catch up with the cloud when the app starts or comes to the foreground. Those
-	 * arrive together, especially on iOS, and ask for the same thing: they join a
-	 * sync under way, and are skipped when the workspace has just synced.
-	 */
-	syncWithCloud(): Promise<boolean> {
-		return syncScheduler.catchUp(this.pid, CAUGHT_UP_MS);
 	}
 
 	// Seed -----------------------------------------------------------------

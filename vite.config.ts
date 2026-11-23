@@ -4,7 +4,7 @@ import adapterStatic from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import { execSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { Plugin } from 'vite';
 import { defineConfig } from 'vitest/config';
@@ -125,6 +125,23 @@ const HOSTED_CHALLENGE_ORIGINS = [
 if (HOSTED_CHALLENGE_ORIGINS.length === 0)
 	throw new Error('wrangler.jsonc names no PUBLIC_TURNSTILE_ORIGIN for the hosted servers');
 
+function cloudflareAdapter() {
+	const adapter = adapterCloudflare({ config: 'cf/wrangler.svelte.jsonc' });
+	return {
+		...adapter,
+		async adapt(builder: Parameters<typeof adapter.adapt>[0]) {
+			await adapter.adapt(builder);
+			// adapter-cloudflare writes .wrangler/deploy/config.json to redirect
+			// `wrangler deploy` to its generated config from cf/wrangler.svelte.jsonc.
+			// This app deploys from the root wrangler.jsonc (main: cf/app.ts), which
+			// wraps the built worker to export AccountCoordinator and the queue handler.
+			rmSync(fileURLToPath(new URL('./.wrangler/deploy/config.json', import.meta.url)), {
+				force: true
+			});
+		}
+	};
+}
+
 export default defineConfig({
 	define: {
 		__DEFAULT_SERVER_ORIGIN__: JSON.stringify(iosDefaultServer()),
@@ -140,7 +157,7 @@ export default defineConfig({
 			preprocess: vitePreprocess(),
 			adapter:
 				process.env.DEPLOY_TARGET === 'cloudflare'
-					? adapterCloudflare({ config: 'cf/wrangler.svelte.jsonc' })
+					? cloudflareAdapter()
 					: process.env.DEPLOY_TARGET === 'capacitor'
 						? // The iPhone app: the client-only pages as files, one HTML entry for
 							// every route, and no server routes (the app names its server itself).

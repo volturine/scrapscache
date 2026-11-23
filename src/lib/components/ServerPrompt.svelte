@@ -119,9 +119,9 @@
 							/>
 							<span class={styles.optionText}>
 								<span class={styles.optionName}>My own server</span>
-								<span class={styles.optionCaption}
-									>A self-hosted Scraps Cache relay, over https.</span
-								>
+								<span class={styles.optionCaption}>
+									A self-hosted Scraps Cache relay, over https.
+								</span>
 								{#if choice === 'own'}
 									<!-- svelte-ignore a11y_autofocus -->
 									<input

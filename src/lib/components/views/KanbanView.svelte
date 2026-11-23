@@ -633,9 +633,9 @@
 				<p class={k.filterSummary} title={noteFilterSummary()}>
 					{noteFilterSummary()}
 				</p>
-				<span class={k.filterCount} data-board-filter-count
-					>{filteredCount} of {visibleNotes.length} notes</span
-				>
+				<span class={k.filterCount} data-board-filter-count>
+					{filteredCount} of {visibleNotes.length} notes
+				</span>
 			</div>
 		</div>
 	{/if}
@@ -701,9 +701,9 @@
 						<div class={k.colTitleGroup}>
 							<h2 class={k.colTitle}>
 								{columnName(column)}
-								<span class={k.colCount} data-column-count
-									>{items.filter((item) => item.note && !item.carried).length}</span
-								>
+								<span class={k.colCount} data-column-count>
+									{items.filter((item) => item.note && !item.carried).length}
+								</span>
 							</h2>
 						</div>
 						{#if column.labelId !== null}

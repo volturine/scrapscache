@@ -330,10 +330,10 @@
 					<div class={styles.panel}>
 						<div class={styles.panelHeader}>
 							<span>History</span>
-							<span class={styles.panelCount}
-								>{versions.length}
-								{versions.length === 1 ? 'version' : 'versions'}</span
-							>
+							<span class={styles.panelCount}>
+								{versions.length}
+								{versions.length === 1 ? 'version' : 'versions'}
+							</span>
 						</div>
 						<div
 							id="note-history-versions"
@@ -357,9 +357,9 @@
 								>
 									<span class={styles.rowTop}>
 										<span class={styles.rowLabel}>
-											<span class={styles.rowTime}
-												>{row.entry ? relative(row.entry.savedAt) : 'Now'}</span
-											>
+											<span class={styles.rowTime}>
+												{row.entry ? relative(row.entry.savedAt) : 'Now'}
+											</span>
 											{#if index === 0 && row.entry}
 												<span class={styles.rowBadge}>Current</span>
 											{/if}
@@ -467,8 +467,9 @@
 			aria-label={restoreConfirmOpen ? 'Confirm restore' : undefined}
 			onclick={restoreConfirmOpen ? onConfirmRestore : onStartRestore}
 			disabled={restoringPreview || openingId !== null}
-			>{restoringPreview ? 'Restoring…' : 'Restore'}</button
 		>
+			{restoringPreview ? 'Restoring…' : 'Restore'}
+		</button>
 		<button
 			type="button"
 			class={iconButton({ variant: 'ghost', size: 'compact' })}

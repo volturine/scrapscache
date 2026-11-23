@@ -87,9 +87,9 @@
 	<Server class={styles.deviceIcon} aria-hidden="true" />
 	<span class={styles.deviceText}>
 		<span id={labelId} class={styles.deviceLabel}>Server</span>
-		<span id={statusId} class={styles.status}
-			>Syncs with {host}{serverSetting.isDefault ? '' : ' (self-hosted)'}</span
-		>
+		<span id={statusId} class={styles.status}>
+			Syncs with {host}{serverSetting.isDefault ? '' : ' (self-hosted)'}
+		</span>
 	</span>
 	<ChevronDown
 		class={cx(styles.deviceChevron, expanded ? styles.chevronOpen : undefined)}

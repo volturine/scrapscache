@@ -298,8 +298,9 @@
 								>
 									{#each moveTo.columns as column (column.id)}
 										<Menu.RadioItem value={column.id} class={itemClass}>
-											<Menu.ItemIndicator><Check size={14} aria-hidden="true" /></Menu.ItemIndicator
-											>
+											<Menu.ItemIndicator>
+												<Check size={14} aria-hidden="true" />
+											</Menu.ItemIndicator>
 											<Menu.ItemText>{column.name}</Menu.ItemText>
 										</Menu.RadioItem>
 									{/each}

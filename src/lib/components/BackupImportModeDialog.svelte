@@ -65,8 +65,10 @@
 								type="button"
 								disabled={busy}
 								onclick={onClose}
-								class={button({ variant: 'quiet', size: 'md' })}>Cancel</button
+								class={button({ variant: 'quiet', size: 'md' })}
 							>
+								Cancel
+							</button>
 						</div>
 					</div>
 				</Dialog.Content>

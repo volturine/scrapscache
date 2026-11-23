@@ -89,22 +89,24 @@
 						{:else}
 							<section class={styles.source}>
 								<h3 class={styles.sourceTitle}>
-									<span class={styles.sourceIcon} aria-hidden="true"><FileArchive size={16} /></span
-									>
+									<span class={styles.sourceIcon} aria-hidden="true">
+										<FileArchive size={16} />
+									</span>
 									Google Keep
 								</h3>
 								<ol class={styles.steps}>
 									<li class={styles.step}>
-										<span
-											>Open
+										<span>
+											Open
 											<a
 												href="https://takeout.google.com"
 												target="_blank"
 												rel="noreferrer"
 												class={css({ textDecoration: 'underline', textUnderlineOffset: '2px' })}
-												>takeout.google.com</a
-											></span
-										>
+											>
+												takeout.google.com
+											</a>
+										</span>
 									</li>
 									<li class={styles.step}>Deselect all, then select only Keep</li>
 									<li class={styles.step}>Create the export and download the zip</li>
@@ -123,15 +125,15 @@
 
 							<section class={styles.source}>
 								<h3 class={styles.sourceTitle}>
-									<span class={styles.sourceIcon} aria-hidden="true"
-										><ArchiveRestore size={16} /></span
-									>
+									<span class={styles.sourceIcon} aria-hidden="true">
+										<ArchiveRestore size={16} />
+									</span>
 									Scraps Cache backup
 								</h3>
 								<p class={styles.note}>
-									Choose an encrypted <span class={css({ whiteSpace: 'nowrap' })}
-										>.scraps-cache-backup</span
-									> from Export backup. You will be asked for its passphrase.
+									Choose an encrypted <span class={css({ whiteSpace: 'nowrap' })}>
+										.scraps-cache-backup
+									</span> from Export backup. You will be asked for its passphrase.
 								</p>
 							</section>
 						{/if}
@@ -141,9 +143,9 @@
 							</p>{/if}
 
 						<div class={d.footer}>
-							<button type="button" disabled={busy} onclick={onClose} class={cancelButton}
-								>Cancel</button
-							>
+							<button type="button" disabled={busy} onclick={onClose} class={cancelButton}>
+								Cancel
+							</button>
 							{#if !keepReady}
 								<input
 									bind:this={fileInput}

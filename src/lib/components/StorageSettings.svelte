@@ -57,8 +57,10 @@
 					id={statusId}
 					class={storagePersistenceStore.state === 'persisted'
 						? styles.status
-						: styles.statusWarning}>{status}</span
+						: styles.statusWarning}
 				>
+					{status}
+				</span>
 			</span>
 		</Menu.Item>
 	{/if}

@@ -51,24 +51,24 @@
 			<div class={styles.iosSteps}>
 				<p class={styles.iosStep}>
 					<span class={styles.iosStepNumber}>1</span>
-					<span
-						>Tap the <strong class={styles.iosAction}>Share</strong> icon <Share
+					<span>
+						Tap the <strong class={styles.iosAction}>Share</strong> icon <Share
 							class={cx(iconSizeXs, css({ display: 'inline' }))}
 							aria-hidden="true"
-						/> in Safari's bottom toolbar.</span
-					>
+						/> in Safari's bottom toolbar.
+					</span>
 				</p>
 				<p class={styles.iosStep}>
 					<span class={styles.iosStepNumber}>2</span>
-					<span
-						>Scroll down and tap <strong class={styles.iosAction}>Add to Home Screen</strong>.</span
-					>
+					<span>
+						Scroll down and tap <strong class={styles.iosAction}>Add to Home Screen</strong>.
+					</span>
 				</p>
 				<p class={styles.iosStep}>
 					<span class={styles.iosStepNumber}>3</span>
-					<span
-						>Tap <strong class={styles.iosAction}>Add</strong> in the top right to install Scraps Cache.</span
-					>
+					<span>
+						Tap <strong class={styles.iosAction}>Add</strong> in the top right to install Scraps Cache.
+					</span>
 				</p>
 			</div>
 

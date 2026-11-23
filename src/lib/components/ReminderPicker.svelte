@@ -555,8 +555,10 @@
 						: uiStatus === 'unsaved'
 							? css({ bg: 'scrapscache.warning', color: 'scrapscache.bg' })
 							: css({ bg: 'scrapscache.accent', color: 'scrapscache.accentForeground' })
-				)}>{badgeLabel}</span
+				)}
 			>
+				{badgeLabel}
+			</span>
 		</div>
 		<div
 			class={hstack({

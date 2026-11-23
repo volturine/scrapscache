@@ -787,8 +787,9 @@
 					<ul class={`note-scrollbar-hidden scrollable ${f.list}`} aria-label="Files and links">
 						{#each files as file (file.id)}
 							<li class={f.row}>
-								<span class={f.badge} aria-hidden="true">{fileIconLabel(file.mime, file.name)}</span
-								>
+								<span class={f.badge} aria-hidden="true">
+									{fileIconLabel(file.mime, file.name)}
+								</span>
 								<button
 									type="button"
 									class={f.openBtn}
@@ -929,8 +930,10 @@
 					<div>
 						<Dialog.Title
 							id="photo-quality-title"
-							class={cx(d.title, css({ textStyle: 'subtitleStrong' }))}>Photo quality</Dialog.Title
+							class={cx(d.title, css({ textStyle: 'subtitleStrong' }))}
 						>
+							Photo quality
+						</Dialog.Title>
 						<p class={cx(d.description, css({ mt: '3xs', textStyle: 'caption' }))}>
 							Choose once for {filesAwaitingQuality.length === 1
 								? 'this attachment'

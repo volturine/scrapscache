@@ -157,9 +157,9 @@
 			<div class={`panel confirm ${styles.panel}`}>
 				<span class={`${styles.glyph} panel-glyph`} aria-hidden="true"><CloudOff size={18} /></span>
 				<p class={cx(styles.content, css({ fontSize: 'compact' }))}>
-					Stop syncing <strong>{name}</strong> on this device?<span class={styles.caption}
-						>Notes stay here as a private workspace.</span
-					>
+					Stop syncing <strong>{name}</strong> on this device?<span class={styles.caption}>
+						Notes stay here as a private workspace.
+					</span>
 				</p>
 				<div class={`panel-actions ${hstack({ gap: 'xs', flexShrink: 0 })}`}>
 					<button
@@ -168,8 +168,10 @@
 						{@attach takeFocus}
 						disabled={working !== null}
 						aria-label="Keep syncing {name}"
-						onclick={cancel}>Cancel</button
+						onclick={cancel}
 					>
+						Cancel
+					</button>
 					<!-- Neutral, not red: nothing is deleted, the notes stay here. -->
 					<button
 						type="button"
@@ -177,8 +179,9 @@
 						disabled={locked}
 						aria-label="Yes, stop syncing {name} on this device"
 						onclick={() => void confirmUnlink()}
-						>{working === 'unlink' ? 'Stopping…' : 'Stop syncing'}</button
 					>
+						{working === 'unlink' ? 'Stopping…' : 'Stop syncing'}
+					</button>
 				</div>
 			</div>
 		{:else if mode === 'rename'}
@@ -203,8 +206,11 @@
 					<span class={styles.caption}>
 						{#if working === 'rename'}Saving…{:else}<span
 								class={css({ display: { base: 'none', sm: 'inline' } })}
-								>Enter saves · Esc cancels</span
-							><span class={css({ display: { base: 'inline', sm: 'none' } })}>{caption}</span>{/if}
+							>
+								Enter saves · Esc cancels
+							</span><span class={css({ display: { base: 'inline', sm: 'none' } })}>
+								{caption}
+							</span>{/if}
 					</span>
 				</span>
 				<div class={`panel-actions ${hstack({ gap: 'xs', flexShrink: 0 })}`}>
@@ -213,14 +219,18 @@
 						class={iconButtonRecipe({ size: 'compact' })}
 						disabled={working !== null}
 						aria-label="Cancel renaming {name}"
-						onclick={cancel}><X size={16} aria-hidden="true" /></button
+						onclick={cancel}
 					>
+						<X size={16} aria-hidden="true" />
+					</button>
 					<button
 						type="submit"
 						class={cx(iconButtonRecipe({ size: 'compact' }), css({ color: 'scrapscache.success' }))}
 						disabled={locked || !draft.trim()}
-						aria-label="Save name"><Check size={16} aria-hidden="true" /></button
+						aria-label="Save name"
 					>
+						<Check size={16} aria-hidden="true" />
+					</button>
 				</div>
 			</form>
 		{:else}
@@ -248,8 +258,10 @@
 				onclick={(event) => {
 					event.stopPropagation();
 					onexport();
-				}}><Download size={16} aria-hidden="true" /></button
+				}}
 			>
+				<Download size={16} aria-hidden="true" />
+			</button>
 			<button
 				type="button"
 				class={iconButtonRecipe({ size: 'compact' })}
@@ -276,9 +288,9 @@
 				onclick={startRename}
 				aria-label="Rename {name}"
 			>
-				<Pencil size={16} aria-hidden="true" /><span
-					>Rename<small>Change this workspace’s name</small></span
-				>
+				<Pencil size={16} aria-hidden="true" /><span>
+					Rename<small>Change this workspace’s name</small>
+				</span>
 			</button>
 		{/if}
 		{@render actions?.()}
@@ -290,9 +302,9 @@
 				onclick={askUnlink}
 				aria-label="Stop syncing {name} on this device"
 			>
-				<CloudOff size={16} aria-hidden="true" /><span
-					>Stop syncing on this device<small>Notes stay here as a private workspace.</small></span
-				>
+				<CloudOff size={16} aria-hidden="true" /><span>
+					Stop syncing on this device<small>Notes stay here as a private workspace.</small>
+				</span>
 			</button>
 		{/if}
 		{@render danger?.()}

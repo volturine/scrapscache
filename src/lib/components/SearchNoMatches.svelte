@@ -54,20 +54,24 @@
 		<button
 			type="button"
 			class={button({ variant: 'primary', size: 'sm' })}
-			onclick={() => lookIn(entry.place)}>Show {entry.count} in {PLACE_NAMES[entry.place]}</button
+			onclick={() => lookIn(entry.place)}
 		>
+			Show {entry.count} in {PLACE_NAMES[entry.place]}
+		</button>
 	{/each}
 	{#if filterCount > 0}
 		<button
 			type="button"
 			class={button({ variant: 'secondary', size: 'sm' })}
-			onclick={() => uiStore.clearSearchFilters()}>Clear filters</button
+			onclick={() => uiStore.clearSearchFilters()}
 		>
+			Clear filters
+		</button>
 	{/if}
 	{#if canCreate}
-		<button type="button" class={button({ variant: 'secondary', size: 'sm' })} onclick={create}
-			>Create a note titled “{shownQuery(query)}”</button
-		>
+		<button type="button" class={button({ variant: 'secondary', size: 'sm' })} onclick={create}>
+			Create a note titled “{shownQuery(query)}”
+		</button>
 	{/if}
 {/snippet}
 

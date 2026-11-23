@@ -40,8 +40,9 @@
 <!-- The committed search, marked where the card matched it. -->
 {#snippet marked(text: string)}
 	{#each matchSegments(text, uiStore.search) as segment, index (index)}
-		{#if segment.match}<mark class={searchStyles.mark}>{segment.text}</mark
-			>{:else}{segment.text}{/if}
+		{#if segment.match}<mark class={searchStyles.mark}>
+				{segment.text}
+			</mark>{:else}{segment.text}{/if}
 	{/each}
 {/snippet}
 

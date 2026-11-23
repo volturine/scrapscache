@@ -1202,9 +1202,9 @@
 														alt={image.name || 'Note attachment'}
 													/>
 												{:else}
-													<span class={styles.historyPreviewAttachment}
-														>{image.name || 'Attachment'}</span
-													>
+													<span class={styles.historyPreviewAttachment}>
+														{image.name || 'Attachment'}
+													</span>
 												{/if}
 											{/each}
 										</div>
@@ -1234,9 +1234,9 @@
 
 							{#if activity}
 								<p class={styles.meta} data-note-meta>
-									<time datetime={new Date(activity.at).toISOString()} title={activity.detail}
-										>{activityLabel}</time
-									>
+									<time datetime={new Date(activity.at).toISOString()} title={activity.detail}>
+										{activityLabel}
+									</time>
 								</p>
 							{/if}
 

@@ -403,7 +403,7 @@ class WorkspaceRewrites {
 				{
 					landed: () => {
 						clearBoardsMirror(pid);
-						notesStore.forgetUnsavedLabels(pid);
+						notesStore.saving.forgetUnsavedLabels(pid);
 					}
 				}
 			);

@@ -39,7 +39,7 @@ describe('photo bytes across a failed save', () => {
 	afterEach(async () => {
 		vi.restoreAllMocks();
 		await syncScheduler.reset();
-		(notesStore as unknown as { noteRetries: { clear(): void } }).noteRetries.clear();
+		notesStore.saving.forgetNotes();
 		notesStore.notes = [];
 		notesStore.lastPersistError = null;
 	});

@@ -44,6 +44,7 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
 | Components     | `src/lib/components/`                                         | Editors, feed, sidebar, sync UI, backup dialogs                                                                                |
 | Note model     | `src/lib/model/`                                              | Note types, edits, merge, body CRDT; shared with the MCP server                                                                |
 | Notes state    | `src/lib/stores/notes.svelte.ts`                              | CRUD, search, trash, labels                                                                                                    |
+| Note saving    | `src/lib/stores/noteSaving.ts`                                | Journal, saves, retries and the fast-start copy of what a window changes                                                       |
 | Sync state     | `src/lib/stores/sync.svelte.ts`                               | Keyring, open workspace, sync status per workspace                                                                             |
 | Relay client   | `src/lib/relayClient.ts`                                      | Sign-ins and requests, per account                                                                                             |
 | Sync engine    | `src/lib/relaySync.ts`, `relaySyncRun.ts`, `workspaceSync.ts` | One sync of a workspace: its rounds, database read and save                                                                    |

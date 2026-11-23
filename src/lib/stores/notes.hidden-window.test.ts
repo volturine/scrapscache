@@ -17,7 +17,6 @@ type Internals = {
 	showRewritten(pid: string): Promise<void>;
 	staleWhileHidden: string | null;
 	rewrittenWhileHidden: string | null;
-	mirrorToLS(): void;
 };
 const internals = notesStore as unknown as Internals;
 
@@ -118,7 +117,7 @@ describe('a hidden window while another window syncs', () => {
 		await internals.showRewritten(TEST_WORKSPACE);
 		expect(reload).not.toHaveBeenCalled();
 		// Hidden, it mirrors nothing of what it still holds.
-		internals.mirrorToLS();
+		notesStore.saving.mirrorToLS();
 		expect(readNotesMirror(TEST_WORKSPACE)).toEqual([]);
 
 		setVisibility('visible');
@@ -145,7 +144,7 @@ describe('a hidden window while another window syncs', () => {
 		// What it holds is from before the rewrite: nothing is merged into it, and
 		// none of it is written where the next start would take it for current.
 		expect(notesStore.notes.map((item) => item.title)).toEqual(['before']);
-		internals.mirrorToLS();
+		notesStore.saving.mirrorToLS();
 		expect(readNotesMirror(TEST_WORKSPACE)).toEqual([]);
 		expect(readLabelsMirror(TEST_WORKSPACE)).toEqual([]);
 		expect(internals.rewrittenWhileHidden).toBe(TEST_WORKSPACE);
@@ -160,7 +159,7 @@ describe('a hidden window while another window syncs', () => {
 	it('does not write its outdated notes to the mirror', () => {
 		vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
 		void internals.show(TEST_WORKSPACE);
-		internals.mirrorToLS();
+		notesStore.saving.mirrorToLS();
 		expect(readNotesMirror(TEST_WORKSPACE)).toEqual([]);
 	});
 

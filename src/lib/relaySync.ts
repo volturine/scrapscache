@@ -47,6 +47,7 @@ import {
 	randomOpaqueId
 } from '#lib/syncPairing.js';
 import {
+	PROFILE_META_KEY,
 	attachmentToImage,
 	attachmentRefKey,
 	buildSyncRecords,
@@ -59,6 +60,7 @@ import {
 	type SyncSnapshot
 } from '#lib/syncRecords.js';
 import { RELAY_SILENCE_MS, wait, withinTime } from '#lib/syncRetry.js';
+import { newestTombstones, sanitizeTombstones, type Tombstones } from '#lib/syncTombstones.js';
 
 /**
  * How long an answer about which photos a note's history needs is trusted. The relay can
@@ -66,9 +68,6 @@ import { RELAY_SILENCE_MS, wait, withinTime } from '#lib/syncRetry.js';
  * most this long, plus a sync, to be reclaimed.
  */
 export const HISTORY_RECHECK_MS = 60 * 60_000;
-
-/** Encrypted profile-name record; the name follows its sync key across devices. */
-export const PROFILE_META_KEY = 'profile-meta';
 
 export interface SyncUsage {
 	ciphertextBytes: number;
@@ -127,18 +126,9 @@ export type PulledRelayState = {
 	owes: (keys: string[]) => Promise<void>;
 };
 
-function mergeTombstoneMaps(
-	local: Record<string, number>,
-	remote: unknown
-): Record<string, number> {
-	if (!remote || typeof remote !== 'object') return local;
-	const merged = { ...local };
-	for (const [id, timestamp] of Object.entries(remote as Record<string, unknown>)) {
-		const value = Number(timestamp) || 0;
-		if (value > (merged[id] || 0)) merged[id] = value;
-	}
-	return merged;
-}
+/** `held` with a delete the relay sent, when that is the later one. What came off the wire is checked. */
+const laterDelete = (held: Tombstones, id: string, deletedAt: unknown): Tombstones =>
+	newestTombstones(held, sanitizeTombstones({ [id]: deletedAt }));
 
 /** What is known of one workspace's sync. */
 export type WorkspaceSyncState = {
@@ -693,24 +683,28 @@ export class RelaySync {
 							);
 							break;
 						case 'note-tombstone':
-							merged.tombstones = mergeTombstoneMaps(merged.tombstones, {
-								[record.id]: record.deletedAt
-							});
+							merged.tombstones = laterDelete(merged.tombstones, record.id, record.deletedAt);
 							break;
 						case 'label-tombstone':
-							merged.labelTombstones = mergeTombstoneMaps(merged.labelTombstones, {
-								[record.id]: record.deletedAt
-							});
+							merged.labelTombstones = laterDelete(
+								merged.labelTombstones,
+								record.id,
+								record.deletedAt
+							);
 							break;
 						case 'board-tombstone':
-							merged.boardTombstones = mergeTombstoneMaps(merged.boardTombstones, {
-								[record.id]: record.deletedAt
-							});
+							merged.boardTombstones = laterDelete(
+								merged.boardTombstones,
+								record.id,
+								record.deletedAt
+							);
 							break;
 						case 'library-item-tombstone':
-							merged.libraryTombstones = mergeTombstoneMaps(merged.libraryTombstones, {
-								[record.id]: record.deletedAt
-							});
+							merged.libraryTombstones = laterDelete(
+								merged.libraryTombstones,
+								record.id,
+								record.deletedAt
+							);
 							break;
 						case 'profile-meta':
 							// A read changes nothing on this device, the workspace's name included.

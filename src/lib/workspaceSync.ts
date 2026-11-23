@@ -18,7 +18,6 @@ import {
 	mergeStoredLabels,
 	mergeWorkspaceState,
 	uploadGeneration,
-	waitForDeviceWrites,
 	type RewritePlan
 } from '#lib/db/idb.js';
 import {
@@ -33,7 +32,8 @@ import {
 	readCanvasLibrary
 } from '#lib/canvasLibrary.js';
 import { editContext } from '#lib/editContext.js';
-import { mergeKanbanBoards, normalizeBoard, type KanbanBoard } from '#lib/kanban.js';
+import { localWritesLanded } from '#lib/localWrites.js';
+import { mergeKanbanBoards, normalizeBoards } from '#lib/kanban.js';
 import {
 	isTombstoned,
 	mergeLabelLists,
@@ -53,33 +53,19 @@ import {
 	BOARDS_IDB,
 	LABEL_IDB,
 	NOTE_IDB,
+	newestTombstones,
 	readStoredTombstones,
 	sanitizeTombstones,
 	type Tombstones
 } from '#lib/syncTombstones.js';
-import { canvasLibraryStore } from '#lib/stores/canvasLibrary.js';
-import { kanbanStore } from '#lib/stores/kanban.svelte.js';
 import { reminderHistoryStore } from '#lib/stores/reminderHistory.js';
 import type { SyncAccount } from '#lib/relayClient.js';
 import { syncOutcome, type PulledRelayState, type SyncOutcome } from '#lib/relaySync.js';
 import { relaySync, syncStore } from '#lib/stores/sync.svelte.js';
 
-function storedBoards(value: unknown): KanbanBoard[] {
-	return Array.isArray(value)
-		? value.flatMap((board): KanbanBoard[] => {
-				const normalized = normalizeBoard(board);
-				return normalized ? [normalized] : [];
-			})
-		: [];
-}
-
-function newest(stored: Tombstones, pulled: Record<string, number>): Tombstones {
-	const merged = { ...stored };
-	for (const [id, deletedAt] of Object.entries(sanitizeTombstones(pulled))) {
-		if (deletedAt > (merged[id] || 0)) merged[id] = deletedAt;
-	}
-	return merged;
-}
+/** The later delete of each record, in what is stored or in what a sync pulled. */
+const newest = (stored: Tombstones, pulled: unknown): Tombstones =>
+	newestTombstones(stored, sanitizeTombstones(pulled));
 
 /** Everything of a workspace that syncs, as its database holds it. Attachments come without bytes. */
 export async function readWorkspace(pid: string): Promise<SyncSnapshot> {
@@ -93,7 +79,7 @@ export async function readWorkspace(pid: string): Promise<SyncSnapshot> {
 	return {
 		notes,
 		labels,
-		boards: mergeKanbanBoards([], storedBoards(boards), tombstones.boards),
+		boards: mergeKanbanBoards([], normalizeBoards(boards), tombstones.boards),
 		tombstones: tombstones.notes,
 		labelTombstones: tombstones.labels,
 		boardTombstones: tombstones.boards,
@@ -104,17 +90,6 @@ export async function readWorkspace(pid: string): Promise<SyncSnapshot> {
 
 /** Told what a sync saved into the database, so a window showing the workspace can show it. */
 export type SyncSaved = (snapshot: SyncSnapshot, decisions: AttachmentDecisions) => Promise<void>;
-
-/** What this window is still writing for a workspace has reached its database. */
-async function localWritesLanded(pid: string): Promise<void> {
-	await Promise.all([
-		syncStore.waitForOutboxWrites(),
-		kanbanStore.waitForPendingWrites(),
-		canvasLibraryStore.waitForPendingWrites(),
-		reminderHistoryStore.waitForPendingWrites()
-	]);
-	await waitForDeviceWrites(pid);
-}
 
 /**
  * The notes with the bytes a sync may have to send: of every attachment when the
@@ -192,7 +167,7 @@ async function saveToWorkspace(
 					[LABEL_IDB]: newest(sanitizeTombstones(current[LABEL_IDB]), labelTombstones),
 					[BOARD_IDB]: boardTombstones,
 					[BOARDS_IDB]: mergeKanbanBoards(
-						storedBoards(current[BOARDS_IDB]),
+						normalizeBoards(current[BOARDS_IDB]),
 						snapshot.boards,
 						boardTombstones
 					)

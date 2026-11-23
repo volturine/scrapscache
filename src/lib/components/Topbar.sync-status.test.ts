@@ -39,8 +39,8 @@ afterEach(async () => {
 	syncStore.lastError = null;
 	syncStore.usage = null;
 	unlinkTestWorkspace();
-	syncStore.onSyncStart = null;
-	syncStore.onSyncEnd = null;
+	syncScheduler.onSyncStart = null;
+	syncScheduler.onSyncEnd = null;
 	showOpenWorkspaceSyncing(false);
 	await syncScheduler.reset();
 	vi.restoreAllMocks();
@@ -149,8 +149,8 @@ describe('Topbar sync status', () => {
 	it('notifies sync indicator to spin during a catch-up and a sync request', async () => {
 		const startSpy = vi.fn();
 		const endSpy = vi.fn();
-		syncStore.onSyncStart = startSpy;
-		syncStore.onSyncEnd = endSpy;
+		syncScheduler.onSyncStart = startSpy;
+		syncScheduler.onSyncEnd = endSpy;
 		linkTestWorkspace();
 		vi.spyOn(relaySync, 'sync').mockImplementation(async () => {
 			expect(startSpy).toHaveBeenCalledOnce();

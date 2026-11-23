@@ -234,7 +234,7 @@
 				.catch(() => undefined);
 		}
 		uiStore.viewChangeHandler = restoreFeedScroll;
-		attachSyncCloudIndicator(syncStore);
+		attachSyncCloudIndicator(syncScheduler);
 		notesStore.onAfterSync = () => reminderStore.publish(notesStore.notes);
 		notesStore.onProfileReload = (pid, notes) => reminderStore.activateProfile(pid, notes);
 		void notesStore.init().then(async () => {
@@ -306,6 +306,7 @@
 			window.removeEventListener('popstate', onPopState);
 			stopSyncEvents();
 			notesStore.onProfileReload = null;
+			notesStore.onAfterSync = null;
 			uiStore.viewChangeHandler = null;
 			stopViewport();
 			nativeStopped = true;

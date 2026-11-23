@@ -9,8 +9,7 @@ import {
 	CANVAS_LIBRARY_STATE_KEY,
 	CANVAS_LIBRARY_TOMBSTONES_KEY,
 	isCanvasLibraryEntry,
-	restoredCanvasLibrary,
-	sanitizeLibraryTombstones
+	restoredCanvasLibrary
 } from '#lib/canvasLibrary.js';
 import { normalizeBoard, type KanbanBoard } from '#lib/kanban.js';
 import { uid } from '#lib/model/index.js';
@@ -74,7 +73,7 @@ function restoredLibrary(
 	return restoredCanvasLibrary(
 		{
 			entries: Array.isArray(entries) ? entries.filter(isCanvasLibraryEntry) : [],
-			tombstones: sanitizeLibraryTombstones(stored.state[CANVAS_LIBRARY_TOMBSTONES_KEY])
+			tombstones: sanitizeTombstones(stored.state[CANVAS_LIBRARY_TOMBSTONES_KEY])
 		},
 		backup.canvasLibrary,
 		replace,

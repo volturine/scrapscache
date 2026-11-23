@@ -27,7 +27,6 @@ import {
 import { relay, type SyncAccount, type SyncProgress } from '#lib/relayClient.js';
 import {
 	NOTHING_KNOWN,
-	PROFILE_META_KEY,
 	RelaySync,
 	type SyncHost,
 	type SyncUsage,
@@ -135,17 +134,11 @@ export class SyncStore implements SyncHost {
 	}
 	/** Every workspace on this device. Synced ones carry a sync key. */
 	profiles = $state<StoredProfile[]>([]);
-	/** The workspace this window reads and writes. */
-	/** Empty until the keyring names a workspace for this window. */
+	/** The workspace this window reads and writes. Empty until the keyring names one for it. */
 	activeId = $state('');
 	private profilesReady: Promise<void> | null = null;
-	private pendingOutboxWrites: Promise<void> = Promise.resolve();
 	// Non-reactive callbacks avoid re-rendering the note grid for cloud feedback.
-	onSyncStart: (() => void) | null = null;
-	onSyncEnd: (() => void) | null = null;
 	onAccountChange: (() => void) | null = null;
-	/** A workspace has something new to send. The scheduler listens. */
-	onQueued: ((pid: string) => void) | null = null;
 
 	constructor() {
 		if (typeof localStorage === 'undefined') return;
@@ -229,6 +222,7 @@ export class SyncStore implements SyncHost {
 		this.profiles = [...this.profiles, profile].sort((a, b) => a.createdAt - b.createdAt);
 	}
 
+	/** Give a workspace another name in the keyring. Whoever asks sends the name on. */
 	async renameProfile(id: string, name: string): Promise<StoredProfile | null> {
 		const trimmed = name.trim().slice(0, 60);
 		if (!trimmed) return null;
@@ -237,10 +231,6 @@ export class SyncStore implements SyncHost {
 		const updated = { ...profile, name: trimmed };
 		await saveProfile(updated);
 		this.profiles = this.profiles.map((entry) => (entry.id === id ? updated : entry));
-		if (updated.syncKey) {
-			await markSyncOutbox(id, [PROFILE_META_KEY]);
-			this.onQueued?.(id);
-		}
 		return updated;
 	}
 
@@ -277,27 +267,6 @@ export class SyncStore implements SyncHost {
 		} catch {
 			/* status is only a display cache */
 		}
-	}
-
-	requestAutoSync(keys: Iterable<string> = []): void {
-		void this.queueOutbox(keys).catch((err) => {
-			console.error('[sync] could not persist outbox:', err);
-		});
-	}
-
-	async queueOutbox(keys: Iterable<string> = []): Promise<void> {
-		const pendingKeys = [...new Set(keys)];
-		const pid = this.activeId;
-		const write = this.pendingOutboxWrites.then(async () => {
-			await markSyncOutbox(pid, pendingKeys);
-		});
-		this.pendingOutboxWrites = write.catch(() => undefined);
-		await write;
-		this.onQueued?.(pid);
-	}
-
-	async waitForOutboxWrites(): Promise<void> {
-		await this.pendingOutboxWrites;
 	}
 
 	private readStatus(pid: string): SyncStatus {

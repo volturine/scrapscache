@@ -132,7 +132,7 @@ describe('SyncModal profile interactions', () => {
 
 	it('renames a workspace inline and keeps the row editable when saving fails', async () => {
 		const rename = vi
-			.spyOn(syncStore, 'renameProfile')
+			.spyOn(profileCoordinator, 'rename')
 			.mockResolvedValueOnce(null)
 			.mockResolvedValueOnce({ ...side, name: 'Studio' });
 
@@ -155,7 +155,7 @@ describe('SyncModal profile interactions', () => {
 	});
 
 	it('escapes an inline rename without saving', async () => {
-		const rename = vi.spyOn(syncStore, 'renameProfile');
+		const rename = vi.spyOn(profileCoordinator, 'rename');
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
 		await expand('Side');

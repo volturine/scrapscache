@@ -444,7 +444,7 @@
 		error = '';
 		info = '';
 		const renamed = await runOperation('rename', 'Could not rename that workspace', () =>
-			syncStore.renameProfile(id, next)
+			profileCoordinator.rename(id, next)
 		);
 		if (renamed) return true;
 		if (!error) error = 'Could not rename that workspace';

@@ -87,8 +87,8 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
   sync, even in the active workspace. Nothing stays connected and nothing
   polls: the client sends immediately after a local write, and exchanges before
   showing a missed reminder and when the app starts, is shown again or comes
-  back online. There the open workspace catches up, and another workspace sends
-  only what it has queued. A dismissal on one device therefore clears the other
+  back online. Every synced workspace catches up there, whichever one a window
+  shows. A dismissal on one device therefore clears the other
   device's alert the next time that device is looked at, not instantly.
   Failures retry with backoff, except a full account, which waits for the next
   change. System notifications

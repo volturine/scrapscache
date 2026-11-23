@@ -1,4 +1,5 @@
 import { mergeWorkspaceState } from '#lib/db/idb.js';
+import { trackLocalWrites } from '#lib/localWrites.js';
 import {
 	isReminderHistoryEntry,
 	mergeReminderEntries,
@@ -343,3 +344,4 @@ export class ReminderHistoryStore {
 	}
 }
 export const reminderHistoryStore = new ReminderHistoryStore();
+trackLocalWrites(() => reminderHistoryStore.waitForPendingWrites());

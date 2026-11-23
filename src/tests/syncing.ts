@@ -37,5 +37,5 @@ export function unlinkTestWorkspace(): void {
 
 /** What earlier cases learned of each workspace's sync is not the next one's. */
 export function forgetSyncStates(): void {
-	(syncStore as unknown as { states: object }).states = {};
+	syncStore.forgetSync();
 }

@@ -89,8 +89,8 @@ describe('syncing when a note closes', () => {
 	it('turns the cloud icon while the request runs', async () => {
 		await markSyncOutbox(TEST_WORKSPACE, ['note:note-1']);
 		const turned: string[] = [];
-		syncStore.onSyncStart = () => turned.push('start');
-		syncStore.onSyncEnd = () => turned.push('end');
+		syncScheduler.onSyncStart = () => turned.push('start');
+		syncScheduler.onSyncEnd = () => turned.push('end');
 		const sync = relayAnswers(async () => {
 			turned.push('request');
 			return { success: true, snapshot: syncSnapshot() };
@@ -99,8 +99,8 @@ describe('syncing when a note closes', () => {
 		try {
 			expect(await syncScheduler.flush(syncStore.activeId)).toBe(true);
 		} finally {
-			syncStore.onSyncStart = null;
-			syncStore.onSyncEnd = null;
+			syncScheduler.onSyncStart = null;
+			syncScheduler.onSyncEnd = null;
 		}
 		expect(sync).toHaveBeenCalledOnce();
 		expect(turned).toEqual(['start', 'request', 'end']);
@@ -278,7 +278,7 @@ describe('syncing when a note closes', () => {
 
 		window.dispatchEvent(new Event('online'));
 		await vi.waitFor(() => expect(sync).toHaveBeenCalledTimes(2));
-		await vi.waitFor(() => expect(notesStore.syncing).toBe(false));
+		await vi.waitFor(() => expect(syncScheduler.syncing(syncStore.activeId)).toBe(false));
 
 		expect(await getSyncOutboxKeys(TEST_WORKSPACE)).toEqual([]);
 		// What was due again after the failure has been sent: nothing more is asked.

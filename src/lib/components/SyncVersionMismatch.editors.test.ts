@@ -169,8 +169,8 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 	syncStore.account = null;
 	syncStore.lastError = null;
-	syncStore.onSyncStart = null;
-	syncStore.onSyncEnd = null;
+	syncScheduler.onSyncStart = null;
+	syncScheduler.onSyncEnd = null;
 	notesStore.notes = [];
 });
 

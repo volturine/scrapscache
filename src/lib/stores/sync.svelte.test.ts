@@ -566,21 +566,6 @@ describe('client sync state machine', () => {
 		expect(await idb.getSyncOutboxKeys(TEST_WORKSPACE)).toEqual(['note:note-1']);
 	});
 
-	it('reports an outbox failure and allows the next durable marker write to retry', async () => {
-		const store = new SyncStore();
-		vi.spyOn(idb, 'markSyncOutbox').mockRejectedValueOnce(
-			new Error('IndexedDB transaction aborted')
-		);
-
-		await expect(store.queueOutbox(['note:note-1'])).rejects.toThrow(
-			'IndexedDB transaction aborted'
-		);
-		expect(await idb.getSyncOutboxKeys(TEST_WORKSPACE)).toEqual([]);
-
-		await store.queueOutbox(['note:note-1']);
-		expect(await idb.getSyncOutboxKeys(TEST_WORKSPACE)).toEqual(['note:note-1']);
-	});
-
 	it('durably applies a downloaded page before committing its cursor', async () => {
 		const { store, account } = createHarness((request) => ({
 			success: true,
@@ -2125,7 +2110,6 @@ describe('envelopes not bound to the slot they arrive in', () => {
 			applied.push(snapshot);
 			return snapshot;
 		});
-		await store.waitForOutboxWrites();
 		return {
 			result,
 			error: store.lastError,

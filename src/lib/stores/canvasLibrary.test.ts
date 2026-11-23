@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getSyncOutboxKeys } from '#lib/db/idb.js';
 import { readCanvasLibrary } from '#lib/canvasLibrary.js';
 import { CanvasLibraryStore } from './canvasLibrary';
-import { syncStore } from './sync.svelte';
+import { syncScheduler } from './syncScheduler';
 
 function item(id: string, name?: string) {
 	return {
@@ -15,7 +15,7 @@ function item(id: string, name?: string) {
 }
 
 beforeEach(() => {
-	vi.spyOn(syncStore, 'requestAutoSync').mockImplementation(() => undefined);
+	vi.spyOn(syncScheduler, 'changed').mockImplementation(() => undefined);
 });
 
 describe('workspace canvas library', () => {

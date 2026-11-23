@@ -132,7 +132,7 @@ describe.each([
 		const other = workspace('other', false, 2);
 		await open(syncing, [other]);
 		const { flight } = await syncAgainstSilentRelay();
-		expect(notesStore.syncing).toBe(true);
+		expect(syncScheduler.syncing(syncStore.activeId)).toBe(true);
 
 		expect(await new ProfileCoordinator().switchTo(other.id)).toEqual({ success: true });
 
@@ -142,7 +142,7 @@ describe.each([
 		expect(requests[0].aborted).toBe(false);
 		// The workspace arrived in is not syncing, and nothing failed. The one left
 		// behind is still syncing, and whoever asked for its sync still waits.
-		expect(notesStore.syncing).toBe(false);
+		expect(syncScheduler.syncing(syncStore.activeId)).toBe(false);
 		expect(syncScheduler.syncing(syncing.id)).toBe(true);
 		expect(syncStore.lastError).toBeNull();
 		expect(notesStore.lastPersistError).toBeNull();

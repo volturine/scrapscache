@@ -4,6 +4,7 @@ import type { Note, NoteImage } from '#lib/types.js';
 import { getStoredAttachmentVersions, hydrateNoteAttachments } from '#lib/db/idb.js';
 import { applyNoteEdit } from '#lib/model/index.js';
 import { editContext } from '#lib/editContext.js';
+import { loadCurrentAttachment } from '#lib/historyClient.js';
 import { stripPhotoMarkers } from '#lib/photoMarker.js';
 import { attachmentToImage } from '#lib/syncRecords.js';
 import { sha256 } from '#lib/syncHash.js';
@@ -114,8 +115,6 @@ export async function settleAttachments(input: {
 				if (image !== listed) decisions.set(key, image);
 				continue;
 			}
-			// Loaded on demand: the history client itself fetches through the sync store.
-			const { loadCurrentAttachment } = await import('#lib/historyClient.js');
 			const onRelay = await loadCurrentAttachment(account, listed.id, signal);
 			relay.relayHas(listed.id, onRelay?.hash ?? null);
 			persist.add(note.id);

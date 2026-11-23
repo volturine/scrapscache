@@ -8,7 +8,7 @@
 // data away is also a rewrite of that workspace, which its sync gives way to.
 import { syncStore } from './sync.svelte';
 import { relay } from '#lib/relayClient.js';
-import { PROFILE_META_KEY } from '#lib/relaySync.js';
+import { PROFILE_META_KEY } from '#lib/syncRecords.js';
 import { notesStore } from './notes.svelte';
 import { syncScheduler } from './syncScheduler';
 import { clearNotesMirror } from '#lib/noteStorage.js';
@@ -52,8 +52,19 @@ export class ProfileCoordinator {
 		// Queue the encrypted profile-name record so a fresh key's account learns
 		// its local name (baseline dedupe makes repeat switches free). Queued before
 		// the load, whose catch-up then sends it in the same sync.
-		if (target.syncKey) await syncStore.queueOutbox([PROFILE_META_KEY]);
+		if (target.syncKey) await markSyncOutbox(target.id, [PROFILE_META_KEY]);
 		await notesStore.reloadForProfile();
+	}
+
+	/** Give a workspace another name. A synced one sends it to its other devices. */
+	async rename(id: string, name: string): Promise<StoredProfile | null> {
+		const before = syncStore.profiles.find((entry) => entry.id === id)?.name;
+		const renamed = await syncStore.renameProfile(id, name);
+		if (renamed?.syncKey && renamed.name !== before) {
+			await markSyncOutbox(id, [PROFILE_META_KEY]);
+			syncScheduler.changed(id);
+		}
+		return renamed;
 	}
 
 	private async change(fallback: string, run: () => Promise<Outcome>): Promise<Outcome> {

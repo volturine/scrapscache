@@ -94,6 +94,7 @@ import { identityFromSyncKey } from '#lib/syncPairing.js';
 import { syncScheduler } from '#lib/stores/syncScheduler.js';
 import { Retries, saveRetry } from '#lib/syncRetry.js';
 import { clearPendingJournals } from '#lib/pendingJournal.js';
+import { localWritesLanded } from '#lib/localWrites.js';
 import { withWorkspaceLock } from '#lib/webLock.js';
 import { planRelayReplacement, readWorkspace, WorkspaceChanged } from '#lib/workspaceSync.js';
 import type { StoredProfile } from '#lib/profiles.js';
@@ -145,10 +146,6 @@ export class NotesStore {
 		return syncStore.activePid;
 	}
 
-	/** True while a sync of the open workspace (auto or manual) is under way. */
-	get syncing(): boolean {
-		return syncScheduler.syncing(this.pid);
-	}
 	notes = $state<Note[]>([]);
 	labels = $state<Label[]>([]);
 	loaded = $state(false);
@@ -172,8 +169,8 @@ export class NotesStore {
 	constructor() {
 		this.notes = readNotesMirror(this.pid);
 		this.labels = readLabelsMirror(this.pid);
-		syncScheduler.onSynced = (pid, saved) => this.show(pid, saved);
-		syncScheduler.onRewritten = (pid) => this.showRewritten(pid);
+		syncScheduler.whenSynced((pid, saved) => this.show(pid, saved));
+		syncScheduler.whenRewritten((pid) => this.showRewritten(pid));
 		if (this.notes.length > 0) this.loaded = true;
 		if (typeof window !== 'undefined') {
 			window.addEventListener('visibilitychange', () => {
@@ -1161,11 +1158,7 @@ export class NotesStore {
 		while (this.attachmentLoads.size > 0) {
 			await Promise.allSettled([...this.attachmentLoads.values()]);
 		}
-		await syncStore.waitForOutboxWrites();
-		await kanbanStore.waitForPendingWrites();
-		await canvasLibraryStore.waitForPendingWrites();
-		await reminderHistoryStore.waitForPendingWrites();
-		await waitForDeviceWrites(this.pid);
+		await localWritesLanded(this.pid);
 	}
 
 	// Persistence helpers --------------------------------------------------

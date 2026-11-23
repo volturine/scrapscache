@@ -2,21 +2,23 @@ import {
 	applyBoardEdit,
 	createKanbanBoard,
 	mergeKanbanBoards,
-	normalizeBoard,
 	normalizeBoardNoteFilter,
+	normalizeBoards,
 	type BoardNoteFilter,
 	type KanbanBoard,
 	type KanbanColumn
 } from '#lib/kanban.js';
 import { isProfileReleased, workspaceKey, writeMirror } from '#lib/db/idb.js';
 import { syncStore } from '#lib/stores/sync.svelte.js';
-import { loadBoardsFromDevice, writeKanbanState } from '#lib/syncTombstones.js';
+import { loadBoardsFromDevice, sanitizeTombstones, writeKanbanState } from '#lib/syncTombstones.js';
 import { uid } from '#lib/model/index.js';
 import { editContext, syncClock } from '#lib/editContext.js';
 import { actionUndo } from '#lib/stores/actionUndo.svelte.js';
 import { dropNotesMirror } from '#lib/noteStorage.js';
 import { PendingJournal, type Pending } from '#lib/pendingJournal.js';
 import { Retries, saveRetry } from '#lib/syncRetry.js';
+import { trackLocalWrites } from '#lib/localWrites.js';
+import { syncScheduler } from '#lib/stores/syncScheduler.js';
 
 /**
  * Fast-boot mirrors, one set per workspace, each key suffixed with the workspace
@@ -33,20 +35,6 @@ const pendingBoards = new PendingJournal<KanbanBoard | number>(
 	dropNotesMirror
 );
 
-function normalizeBoards(value: unknown): KanbanBoard[] {
-	return Array.isArray(value)
-		? value.flatMap((board): KanbanBoard[] => {
-				const normalized = normalizeBoard(board);
-				return normalized ? [normalized] : [];
-			})
-		: [];
-}
-
-/**
- * What this workspace last mirrored, which may be nothing at all. Making one up
- * here is the caller's business: a boot needs a board to show, while a merge
- * needs the truth, or an empty shelf would look like a board worth keeping.
- */
 /**
  * Drop a workspace's board mirror and unsaved board changes, a save waiting to be
  * tried again included, so nothing of them outlives what replaced them.
@@ -60,6 +48,11 @@ export function clearBoardsMirror(pid: string): void {
 	}
 }
 
+/**
+ * What this workspace last mirrored, which may be nothing at all. Making one up
+ * here is the caller's business: a boot needs a board to show, while a merge
+ * needs the truth, or an empty shelf would look like a board worth keeping.
+ */
 function readBoards(pid: string): KanbanBoard[] {
 	if (typeof localStorage === 'undefined') return [];
 	try {
@@ -76,14 +69,8 @@ function boardsOrFresh(boards: KanbanBoard[]): KanbanBoard[] {
 function readTombstones(pid: string): Record<string, number> {
 	if (typeof localStorage === 'undefined') return {};
 	try {
-		const value: unknown = JSON.parse(
-			localStorage.getItem(workspaceKey(BOARD_TOMBSTONES_KEY, pid)) || '{}'
-		);
-		if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-		return Object.fromEntries(
-			Object.entries(value).flatMap(([id, updatedAt]) =>
-				typeof id === 'string' && Number(updatedAt) > 0 ? [[id, Number(updatedAt)]] : []
-			)
+		return sanitizeTombstones(
+			JSON.parse(localStorage.getItem(workspaceKey(BOARD_TOMBSTONES_KEY, pid)) || '{}')
 		);
 	} catch {
 		return {};
@@ -497,9 +484,8 @@ export class KanbanStore {
 				return false;
 			}
 		);
-		// Empty re-mark: the atomic write above already queued the keys; this
-		// only nudges the debounced push via the shared data-change hook.
-		syncStore.requestAutoSync([]);
+		// The save queues the keys itself, in its own transaction: this only says so.
+		syncScheduler.changed(pid);
 		return saved;
 	}
 
@@ -515,3 +501,4 @@ export class KanbanStore {
 }
 
 export const kanbanStore = new KanbanStore();
+trackLocalWrites(() => kanbanStore.waitForPendingWrites());

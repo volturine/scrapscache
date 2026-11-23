@@ -65,7 +65,7 @@ export type SyncRecordPayload =
 
 export type SyncRecord = { key: string; payload: SyncRecordPayload; fingerprint: string };
 
-export const PROFILE_META_RECORD_KEY = 'profile-meta';
+export const PROFILE_META_KEY = 'profile-meta';
 
 export function syncRecordKey(payload: SyncRecordPayload): string {
 	switch (payload.kind) {
@@ -88,7 +88,7 @@ export function syncRecordKey(payload: SyncRecordPayload): string {
 		case 'library-item-tombstone':
 			return `library-item-tombstone:${payload.id}`;
 		case 'profile-meta':
-			return PROFILE_META_RECORD_KEY;
+			return PROFILE_META_KEY;
 	}
 }
 

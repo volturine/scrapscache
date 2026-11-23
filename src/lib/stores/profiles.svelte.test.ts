@@ -18,7 +18,7 @@ import { ProfileCoordinator, profileCoordinator } from './profiles.svelte';
 import { notesStore } from './notes.svelte';
 import { SYNC_LOCK, syncScheduler } from './syncScheduler';
 import { syncStore } from './sync.svelte';
-import { PROFILE_META_KEY } from '#lib/relaySync.js';
+import { PROFILE_META_KEY } from '#lib/syncRecords.js';
 import { relay } from '#lib/relayClient.js';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 import { WORKSPACE_LOCK, withWorkspaceLock } from '#lib/webLock.js';
@@ -73,7 +73,6 @@ async function databaseNames(): Promise<string[]> {
 
 function stubChange() {
 	vi.spyOn(notesStore, 'waitForPendingProfileWrites').mockResolvedValue();
-	vi.spyOn(syncStore, 'queueOutbox').mockResolvedValue();
 	return vi.spyOn(notesStore, 'reloadForProfile').mockResolvedValue();
 }
 
@@ -552,6 +551,29 @@ describe('workspace changes', () => {
  * the device, and the next write would build it back with no keyring entry
  * naming the result.
  */
+describe('renaming a workspace', () => {
+	afterEach(() => vi.restoreAllMocks());
+
+	it('sends a synced workspace\u2019s new name on, and only when it changed', async () => {
+		const synced = workspace('renamed-synced', true, 1);
+		const local = workspace('renamed-local', false, 2);
+		syncStore.profiles = [synced, local];
+		const changed = vi.spyOn(syncScheduler, 'changed').mockImplementation(() => undefined);
+		const coordinator = new ProfileCoordinator();
+
+		expect((await coordinator.rename(synced.id, 'New name'))?.name).toBe('New name');
+		expect(await getSyncOutboxKeys(synced.id)).toContain(PROFILE_META_KEY);
+		expect(changed).toHaveBeenCalledWith(synced.id);
+
+		changed.mockClear();
+		await coordinator.rename(synced.id, 'New name');
+		// A private workspace has nobody to tell.
+		expect((await coordinator.rename(local.id, 'Local name'))?.name).toBe('Local name');
+		expect(changed).not.toHaveBeenCalled();
+		expect(await getSyncOutboxKeys(local.id)).toEqual([]);
+	});
+});
+
 describe('a workspace removed in another window', () => {
 	afterEach(() => {
 		vi.restoreAllMocks();

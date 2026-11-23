@@ -3,6 +3,7 @@
 // delete wins over every version it saw.
 import { stableStringify } from '#lib/model/stableStringify.js';
 import { getSyncState, mergeWorkspaceState } from '#lib/db/idb.js';
+import { sanitizeTombstones } from '#lib/syncTombstones.js';
 
 export const CANVAS_LIBRARY_STATE_KEY = 'scrapscache-canvas-library';
 export const CANVAS_LIBRARY_TOMBSTONES_KEY = 'scrapscache-canvas-library-tombstones';
@@ -81,13 +82,6 @@ export function libraryItemsFor(entries: Iterable<CanvasLibraryEntry>): CanvasLi
 		.sort((left, right) => right.created - left.created || left.id.localeCompare(right.id));
 }
 
-export function sanitizeLibraryTombstones(value: unknown): Record<string, number> {
-	if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-	return Object.fromEntries(
-		Object.entries(value).flatMap(([id, at]) => (Number(at) > 0 ? [[id, Number(at)]] : []))
-	);
-}
-
 /**
  * A backup's library brought into a workspace's, as a new save of each item so it
  * wins over any older version or delete elsewhere. Adding keeps what is there and
@@ -141,8 +135,8 @@ export async function mergeStoredCanvasLibrary(
 		pid,
 		[CANVAS_LIBRARY_STATE_KEY, CANVAS_LIBRARY_TOMBSTONES_KEY],
 		(current) => {
-			const deleted = sanitizeLibraryTombstones(current[CANVAS_LIBRARY_TOMBSTONES_KEY]);
-			for (const [id, at] of Object.entries(sanitizeLibraryTombstones(tombstones)))
+			const deleted = sanitizeTombstones(current[CANVAS_LIBRARY_TOMBSTONES_KEY]);
+			for (const [id, at] of Object.entries(sanitizeTombstones(tombstones)))
 				deleted[id] = Math.max(deleted[id] ?? 0, at);
 			const stored = current[CANVAS_LIBRARY_STATE_KEY];
 			return {
@@ -172,7 +166,7 @@ export async function readCanvasLibrary(
 		getSyncState<unknown>(pid, CANVAS_LIBRARY_STATE_KEY),
 		getSyncState<unknown>(pid, CANVAS_LIBRARY_TOMBSTONES_KEY)
 	]);
-	const tombstones = sanitizeLibraryTombstones(stored);
+	const tombstones = sanitizeTombstones(stored);
 	return {
 		entries: mergeCanvasLibrary([], Array.isArray(entries) ? entries : [], tombstones),
 		tombstones

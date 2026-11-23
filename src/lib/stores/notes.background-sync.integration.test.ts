@@ -26,7 +26,7 @@ import { notesStore } from './notes.svelte';
 import { syncScheduler } from './syncScheduler';
 import { profileCoordinator } from './profiles.svelte';
 import { syncStore } from './sync.svelte';
-import { PROFILE_META_KEY } from '#lib/relaySync.js';
+import { PROFILE_META_KEY } from '#lib/syncRecords.js';
 import { relay as appRelay, type SyncAccount } from '#lib/relayClient.js';
 import { kanbanStore } from './kanban.svelte';
 import { createKanbanBoard } from '#lib/kanban.js';
@@ -210,8 +210,8 @@ describe('a workspace that is not open', () => {
 
 	afterEach(async () => {
 		silent.clear();
-		syncStore.onSyncStart = null;
-		syncStore.onSyncEnd = null;
+		syncScheduler.onSyncStart = null;
+		syncScheduler.onSyncEnd = null;
 		await syncScheduler.reset();
 		vi.restoreAllMocks();
 		syncStore.activateLocalWorkspace(TEST_WORKSPACE);
@@ -227,8 +227,8 @@ describe('a workspace that is not open', () => {
 		// The cloud turns while it is sent, as for any sync, and stops with it.
 		const cloud: string[] = [];
 		const asked = requests.length;
-		syncStore.onSyncStart = () => cloud.push(`turns after ${requests.length - asked} requests`);
-		syncStore.onSyncEnd = () =>
+		syncScheduler.onSyncStart = () => cloud.push(`turns after ${requests.length - asked} requests`);
+		syncScheduler.onSyncEnd = () =>
 			cloud.push(requests.length > asked ? 'stops after the relay was asked' : 'stops unasked');
 
 		// Nobody names the workspace: every workspace catches up, and so does this one.
@@ -246,7 +246,7 @@ describe('a workspace that is not open', () => {
 		expect(notesStore.notes).toEqual([]);
 		expect(syncStore.lastError).toBeNull();
 		expect(notesStore.lastPersistError).toBeNull();
-		expect(notesStore.syncing).toBe(false);
+		expect(syncScheduler.syncing(syncStore.activeId)).toBe(false);
 	});
 
 	// Labels are renamed without the sync lock, by a window that has the workspace

@@ -22,7 +22,7 @@
 // 6. The cloud icon turns while a round runs, whichever workspace it is for.
 import { SvelteMap } from 'svelte/reactivity';
 import type { AttachmentDecisions } from '#lib/attachmentSettling.js';
-import { getSyncOutboxKeys, isProfileReleased } from '#lib/db/idb.js';
+import { getSyncOutboxKeys, isProfileReleased, waitForDeviceWrites } from '#lib/db/idb.js';
 import type { StoredProfile } from '#lib/profiles.js';
 import { backoffDelay, type Backoff } from '#lib/syncRetry.js';
 import type { SyncSnapshot } from '#lib/syncRecords.js';
@@ -56,6 +56,11 @@ const unreachableRetry: Backoff = { base: 5_000, factor: 2, max: 300_000 };
 const REACHABLE_RETRY_GAP_MS = 30_000;
 
 const SYNC_CHANNEL = 'scrapscache-sync-channel';
+
+type SyncedListener = (
+	pid: string,
+	saved?: { snapshot: SyncSnapshot; decisions: AttachmentDecisions }
+) => unknown;
 
 type Flight = {
 	promise: Promise<boolean>;
@@ -99,20 +104,33 @@ export class SyncScheduler {
 	/** When the app was last shown again after being put away. */
 	private shownAt = 0;
 
-	/**
-	 * A sync saved into a workspace's database. A window showing that workspace shows
-	 * what was saved: handed over when the sync ran here, read back when it ran in
-	 * another window.
-	 */
-	onSynced:
-		| ((pid: string, saved?: { snapshot: SyncSnapshot; decisions: AttachmentDecisions }) => unknown)
-		| null = null;
+	private syncedListeners = new Set<SyncedListener>();
+	private rewrittenListeners = new Set<(pid: string) => unknown>();
 
-	/** Another window rewrote a workspace's database whole. A window showing it loads it again. */
-	onRewritten: ((pid: string) => unknown) | null = null;
+	/** A round has started, or ended, for any workspace: the cloud icon turns with them. */
+	onSyncStart: (() => void) | null = null;
+	onSyncEnd: (() => void) | null = null;
+
+	/**
+	 * Hear when a sync saved into a workspace's database. A window showing that
+	 * workspace shows what was saved: handed over when the sync ran here, read back
+	 * when it ran in another window. Returns how to stop listening.
+	 */
+	whenSynced(listener: SyncedListener): () => void {
+		this.syncedListeners.add(listener);
+		return () => this.syncedListeners.delete(listener);
+	}
+
+	/**
+	 * Hear when another window rewrote a workspace's database whole. A window showing
+	 * it loads it again. Returns how to stop listening.
+	 */
+	whenRewritten(listener: (pid: string) => unknown): () => void {
+		this.rewrittenListeners.add(listener);
+		return () => this.rewrittenListeners.delete(listener);
+	}
 
 	constructor() {
-		syncStore.onQueued = (pid) => this.changed(pid);
 		if (typeof window === 'undefined') return;
 		if ('BroadcastChannel' in window) {
 			this.channel = new BroadcastChannel(SYNC_CHANNEL);
@@ -120,8 +138,9 @@ export class SyncScheduler {
 				const type: unknown = event.data?.type;
 				const pid: unknown = event.data?.pid;
 				if (typeof pid !== 'string') return;
-				if (type === 'local-sync-complete') void this.onSynced?.(pid);
-				else if (type === 'rewritten') void this.onRewritten?.(pid);
+				if (type === 'local-sync-complete')
+					for (const heard of this.syncedListeners) void heard(pid);
+				else if (type === 'rewritten') for (const heard of this.rewrittenListeners) void heard(pid);
 				// Another window is rewriting the workspace and waits for its lock.
 				else if (type === 'rewrite') this.giveWay(this.lanes.get(pid));
 			};
@@ -149,6 +168,11 @@ export class SyncScheduler {
 		for (const [pid, lane] of this.lanes) {
 			if (lane.timer && lane.failures === 0) void this.request(pid);
 		}
+	}
+
+	/** True while a sync of any workspace is asked for and has not settled: the cloud turns. */
+	get busy(): boolean {
+		return this.flights.size > 0;
 	}
 
 	/** True from when a sync of this workspace is asked for until it has settled. */
@@ -363,7 +387,8 @@ export class SyncScheduler {
 	}
 
 	private async queued(pid: string): Promise<string[]> {
-		await syncStore.waitForOutboxWrites();
+		// A mark being written is part of what is queued.
+		await waitForDeviceWrites(pid);
 		return (await getSyncOutboxKeys(pid).catch(() => [])).sort();
 	}
 
@@ -402,7 +427,7 @@ export class SyncScheduler {
 		const round = new AbortController();
 		lane.round = round;
 		lane.triedAt = Date.now();
-		syncStore.onSyncStart?.();
+		this.onSyncStart?.();
 		try {
 			end = await withLock(`${SYNC_LOCK}:${pid}`, async (): Promise<RoundEnd> => {
 				// Decided under the lock: a rewrite that went first may have taken the
@@ -412,7 +437,9 @@ export class SyncScheduler {
 				if (!profile) return 'gone';
 				before = await this.queued(pid);
 				const outcome = await syncWorkspace(profile, round.signal, async (snapshot, decisions) => {
-					await this.onSynced?.(pid, { snapshot, decisions });
+					await Promise.all(
+						[...this.syncedListeners].map((heard) => heard(pid, { snapshot, decisions }))
+					);
 				});
 				return round.signal.aborted ? 'interrupted' : outcome;
 			});
@@ -421,7 +448,7 @@ export class SyncScheduler {
 			if (end === 'failed') console.error('[sync] a sync round failed', err);
 		} finally {
 			if (lane.round === round) lane.round = null;
-			syncStore.onSyncEnd?.();
+			this.onSyncEnd?.();
 		}
 
 		// Forgotten meanwhile: nobody is waiting on this lane any more.

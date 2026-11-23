@@ -12,20 +12,15 @@ import { isProfileReleased } from '#lib/db/idb.js';
 import { dropNotesMirror } from '#lib/noteStorage.js';
 import { PendingJournal, type Pending } from '#lib/pendingJournal.js';
 import { Retries, saveRetry } from '#lib/syncRetry.js';
-import { syncStore } from '#lib/stores/sync.svelte.js';
+import { trackLocalWrites } from '#lib/localWrites.js';
+import { sanitizeTombstones } from '#lib/syncTombstones.js';
+import { syncScheduler } from '#lib/stores/syncScheduler.js';
 
 /** Library items whose save has not landed: the item, or the time it was removed. */
 const pendingLibrary = new PendingJournal<CanvasLibraryEntry | number>(
 	'scrapscache-library-pending',
 	dropNotesMirror
 );
-
-function sanitizeTombstones(value: unknown): Record<string, number> {
-	if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-	return Object.fromEntries(
-		Object.entries(value).flatMap(([id, at]) => (Number(at) > 0 ? [[id, Number(at)]] : []))
-	);
-}
 
 /** IndexedDB cannot store frozen editor objects that carry `undefined`; JSON is the stored shape. */
 function plain<T>(value: T): T {
@@ -75,7 +70,7 @@ export class CanvasLibraryStore {
 		this.notify();
 		if (keys.length) {
 			this.persist(pid, keys, unsaved);
-			syncStore.requestAutoSync([]);
+			syncScheduler.changed(pid);
 		} else pendingLibrary.settle(pid, unsaved);
 	}
 
@@ -127,7 +122,7 @@ export class CanvasLibraryStore {
 		this.tombstones = tombstones;
 		this.notify();
 		this.persist(this.pid, keys);
-		syncStore.requestAutoSync([]);
+		syncScheduler.changed(this.pid);
 	}
 
 	/** Merge what a sync pulled without scheduling another upload. */
@@ -197,7 +192,7 @@ export class CanvasLibraryStore {
 			this.saveRetries.failed(pid, () => {
 				if (pid === this.pid) {
 					this.persist(pid, []);
-					syncStore.requestAutoSync([]);
+					syncScheduler.changed(pid);
 				} else {
 					this.owed.delete(pid);
 					this.saveRetries.settled(pid);
@@ -213,3 +208,4 @@ export class CanvasLibraryStore {
 }
 
 export const canvasLibraryStore = new CanvasLibraryStore();
+trackLocalWrites(() => canvasLibraryStore.waitForPendingWrites());

@@ -12,6 +12,7 @@
 	import { portalToColumnActions } from '#lib/appViewport.js';
 	import { sideColumn } from '#lib/sideColumn.svelte.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import { syncScheduler } from '#lib/stores/syncScheduler.js';
 	import { saveFile } from '#lib/saveFile.js';
 	import { syncStore } from '#lib/stores/sync.svelte.js';
 	import { profileCoordinator } from '#lib/stores/profiles.svelte.js';
@@ -381,7 +382,7 @@
 				class={[
 					iconMd,
 					styles.syncIcon,
-					(notesStore.syncing || importingBackup || notesStore.importing) &&
+					(syncScheduler.busy || importingBackup || notesStore.importing) &&
 						'scrapscache-sync-icon-active'
 				]}
 				data-scrapscache-sync-spinner

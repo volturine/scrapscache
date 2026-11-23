@@ -143,6 +143,16 @@ const positiveTime = (value: unknown) =>
 const writerId = (value: unknown) => (typeof value === 'string' && value ? value : undefined);
 
 /** The one validating copy of a board, for storage, sync, and backups alike. */
+/** The boards in a stored or received list that are whole, each in its current shape. */
+export function normalizeBoards(value: unknown): KanbanBoard[] {
+	return Array.isArray(value)
+		? value.flatMap((board): KanbanBoard[] => {
+				const normalized = normalizeBoard(board);
+				return normalized ? [normalized] : [];
+			})
+		: [];
+}
+
 export function normalizeBoard(value: unknown): KanbanBoard | null {
 	if (!value || typeof value !== 'object') return null;
 	const board = value as StoredBoard;

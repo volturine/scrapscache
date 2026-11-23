@@ -3,6 +3,7 @@ import { ReminderHistoryStore } from '#lib/stores/reminderHistory.js';
 import { ReminderHistoryClient } from '#lib/reminderHistoryClient.js';
 import { createSyncIdentity, identityFromSyncKey } from '#lib/syncPairing.js';
 import { syncStore } from '#lib/stores/sync.svelte.js';
+import { syncScheduler } from '#lib/stores/syncScheduler.js';
 import { getSyncOutboxKeys, getSyncState, setSyncState } from '#lib/db/idb.js';
 import { readReminderHistory, RECEIPTS_PER_NOTE } from '#lib/reminderHistory.js';
 import { sealNoteReceipts, openNoteReceipts, type ReminderPacket } from '#lib/reminderChannel.js';
@@ -42,7 +43,7 @@ const fired = { id: 'w'.repeat(43), noteId: 'private-note-id', firedAt: 1000 };
 describe('independent reminder delivery', () => {
 	it('delivers an inactive workspace dismissal without touching note sync or its cursor', async () => {
 		const { a, b, clientA, clientB, profiles, db } = await setup();
-		const sync = vi.spyOn(syncStore, 'requestAutoSync').mockImplementation(() => undefined);
+		const sync = vi.spyOn(syncScheduler, 'changed').mockImplementation(() => undefined);
 		await setSyncState(profiles[0].id, 'note-sync-cursor', 42);
 		a.recordDismissed(profiles[0].id, fired, 2000);
 		await a.waitForPendingWrites();

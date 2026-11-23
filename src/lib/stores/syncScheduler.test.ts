@@ -45,6 +45,8 @@ describe('the sync scheduler', () => {
 	let third: StoredProfile;
 	/** The workspace of every round that started, in order. */
 	let rounds: string[];
+	/** What a test listens to on the scheduler, let go of after it. */
+	const listening: Array<() => void> = [];
 	const name = (pid: string) => [open, other, third].find((entry) => entry.id === pid)?.name;
 	/** The next round of a workspace stays under way until it is answered. */
 	const hold = (profile: StoredProfile) => {
@@ -77,7 +79,7 @@ describe('the sync scheduler', () => {
 
 	afterEach(async () => {
 		await syncScheduler.reset();
-		syncScheduler.onSynced = null;
+		for (const stop of listening.splice(0)) stop();
 		for (const profile of [open, other, third])
 			await clearSyncOutbox(profile.id, await getSyncOutboxKeys(profile.id));
 		syncStore.activateLocalWorkspace(TEST_WORKSPACE);
@@ -208,9 +210,11 @@ describe('the sync scheduler', () => {
 
 	it('hands what a sync saved to the window, and tells it when another window synced', async () => {
 		const shown: Array<[string, boolean]> = [];
-		syncScheduler.onSynced = (pid, saved) => {
-			shown.push([name(pid) ?? '?', saved !== undefined]);
-		};
+		listening.push(
+			syncScheduler.whenSynced((pid, saved) => {
+				shown.push([name(pid) ?? '?', saved !== undefined]);
+			})
+		);
 		driver.sync.mockImplementationOnce(async (_profile, _signal, saved) => {
 			await saved(syncSnapshot(), new Map());
 			return 'synced';
@@ -226,17 +230,45 @@ describe('the sync scheduler', () => {
 		]);
 	});
 
+	it('tells everyone who listens, and nobody who stopped', async () => {
+		const heard: string[] = [];
+		const stop = syncScheduler.whenSynced(() => void heard.push('first'));
+		listening.push(syncScheduler.whenSynced(() => void heard.push('second')));
+		const { channel } = syncScheduler as unknown as { channel: BroadcastChannel };
+
+		channel.onmessage?.({ data: { type: 'local-sync-complete', pid: open.id } } as MessageEvent);
+		stop();
+		channel.onmessage?.({ data: { type: 'local-sync-complete', pid: open.id } } as MessageEvent);
+
+		expect(heard).toEqual(['first', 'second', 'second']);
+	});
+
+	it('is busy while any workspace syncs, whichever one a window shows', async () => {
+		expect(syncScheduler.busy).toBe(false);
+		const held = hold(other);
+		const asked = syncScheduler.request(other.id);
+		await vi.waitFor(() => expect(rounds).toEqual(['other']));
+
+		expect(syncScheduler.busy).toBe(true);
+		expect(syncScheduler.syncing(open.id)).toBe(false);
+
+		held.answer('synced');
+		await asked;
+		expect(syncScheduler.busy).toBe(false);
+	});
+
 	it('tells the window when another window rewrote a workspace, apart from when it synced', async () => {
 		const heard: string[] = [];
-		syncScheduler.onSynced = (pid) => void heard.push(`synced ${name(pid)}`);
-		syncScheduler.onRewritten = (pid) => void heard.push(`rewritten ${name(pid)}`);
+		listening.push(
+			syncScheduler.whenSynced((pid) => void heard.push(`synced ${name(pid)}`)),
+			syncScheduler.whenRewritten((pid) => void heard.push(`rewritten ${name(pid)}`))
+		);
 		const { channel } = syncScheduler as unknown as { channel: BroadcastChannel };
 
 		channel.onmessage?.({ data: { type: 'rewritten', pid: other.id } } as MessageEvent);
 		channel.onmessage?.({ data: { type: 'local-sync-complete', pid: open.id } } as MessageEvent);
 
 		expect(heard).toEqual(['rewritten other', 'synced open']);
-		syncScheduler.onRewritten = null;
 	});
 
 	it('catches every workspace up, shown or not, with or without something to send', async () => {

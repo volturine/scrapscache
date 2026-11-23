@@ -8,6 +8,7 @@
 // data away is also a rewrite of that workspace, which its sync gives way to.
 import { syncStore } from './sync.svelte';
 import { relay } from '#lib/relayClient.js';
+import { workspaceRewrites } from './workspaceRewrites.svelte';
 import { PROFILE_META_KEY } from '#lib/syncRecords.js';
 import { notesStore } from './notes.svelte';
 import { syncScheduler } from './syncScheduler';
@@ -195,7 +196,7 @@ export class ProfileCoordinator {
 		if (blocked) return { success: false, error: blocked };
 		this.switching = true;
 		try {
-			return await notesStore.forcePushWorkspace(profileId ?? syncStore.activeId, turnstileToken);
+			return await workspaceRewrites.forcePush(profileId ?? syncStore.activeId, turnstileToken);
 		} catch (err) {
 			return {
 				success: false,

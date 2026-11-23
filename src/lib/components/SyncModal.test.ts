@@ -42,6 +42,7 @@ const tokenFrom = (
 	);
 import { TEST_WORKSPACE } from '../../tests/workspace';
 import { showOpenWorkspaceSyncing } from '../../tests/syncing';
+import { workspaceRewrites } from '#lib/stores/workspaceRewrites.svelte.js';
 
 function profile(id: string, name: string, createdAt: number): StoredProfile {
 	return { id, name, createdAt, syncKey: createSyncIdentity().syncKey };
@@ -658,7 +659,7 @@ describe('SyncModal profile interactions', () => {
 		const close = screen.getByRole('button', { name: 'Close' }) as HTMLButtonElement;
 
 		showOpenWorkspaceSyncing(true);
-		notesStore.importing = true;
+		workspaceRewrites.importing = true;
 		await tick();
 		try {
 			expect(syncNow.disabled).toBe(false);
@@ -668,7 +669,7 @@ describe('SyncModal profile interactions', () => {
 			expect(close.disabled).toBe(false);
 		} finally {
 			showOpenWorkspaceSyncing(false);
-			notesStore.importing = false;
+			workspaceRewrites.importing = false;
 		}
 	});
 

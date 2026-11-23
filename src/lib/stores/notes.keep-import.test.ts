@@ -5,6 +5,7 @@ import { BackupImportMode } from '#lib/backup.js';
 import { notesStore } from './notes.svelte';
 import { syncScheduler } from './syncScheduler';
 import { syncStore } from './sync.svelte';
+import { workspaceRewrites } from '#lib/stores/workspaceRewrites.svelte.js';
 
 function keepNote(overrides: Record<string, unknown> = {}) {
 	return {
@@ -52,7 +53,7 @@ describe('Google Keep takeout import', () => {
 			)
 		};
 
-		const result = await notesStore.importKeepTakeout(files, BackupImportMode.Keep);
+		const result = await workspaceRewrites.importKeepTakeout(files, BackupImportMode.Keep);
 		await waitForDeviceWrites();
 
 		expect(result).toEqual({ success: true });
@@ -83,7 +84,7 @@ describe('Google Keep takeout import', () => {
 		});
 		await notesStore.reloadForProfile();
 
-		const result = await notesStore.importKeepTakeout(
+		const result = await workspaceRewrites.importKeepTakeout(
 			{
 				'Takeout/Keep/Note.json': strToU8(JSON.stringify(keepNote({ title: 'New' })))
 			},

@@ -12,6 +12,7 @@
 	import { portalToColumnActions } from '#lib/appViewport.js';
 	import { sideColumn } from '#lib/sideColumn.svelte.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import { workspaceRewrites } from '#lib/stores/workspaceRewrites.svelte.js';
 	import { syncScheduler } from '#lib/stores/syncScheduler.js';
 	import { saveFile } from '#lib/saveFile.js';
 	import { syncStore } from '#lib/stores/sync.svelte.js';
@@ -210,8 +211,8 @@
 		let problem = '';
 		try {
 			const result = pendingKeepFiles
-				? await notesStore.importKeepTakeout(pendingKeepFiles, mode)
-				: await notesStore.importBackup(pendingImportData, mode);
+				? await workspaceRewrites.importKeepTakeout(pendingKeepFiles, mode)
+				: await workspaceRewrites.importBackup(pendingImportData, mode);
 			if (!result.success) problem = result.error || 'Could not import that file.';
 		} catch (error) {
 			problem = error instanceof Error ? error.message : 'Backup operation failed.';
@@ -382,7 +383,7 @@
 				class={[
 					iconMd,
 					styles.syncIcon,
-					(syncScheduler.busy || importingBackup || notesStore.importing) &&
+					(syncScheduler.busy || importingBackup || workspaceRewrites.importing) &&
 						'scrapscache-sync-icon-active'
 				]}
 				data-scrapscache-sync-spinner
@@ -442,7 +443,7 @@
 				onImport={startBackupImport}
 				onTextSettings={openTextSettings}
 				onAppIcon={openAppIcon}
-				importing={importingBackup || notesStore.importing}
+				importing={importingBackup || workspaceRewrites.importing}
 				importError={backupImportError}
 			/>
 		</div>
@@ -457,7 +458,7 @@
 			onImport={startBackupImport}
 			onTextSettings={openTextSettings}
 			onAppIcon={openAppIcon}
-			importing={importingBackup || notesStore.importing}
+			importing={importingBackup || workspaceRewrites.importing}
 			importError={backupImportError}
 		/>
 	{:else}
@@ -479,7 +480,7 @@
 			onImport={startBackupImport}
 			onTextSettings={openTextSettings}
 			onAppIcon={openAppIcon}
-			importing={importingBackup || notesStore.importing}
+			importing={importingBackup || workspaceRewrites.importing}
 			importError={backupImportError}
 		/>
 	{/if}

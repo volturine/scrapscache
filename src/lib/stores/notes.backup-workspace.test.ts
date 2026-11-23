@@ -23,6 +23,7 @@ import { reminderHistoryStore } from './reminderHistory';
 import { reminderWakeId } from '#lib/model/index.js';
 import { STALE_MODULE_MESSAGE } from '#lib/staleModuleReload.js';
 import { TEST_WORKSPACE } from '../../tests/workspace';
+import { workspaceRewrites } from '#lib/stores/workspaceRewrites.svelte.js';
 
 // The import's code loads on demand; `chunk.missing` stands in for a deploy
 // that no longer serves it, after the one reload that did not help.
@@ -167,7 +168,7 @@ describe('backup and Keep import stay in the open workspace', () => {
 		await waitForDeviceWrites(workspaceA.id);
 
 		await openWorkspace(workspaceB);
-		const result = await notesStore.importBackup(
+		const result = await workspaceRewrites.importBackup(
 			emptyBackup([
 				{
 					id: 'imported',
@@ -214,7 +215,7 @@ describe('backup and Keep import stay in the open workspace', () => {
 			]
 		} as unknown as ScrapsCacheBackup;
 
-		const result = await notesStore.importBackup(backup, BackupImportMode.Replace);
+		const result = await workspaceRewrites.importBackup(backup, BackupImportMode.Replace);
 
 		expect(result).toEqual({ success: true });
 		const [restored] = notesStore.notes;
@@ -260,7 +261,7 @@ describe('backup and Keep import stay in the open workspace', () => {
 			]
 		} as unknown as ScrapsCacheBackup;
 
-		const result = await notesStore.importBackup(backup, BackupImportMode.Replace);
+		const result = await workspaceRewrites.importBackup(backup, BackupImportMode.Replace);
 
 		expect(result).toEqual({ success: true });
 		// Both of the backup's labels are back, and neither under an id a delete knows.
@@ -304,7 +305,7 @@ describe('backup and Keep import stay in the open workspace', () => {
 		notesStore.createLabel('Waiting to be saved again');
 		await vi.waitFor(() => expect(notesStore.lastPersistError).toMatch(/Could not save label/));
 
-		const result = await notesStore.importBackup(
+		const result = await workspaceRewrites.importBackup(
 			emptyBackup([backupNote('restored')]),
 			BackupImportMode.Replace
 		);
@@ -340,7 +341,7 @@ describe('backup and Keep import stay in the open workspace', () => {
 
 		await openWorkspace(workspaceB);
 		canvasLibraryStore.applyEditorChange([], [{ ...shape, id: 'other' }]);
-		expect(await notesStore.importBackup(backup, BackupImportMode.Replace)).toEqual({
+		expect(await workspaceRewrites.importBackup(backup, BackupImportMode.Replace)).toEqual({
 			success: true
 		});
 
@@ -360,7 +361,7 @@ describe('backup and Keep import stay in the open workspace', () => {
 		await waitForDeviceWrites(workspaceA.id);
 
 		await openWorkspace(workspaceB);
-		const result = await notesStore.importKeepTakeout(
+		const result = await workspaceRewrites.importKeepTakeout(
 			{
 				'Takeout/Keep/Note.json': strToU8(
 					JSON.stringify({
@@ -405,7 +406,7 @@ describe('backup and Keep import stay in the open workspace', () => {
 			}
 		});
 		try {
-			const running = notesStore.importBackup(
+			const running = workspaceRewrites.importBackup(
 				emptyBackup([backupNote('first'), backupNote('second')]),
 				BackupImportMode.Keep
 			);
@@ -415,7 +416,7 @@ describe('backup and Keep import stay in the open workspace', () => {
 
 			releaseEstimate();
 			expect(await running).toEqual({ success: true });
-			expect(notesStore.importing).toBe(false);
+			expect(workspaceRewrites.importing).toBe(false);
 			expect((await getAllNotesMetadata(workspaceA.id)).map((n) => n.title).sort()).toEqual([
 				'first',
 				'second'
@@ -445,7 +446,7 @@ describe('backup and Keep import stay in the open workspace', () => {
 				() => new Promise<void>((resolve) => (releaseFlight = resolve))
 			);
 			let landed = false;
-			const running = notesStore
+			const running = workspaceRewrites
 				.importBackup(emptyBackup([backupNote('imported')]), BackupImportMode.Keep)
 				.finally(() => (landed = true));
 
@@ -481,7 +482,7 @@ describe('backup and Keep import stay in the open workspace', () => {
 		try {
 			const backup = emptyBackup([backupNote('imported')]);
 			backup.labels = [{ id: 'label', name: 'Label', createdAt: 1, updatedAt: 1 }];
-			const result = await notesStore.importBackup(backup, BackupImportMode.Replace);
+			const result = await workspaceRewrites.importBackup(backup, BackupImportMode.Replace);
 
 			expect(result.success).toBe(false);
 			expect(result.error).toMatch(/Could not import full backup/);
@@ -508,12 +509,12 @@ describe('backup and Keep import stay in the open workspace', () => {
 				`${SYNC_LOCK}:${workspaceA.id}`,
 				() => new Promise<void>((resolve) => (releaseFlight = resolve))
 			);
-			const result = await notesStore.importBackup({ version: 1 }, BackupImportMode.Replace);
+			const result = await workspaceRewrites.importBackup({ version: 1 }, BackupImportMode.Replace);
 			expect(result).toEqual({
 				success: false,
 				error: 'That file is not a valid Scraps Cache full backup.'
 			});
-			expect(notesStore.importing).toBe(false);
+			expect(workspaceRewrites.importing).toBe(false);
 			releaseFlight();
 			await flight;
 			expect((await getAllNotesMetadata(workspaceA.id)).map((note) => note.title)).toEqual([
@@ -532,10 +533,10 @@ describe('backup and Keep import stay in the open workspace', () => {
 		await waitForDeviceWrites(workspaceA.id);
 		chunk.missing = true;
 		try {
-			const result = await notesStore.importBackup(emptyBackup(), BackupImportMode.Replace);
+			const result = await workspaceRewrites.importBackup(emptyBackup(), BackupImportMode.Replace);
 			expect(result).toEqual({ success: false, error: STALE_MODULE_MESSAGE });
 			expect(notesStore.lastPersistError).toBeNull();
-			expect(notesStore.importing).toBe(false);
+			expect(workspaceRewrites.importing).toBe(false);
 			expect((await getAllNotesMetadata(workspaceA.id)).map((note) => note.title)).toEqual([
 				'A note'
 			]);
@@ -565,7 +566,7 @@ describe('backup and Keep import stay in the open workspace', () => {
 				syncStore.activateProfile(workspaceB);
 				await notesStore.reloadForProfile();
 			});
-			const running = notesStore.importBackup(
+			const running = workspaceRewrites.importBackup(
 				emptyBackup([backupNote('imported')]),
 				BackupImportMode.Replace
 			);
@@ -602,7 +603,7 @@ describe('backup and Keep import stay in the open workspace', () => {
 				await notesStore.reloadForProfile();
 				syncStore.profiles = syncStore.profiles.filter((entry) => entry.id !== workspaceA.id);
 			});
-			const result = await notesStore.importBackup(
+			const result = await workspaceRewrites.importBackup(
 				emptyBackup([backupNote('imported')]),
 				BackupImportMode.Replace
 			);

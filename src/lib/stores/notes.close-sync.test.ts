@@ -15,6 +15,7 @@ import { syncScheduler } from './syncScheduler';
 import type { Note } from '#lib/types.js';
 import { linkTestWorkspace, unlinkTestWorkspace } from '../../tests/syncing';
 import { emptyWorkspace, TEST_WORKSPACE } from '../../tests/workspace';
+import { workspaceRewrites } from '#lib/stores/workspaceRewrites.svelte.js';
 
 function noteWithPhoto(dataUrl: string): Note {
 	return {
@@ -164,7 +165,7 @@ describe('syncing when a note closes', () => {
 		});
 		const sync = relayAnswers(async () => ({ success: true, snapshot: syncSnapshot() }));
 
-		expect(await notesStore.forcePushWorkspace(TEST_WORKSPACE)).toEqual({
+		expect(await workspaceRewrites.forcePush(TEST_WORKSPACE)).toEqual({
 			success: false,
 			error: expect.stringMatching(/Replacing the cloud copy was not started/)
 		});
@@ -196,7 +197,7 @@ describe('syncing when a note closes', () => {
 			return { success: true, snapshot: local };
 		});
 
-		expect(await notesStore.forcePushWorkspace(TEST_WORKSPACE)).toEqual({ success: true });
+		expect(await workspaceRewrites.forcePush(TEST_WORKSPACE)).toEqual({ success: true });
 		expect(sync).toHaveBeenCalled();
 		// The sync state of the copy that was read landed with it.
 		expect(await idb.getSyncState(TEST_WORKSPACE, 'cursor')).toBe(4);

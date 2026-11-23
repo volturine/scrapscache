@@ -22,6 +22,7 @@ import { PROFILE_META_KEY } from '#lib/syncRecords.js';
 import { relay } from '#lib/relayClient.js';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 import { WORKSPACE_LOCK, withWorkspaceLock } from '#lib/webLock.js';
+import { workspaceRewrites } from '#lib/stores/workspaceRewrites.svelte.js';
 
 vi.mock('#lib/reminderWake.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('#lib/reminderWake.js')>();
@@ -436,7 +437,7 @@ describe('workspace changes', () => {
 		syncStore.profiles = [active];
 		syncStore.activateProfile(active);
 		stubChange();
-		const push = vi.spyOn(notesStore, 'forcePushWorkspace').mockResolvedValue({ success: true });
+		const push = vi.spyOn(workspaceRewrites, 'forcePush').mockResolvedValue({ success: true });
 
 		const result = await new ProfileCoordinator().forceResync(undefined, active.id);
 
@@ -451,7 +452,7 @@ describe('workspace changes', () => {
 		syncStore.profiles = [active, other];
 		syncStore.activateProfile(active);
 		stubChange();
-		const push = vi.spyOn(notesStore, 'forcePushWorkspace').mockResolvedValue({ success: true });
+		const push = vi.spyOn(workspaceRewrites, 'forcePush').mockResolvedValue({ success: true });
 
 		const result = await new ProfileCoordinator().forceResync('token', other.id);
 

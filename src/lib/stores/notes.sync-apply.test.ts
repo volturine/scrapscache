@@ -35,6 +35,7 @@ import { linkTestWorkspace, unlinkTestWorkspace } from '../../tests/syncing';
 import { emptyWorkspace, TEST_WORKSPACE } from '../../tests/workspace';
 import { createKanbanBoard } from '#lib/kanban.js';
 import { kanbanStore } from './kanban.svelte';
+import { workspaceRewrites } from '#lib/stores/workspaceRewrites.svelte.js';
 
 function remoteNote(id = 'note-1'): Note {
 	return {
@@ -112,7 +113,7 @@ describe('notes store sync apply', () => {
 			);
 			return { success: true, snapshot: local };
 		});
-		expect(await notesStore.forcePushWorkspace(TEST_WORKSPACE)).toEqual({ success: true });
+		expect(await workspaceRewrites.forcePush(TEST_WORKSPACE)).toEqual({ success: true });
 		expect(read).toHaveBeenCalledOnce();
 		expect(sync).toHaveBeenCalled();
 		// The window was loaded again from what landed.
@@ -139,7 +140,7 @@ describe('notes store sync apply', () => {
 			snapshot: local
 		}));
 
-		expect(await notesStore.forcePushWorkspace(TEST_WORKSPACE)).toEqual({ success: true });
+		expect(await workspaceRewrites.forcePush(TEST_WORKSPACE)).toEqual({ success: true });
 
 		// A delete is final for its id: the note returns under another, and its bytes with it.
 		expect(notesStore.notes.map((note) => note.title)).toEqual(['Still wanted']);
@@ -185,7 +186,7 @@ describe('notes store sync apply', () => {
 			return rewrite(...args);
 		});
 
-		expect(await notesStore.forcePushWorkspace(TEST_WORKSPACE)).toEqual({ success: true });
+		expect(await workspaceRewrites.forcePush(TEST_WORKSPACE)).toEqual({ success: true });
 
 		expect(landing).toHaveBeenCalledTimes(2);
 		expect((await getAllNotesMetadata(TEST_WORKSPACE)).map((note) => note.title)).toEqual([
@@ -201,7 +202,7 @@ describe('notes store sync apply', () => {
 		await putNote(TEST_WORKSPACE, local);
 		vi.spyOn(appRelay, 'reauthenticate').mockRejectedValue(new Error('Server unavailable'));
 		const read = vi.spyOn(relaySync, 'read');
-		expect(await notesStore.forcePushWorkspace(TEST_WORKSPACE)).toEqual({
+		expect(await workspaceRewrites.forcePush(TEST_WORKSPACE)).toEqual({
 			success: false,
 			error: 'Server unavailable'
 		});

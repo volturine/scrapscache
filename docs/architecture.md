@@ -38,26 +38,27 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
 
 ## Client
 
-| Area           | Location                                                   | Responsibility                                                  |
-| -------------- | ---------------------------------------------------------- | --------------------------------------------------------------- |
-| Routes / pages | `src/routes/`                                              | Notes home, kanban, reminders, archive, trash, labels           |
-| Components     | `src/lib/components/`                                      | Editors, feed, sidebar, sync UI, backup dialogs                 |
-| Note model     | `src/lib/model/`                                           | Note types, edits, merge, body CRDT; shared with the MCP server |
-| Notes state    | `src/lib/stores/notes.svelte.ts`                           | CRUD, search, trash, labels                                     |
-| Sync state     | `src/lib/stores/sync.svelte.ts`                            | Keyring, open workspace, sync status per workspace              |
-| Relay client   | `src/lib/relayClient.ts`                                   | Sign-ins and requests, per account                              |
-| Sync engine    | `src/lib/relaySync.ts`, `src/lib/workspaceSync.ts`         | One sync of a workspace: relay delta, database read and save    |
-| Sync scheduler | `src/lib/stores/syncScheduler.ts`                          | When each workspace syncs; one lane per workspace               |
-| Device pairing | `src/lib/deviceLink.ts`                                    | Rendezvous and sealed key handover                              |
-| Kanban         | `src/lib/stores/kanban.svelte.ts`, `src/lib/kanban.ts`     | Boards and columns                                              |
-| IndexedDB      | `src/lib/db/idb.ts`                                        | Persistence, outbox, replace/import; one database per workspace |
-| Workspaces     | `src/lib/profiles.ts`, `src/lib/stores/profiles.svelte.ts` | Sync-key keyring, workspace switching, dataset handover         |
-| Sync crypto    | `src/lib/syncPairing.ts`                                   | Identity, pairing PAKE, payload encrypt/decrypt                 |
-| Sync records   | `src/lib/syncRecords.ts`                                   | Envelope packing, tombstones                                    |
-| Backups        | `src/lib/backup.ts`, `backupCrypto.ts`                     | Export/import encrypted `.scraps-cache-backup`                  |
-| Images         | `src/lib/imageOptimize.ts`                                 | Resize, WebP, strip EXIF before store/sync                      |
-| App viewport   | `src/lib/appViewport.ts`                                   | Safe area + keyboard frame; overlay host                        |
-| Reminder wakes | `src/lib/server/wakeDispatch.ts`, `webPush.ts`             | Contentless Web Push ticks; SW finds the note in any workspace  |
+| Area           | Location                                                      | Responsibility                                                  |
+| -------------- | ------------------------------------------------------------- | --------------------------------------------------------------- |
+| Routes / pages | `src/routes/`                                                 | Notes home, kanban, reminders, archive, trash, labels           |
+| Components     | `src/lib/components/`                                         | Editors, feed, sidebar, sync UI, backup dialogs                 |
+| Note model     | `src/lib/model/`                                              | Note types, edits, merge, body CRDT; shared with the MCP server |
+| Notes state    | `src/lib/stores/notes.svelte.ts`                              | CRUD, search, trash, labels                                     |
+| Sync state     | `src/lib/stores/sync.svelte.ts`                               | Keyring, open workspace, sync status per workspace              |
+| Relay client   | `src/lib/relayClient.ts`                                      | Sign-ins and requests, per account                              |
+| Sync engine    | `src/lib/relaySync.ts`, `relaySyncRun.ts`, `workspaceSync.ts` | One sync of a workspace: its rounds, database read and save     |
+| Sync scheduler | `src/lib/stores/syncScheduler.ts`                             | When each workspace syncs; one lane per workspace               |
+| Rewrites       | `src/lib/stores/workspaceRewrites.svelte.ts`                  | Backup and Keep import, replacing the cloud copy                |
+| Device pairing | `src/lib/deviceLink.ts`                                       | Rendezvous and sealed key handover                              |
+| Kanban         | `src/lib/stores/kanban.svelte.ts`, `src/lib/kanban.ts`        | Boards and columns                                              |
+| IndexedDB      | `src/lib/db/idb.ts`                                           | Persistence, outbox, replace/import; one database per workspace |
+| Workspaces     | `src/lib/profiles.ts`, `src/lib/stores/profiles.svelte.ts`    | Sync-key keyring, workspace switching, dataset handover         |
+| Sync crypto    | `src/lib/syncPairing.ts`                                      | Identity, pairing PAKE, payload encrypt/decrypt                 |
+| Sync records   | `src/lib/syncRecords.ts`                                      | Envelope packing, tombstones                                    |
+| Backups        | `src/lib/backup.ts`, `backupCrypto.ts`                        | Export/import encrypted `.scraps-cache-backup`                  |
+| Images         | `src/lib/imageOptimize.ts`                                    | Resize, WebP, strip EXIF before store/sync                      |
+| App viewport   | `src/lib/appViewport.ts`                                      | Safe area + keyboard frame; overlay host                        |
+| Reminder wakes | `src/lib/server/wakeDispatch.ts`, `webPush.ts`                | Contentless Web Push ticks; SW finds the note in any workspace  |
 
 ### Local data model (conceptual)
 

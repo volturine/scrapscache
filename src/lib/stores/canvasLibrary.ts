@@ -8,7 +8,17 @@ import {
 	type CanvasLibraryItem
 } from '#lib/canvasLibrary.js';
 import { syncClock } from '#lib/editContext.js';
+import { isProfileReleased } from '#lib/db/idb.js';
+import { dropNotesMirror } from '#lib/noteStorage.js';
+import { PendingJournal, type Pending } from '#lib/pendingJournal.js';
+import { Retries, saveRetry } from '#lib/syncRetry.js';
 import { syncStore } from '#lib/stores/sync.svelte.js';
+
+/** Library items whose save has not landed: the item, or the time it was removed. */
+const pendingLibrary = new PendingJournal<CanvasLibraryEntry | number>(
+	'scrapscache-library-pending',
+	dropNotesMirror
+);
 
 function sanitizeTombstones(value: unknown): Record<string, number> {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
@@ -31,6 +41,9 @@ export class CanvasLibraryStore {
 	private revision = 0;
 	private listeners = new Set<(items: CanvasLibraryItem[]) => void>();
 	private pendingWrites: Promise<void> = Promise.resolve();
+	/** Saves that failed and wait to be tried again, by workspace, with the upload marks they owe. */
+	private saveRetries = new Retries(saveRetry);
+	private owed = new Map<string, Set<string>>();
 
 	/** Load a workspace's library. Nothing of the previous workspace's survives the switch. */
 	async hydrate(pid: string): Promise<void> {
@@ -43,9 +56,33 @@ export class CanvasLibraryStore {
 		this.tombstones = {};
 		const stored = await readCanvasLibrary(pid);
 		if (generation !== this.generation) return;
-		this.entries = stored.entries;
-		this.tombstones = stored.tombstones;
+		// Changes whose save never landed are laid over what is stored and saved again.
+		const unsaved = pendingLibrary.read(pid);
+		const tombstones = { ...stored.tombstones };
+		const keys: string[] = [];
+		const items: CanvasLibraryEntry[] = [];
+		for (const [id, change] of Object.entries(unsaved)) {
+			if (typeof change !== 'number') {
+				items.push(change);
+				keys.push(`library-item:${id}`);
+			} else if (change > (tombstones[id] || 0)) {
+				tombstones[id] = change;
+				keys.push(`library-item-tombstone:${id}`);
+			}
+		}
+		this.entries = mergeCanvasLibrary(stored.entries, items, tombstones);
+		this.tombstones = tombstones;
 		this.notify();
+		if (keys.length) {
+			this.persist(pid, keys, unsaved);
+			syncStore.requestAutoSync([]);
+		} else pendingLibrary.settle(pid, unsaved);
+	}
+
+	/** No save of this workspace's library waits to be tried again. The journal keeps what it has. */
+	forgetUnsaved(pid: string): void {
+		this.owed.delete(pid);
+		this.saveRetries.settled(pid);
 	}
 
 	items(): CanvasLibraryItem[] {
@@ -113,18 +150,57 @@ export class CanvasLibraryStore {
 		this.notify();
 	}
 
-	private persist(pid: string, keys: string[]): void {
+	/**
+	 * Save the library with the upload marks for `keys`. The changes are journaled
+	 * before the save starts, so they outlive a stop that comes first. A save that
+	 * failed is tried again, later each time, with every mark the failed ones owed,
+	 * for as long as the window shows that workspace; whichever it shows, the journal
+	 * has the change for the next start.
+	 */
+	private persist(
+		pid: string,
+		keys: string[],
+		/** What a start read from the journal and saves again: it is journaled already. */
+		replayed?: Pending<CanvasLibraryEntry | number>
+	): void {
+		const marks = [...new Set([...(this.owed.get(pid) ?? []), ...keys])];
+		this.owed.delete(pid);
+		this.saveRetries.trying(pid);
 		const entries = plain(this.entries);
 		const tombstones = { ...this.tombstones };
+		// A replay writes nothing: another window may have journaled something newer since.
+		const changes: Pending<CanvasLibraryEntry | number> = replayed ?? {};
+		for (const key of replayed ? [] : marks) {
+			const id = key.slice(key.indexOf(':') + 1);
+			// An item that is here was put back after its removal, so it is the newer of the two.
+			const entry = entries.find((candidate) => candidate.id === id);
+			if (entry) changes[id] = entry;
+			else if (tombstones[id]) changes[id] = tombstones[id];
+		}
+		if (!replayed && !isProfileReleased(pid) && !pendingLibrary.add(pid, changes))
+			console.error(
+				'[canvas library] could not journal unsaved changes: localStorage write failed'
+			);
 		const generation = this.generation;
 		const revision = this.revision;
 		const write = this.pendingWrites.then(async () => {
-			const stored = await mergeStoredCanvasLibrary(pid, entries, tombstones, keys);
+			const stored = await mergeStoredCanvasLibrary(pid, entries, tombstones, marks);
+			// Everything journaled for these marks is saved, a change that lost to a newer one included.
+			pendingLibrary.settle(pid, changes);
+			this.saveRetries.succeeded(pid);
 			if (pid === this.pid && generation === this.generation && revision === this.revision)
 				this.applySync(stored.entries, stored.tombstones);
 		});
 		this.pendingWrites = write.catch((err) => {
 			console.error('[canvas library] could not save the library:', err);
+			this.owed.set(pid, new Set([...(this.owed.get(pid) ?? []), ...marks]));
+			this.saveRetries.failed(pid, () => {
+				if (pid === this.pid) this.persist(pid, []);
+				else {
+					this.owed.delete(pid);
+					this.saveRetries.settled(pid);
+				}
+			});
 		});
 	}
 

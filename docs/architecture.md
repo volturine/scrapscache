@@ -104,6 +104,14 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
   merge with persisted entries and tombstones in one transaction across tabs.
 - **Sync outbox** — changed record keys scheduled for upload (not a full
   mirror of every field into `localStorage`).
+- **Unsaved changes** — every change to a note, label, board or library item is
+  written to a journal in `localStorage` in one synchronous step before its save
+  to IndexedDB starts, and taken out once that save has landed
+  (`src/lib/pendingJournal.ts`). A start replays what is left through the ordinary
+  merging save, so a change outlives the app being stopped before its save
+  finished, deletes included. A save that fails is tried again, later each time.
+  The journal comes first when `localStorage` is short of room: the fast-start
+  copy of the notes, which only makes a start quicker, is dropped for it.
 - **Attachments** — full bytes loaded when needed; grid/list may keep thumbnails
   only in memory. A picked photo is re-encoded on the way in; a picked file that
   is not (a video, a document) is refused over 8 MB, since the relay takes 16 MB of

@@ -57,6 +57,7 @@ import {
 	noteForLocalStorage,
 	noteNeedsDurableWrite,
 	readLabelsMirror,
+	pendingLabels,
 	readNotesMirror,
 	readPendingNotes,
 	settlePendingNotes,
@@ -91,6 +92,7 @@ import { planBackupImport, planKeepImport } from '#lib/workspaceImport.js';
 import { identityFromSyncKey } from '#lib/syncPairing.js';
 import { syncScheduler } from '#lib/stores/syncScheduler.js';
 import { Retries, saveRetry } from '#lib/syncRetry.js';
+import { clearPendingJournals } from '#lib/pendingJournal.js';
 import { withWorkspaceLock } from '#lib/webLock.js';
 import { planRelayReplacement, readWorkspace, WorkspaceChanged } from '#lib/workspaceSync.js';
 import type { StoredProfile } from '#lib/profiles.js';
@@ -221,6 +223,8 @@ export class NotesStore {
 		// One read of the journal: these are the entries this boot replays, so only
 		// these may be settled. Another window may journal more while this awaits.
 		const pending = readPendingNotes(this.pid);
+		const loadingLabels = this.pid;
+		const unsavedLabels = pendingLabels.read(loadingLabels);
 		const mirrorNotes = readNotesMirror(this.pid, pending);
 		const mirrorLabels = readLabelsMirror(this.pid);
 		let dbNotes: Note[] = [];
@@ -237,9 +241,15 @@ export class NotesStore {
 		}
 
 		const notes = mergeNoteLists(mirrorNotes, dbNotes).sort((a, b) => b.updatedAt - a.updatedAt);
-		const labels = mergeLabelLists(mirrorLabels, dbLabels).sort((a, b) =>
-			a.name.localeCompare(b.name)
-		);
+		// A label change whose save never landed is laid over what is stored: the label
+		// as it was changed, or the time it was deleted.
+		const labels = mergeLabelLists(
+			mergeLabelLists(mirrorLabels, dbLabels),
+			Object.values(unsavedLabels).filter((change) => typeof change !== 'number')
+		).sort((a, b) => a.name.localeCompare(b.name));
+		const unsavedLabelDeletes = Object.fromEntries(
+			Object.entries(unsavedLabels).filter(([, change]) => typeof change === 'number')
+		) as Record<string, number>;
 		const seededFlag =
 			typeof localStorage !== 'undefined' ? localStorage.getItem('scrapscache-seeded') : null;
 
@@ -249,7 +259,7 @@ export class NotesStore {
 			boards: {}
 		}));
 		this.deletedNoteIds = tombstones.notes;
-		this.deletedLabelIds = tombstones.labels;
+		this.deletedLabelIds = newestTombstones(tombstones.labels, unsavedLabelDeletes);
 		// The boards hydrate from their mirror even when the device store cannot be
 		// read; the rest of the boot must still run, or reminders, the first sync
 		// and note links never start.
@@ -292,6 +302,12 @@ export class NotesStore {
 					await this.recoverMirrorIntoIndexedDB(dbNotes, dbLabels);
 					// Every edit journaled before this boot read the journal is in IndexedDB now.
 					settlePendingNotes(pending, this.pid);
+					// Each label change left unsaved is saved as it would have been, unless the
+					// window has moved on: its journal then waits for this workspace's next load.
+					if (loadingLabels === this.pid) {
+						for (const [id, change] of Object.entries(unsavedLabels))
+							this.writeLabel(loadingLabels, id, change, true);
+					}
 				} catch (err) {
 					this.recordPersistenceError('Could not restore IndexedDB from mirror', err);
 				}
@@ -884,8 +900,15 @@ export class NotesStore {
 						pid,
 						importedReminderHistory(backup.notes, notes, backup.reminderHistory)
 					),
-				// The boards are the backup's now; a mirror of the ones before would merge back in.
-				afterLanding: replace ? () => clearBoardsMirror(pid) : undefined,
+				// The workspace is the backup's now: a mirror of the boards before would merge
+				// back in, and so would a change from before that was never saved.
+				afterLanding: replace
+					? () => {
+							clearBoardsMirror(pid);
+							canvasLibraryStore.forgetUnsaved(pid);
+							clearPendingJournals(pid);
+						}
+					: undefined,
 				whenOpen: replace
 					? () => {
 							if (
@@ -1283,16 +1306,32 @@ export class NotesStore {
 	 * window shows by then: nothing else would save it before the next start. What is
 	 * tried again is what was asked for last, whichever save failed last.
 	 */
-	private writeLabel(pid: string, id: string, change: Label | number): void {
+	private writeLabel(
+		pid: string,
+		id: string,
+		change: Label | number,
+		/** A start saving what it read from the journal: it is journaled already. */
+		replayed = false
+	): void {
 		const slot = `${pid}\n${id}`;
 		this.labelsAsked.set(slot, change);
 		this.labelRetries.trying(slot);
+		// Written before the save starts, so the change outlives a stop that comes first.
+		// A replay writes nothing: another window may have journaled something newer since.
+		if (!replayed && !isProfileReleased(pid) && !pendingLabels.add(pid, { [id]: change })) {
+			const failure = new Error('localStorage write failed');
+			if (pid === this.pid)
+				this.recordPersistenceError('Could not journal an unsaved label', failure);
+			else console.error('[notes] Could not journal an unsaved label', failure);
+		}
 		const deleting = typeof change === 'number';
 		const saved: Promise<unknown> = deleting
 			? deleteLabelWithTombstone(pid, id, change, [`label-tombstone:${id}`])
 			: saveLabel(pid, change, [`label:${id}`]);
 		void saved.then(
 			() => {
+				pendingLabels.settle(pid, { [id]: change });
+				if (pid === this.pid) this.lastPersistError = null;
 				if (this.labelsAsked.get(slot) === change) this.labelsAsked.delete(slot);
 				// A later change that failed while this one was under way keeps its wait.
 				this.labelRetries.succeeded(slot);
@@ -1306,7 +1345,7 @@ export class NotesStore {
 				if (isProfileReleased(pid) || asked === undefined) {
 					this.labelsAsked.delete(slot);
 					this.labelRetries.settled(slot);
-				} else this.labelRetries.failed(slot, () => this.writeLabel(pid, id, asked));
+				} else this.labelRetries.failed(slot, () => this.writeLabel(pid, id, asked, replayed));
 			}
 		);
 	}

@@ -12,6 +12,7 @@ import { PROFILE_META_KEY } from '#lib/relaySync.js';
 import { notesStore } from './notes.svelte';
 import { syncScheduler } from './syncScheduler';
 import { clearNotesMirror } from '#lib/noteStorage.js';
+import { clearPendingJournals } from '#lib/pendingJournal.js';
 import { clearBoardsMirror } from './kanban.svelte';
 import { clearRecentNotes } from '#lib/recentNotes.js';
 import { clearFiredReminderMirror } from './reminders.svelte';
@@ -260,6 +261,7 @@ export class ProfileCoordinator {
 			// their attachments into the empty database that opening it creates.
 			clearNotesMirror(profileId);
 			clearBoardsMirror(profileId);
+			clearPendingJournals(profileId);
 			clearFiredReminderMirror(profileId);
 			clearRecentNotes(profileId);
 			if (profile.syncKey) void unregisterReminderDevice(profile).catch(() => undefined);

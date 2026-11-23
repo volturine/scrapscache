@@ -57,6 +57,16 @@ export function relayNotReached(error: unknown): boolean {
 	return error instanceof TypeError || (error instanceof Error && error.message === SYNC_TIMED_OUT);
 }
 
+/** A sign-in the relay answered with a no: `status` is what it answered. */
+export class SignInRefused extends Error {
+	constructor(
+		message: string,
+		readonly status: number
+	) {
+		super(message);
+	}
+}
+
 export class RelayClient {
 	private sessions = new Map<string, { accessToken: string; expiresAt: number }>();
 	private pendingSessions = new Map<string, Promise<string>>();
@@ -86,7 +96,10 @@ export class RelayClient {
 
 	private retired(account: SyncAccount): Error {
 		this.onRetired?.(account);
-		return new Error('This sync key was deleted from the cloud. Create a new key to keep syncing.');
+		return new SignInRefused(
+			'This sync key was deleted from the cloud. Create a new key to keep syncing.',
+			410
+		);
 	}
 
 	/** A sign-in for the account: the one it has while that is good, a new one otherwise. */
@@ -117,7 +130,7 @@ export class RelayClient {
 				typeof challenge.challengeId !== 'string' ||
 				typeof challenge.challenge !== 'string'
 			) {
-				throw new Error('Could not start sync authentication');
+				throw new SignInRefused('Could not start sync authentication', challengeResponse.status);
 			}
 			const sessionResponse = await fetch(serverUrl('/api/sync/auth/session'), {
 				method: 'POST',
@@ -154,7 +167,7 @@ export class RelayClient {
 			typeof issued.accessToken !== 'string' ||
 			typeof issued.expiresAt !== 'number'
 		) {
-			throw new Error('Sync authentication failed');
+			throw new SignInRefused('Sync authentication failed', response.status);
 		}
 		// A sign-in that the server before the setting moved answered is not kept.
 		if (generation !== this.authenticationGeneration)
@@ -220,10 +233,16 @@ export class RelayClient {
 			try {
 				accessToken = await untilAborted(this.accessToken(account), signal);
 			} catch (error) {
+				// A sign-in is judged as a sync request is: what the relay refuses stands
+				// until something changes, and a relay that could not serve is only not reached.
+				const status = error instanceof SignInRefused ? error.status : undefined;
 				return {
 					success: false,
 					error: error instanceof Error ? error.message : 'Authentication failed',
-					...(relayNotReached(error) ? { unreachable: true } : {})
+					...(status !== undefined ? { status } : {}),
+					...(relayNotReached(error) || (status !== undefined && status >= 500)
+						? { unreachable: true }
+						: {})
 				};
 			}
 			// A delta round is idempotent: an upload the relay already stored carries

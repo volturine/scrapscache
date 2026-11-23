@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { putNote, setSyncState } from '#lib/db/idb.js';
 import { createKanbanBoard, type KanbanBoard } from '#lib/kanban.js';
 import { BOARDS_IDB } from '#lib/syncTombstones.js';
-import { readNotesMirror } from '#lib/noteStorage.js';
+import { readLabelsMirror, readNotesMirror } from '#lib/noteStorage.js';
+import { readWorkspace } from '#lib/workspaceSync.js';
 import type { Note } from '#lib/types.js';
 import { notesStore } from './notes.svelte';
 import { kanbanStore } from './kanban.svelte';
@@ -12,9 +13,10 @@ import { linkTestWorkspace, unlinkTestWorkspace } from '../../tests/syncing';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 
 type Internals = {
-	show(pid: unknown): Promise<void>;
+	show(pid: unknown, synced?: unknown): Promise<void>;
 	showRewritten(pid: string): Promise<void>;
 	staleWhileHidden: string | null;
+	rewrittenWhileHidden: string | null;
 	mirrorToLS(): void;
 };
 const internals = notesStore as unknown as Internals;
@@ -62,6 +64,7 @@ describe('a hidden window while another window syncs', () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
 		internals.staleWhileHidden = null;
+		internals.rewrittenWhileHidden = null;
 	});
 
 	it('reads nothing while hidden, and catches up once shown', async () => {
@@ -124,6 +127,28 @@ describe('a hidden window while another window syncs', () => {
 			expect(notesStore.notes.map((item) => item.title)).toEqual(['saved elsewhere'])
 		);
 		expect(notesStore.labels).toEqual([]);
+	});
+
+	it('merges nothing into what it holds from before a rewrite when a sync of its own lands', async () => {
+		notesStore.labels = [
+			{ id: 'replaced', name: 'Gone with the rewrite', createdAt: 1, updatedAt: 1 }
+		];
+		vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+		await internals.showRewritten(TEST_WORKSPACE);
+
+		// A sync of this window's own lands while it is still hidden.
+		await internals.show(TEST_WORKSPACE, {
+			snapshot: await readWorkspace(TEST_WORKSPACE),
+			decisions: new Map()
+		});
+
+		// What it holds is from before the rewrite: nothing is merged into it, and
+		// none of it is written where the next start would take it for current.
+		expect(notesStore.notes.map((item) => item.title)).toEqual(['before']);
+		internals.mirrorToLS();
+		expect(readNotesMirror(TEST_WORKSPACE)).toEqual([]);
+		expect(readLabelsMirror(TEST_WORKSPACE)).toEqual([]);
+		expect(internals.rewrittenWhileHidden).toBe(TEST_WORKSPACE);
 	});
 
 	it('ignores another workspace', async () => {

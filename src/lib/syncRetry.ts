@@ -165,6 +165,11 @@ export class Retries {
 		this.waits.delete(key);
 	}
 
+	/** Every key `matches` picks is settled. */
+	settleWhere(matches: (key: string) => boolean): void {
+		for (const key of [...this.waits.keys()]) if (matches(key)) this.settled(key);
+	}
+
 	/** Every key is settled. */
 	clear(): void {
 		for (const wait of this.waits.values()) if (wait.timer) clearTimeout(wait.timer);

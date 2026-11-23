@@ -1,6 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { strToU8 } from 'fflate';
-import { getAllNotesMetadata, getSyncOutboxKeys, waitForDeviceWrites } from '#lib/db/idb.js';
+import {
+	getAllLabels,
+	getAllNotesMetadata,
+	getSyncOutboxKeys,
+	waitForDeviceWrites
+} from '#lib/db/idb.js';
+import * as idb from '#lib/db/idb.js';
+import { pendingLabels } from '#lib/noteStorage.js';
+import { readStoredTombstones } from '#lib/syncTombstones.js';
 import { BackupImportMode, type ScrapsCacheBackup } from '#lib/backup.js';
 import { createSyncIdentity } from '#lib/syncPairing.js';
 import { notesStore } from './notes.svelte';
@@ -220,6 +228,94 @@ describe('backup and Keep import stay in the open workspace', () => {
 			[existing.id]: expect.any(Number)
 		});
 		expect(kanbanStore.boards[0].columns[0].order).toEqual([restored.id]);
+	});
+
+	it('brings a replacement backup\u2019s labels and boards back under new ids, and deletes every old one', async () => {
+		await openWorkspace(workspaceA);
+		const onlyHere = notesStore.createLabel('Only in the workspace')!;
+		const deletedSince = notesStore.createLabel('Deleted since the backup')!;
+		await notesStore.waitForPendingProfileWrites();
+		await vi.waitFor(async () => expect(await getAllLabels(workspaceA.id)).toHaveLength(2));
+		notesStore.removeLabel(deletedSince.id);
+		await vi.waitFor(async () => expect(await getAllLabels(workspaceA.id)).toHaveLength(1));
+		const boardBefore = kanbanStore.createBoard('Board before the restore');
+		await kanbanStore.waitForPendingWrites();
+		const label = (id: string, name: string) => ({ id, name, createdAt: 1, updatedAt: 1 });
+		const backup = {
+			...emptyBackup([{ ...backupNote('restored'), labels: [deletedSince.id, 'kept'] }]),
+			// The backup was made before one of its labels was deleted.
+			labels: [label(deletedSince.id, 'Deleted since the backup'), label('kept', 'Kept')],
+			boards: [
+				{
+					id: 'board',
+					name: 'Board',
+					createdAt: 1,
+					updatedAt: 1,
+					columns: [
+						{ id: 'backlog', labelId: null, order: ['restored'] },
+						{ id: 'tagged', labelId: deletedSince.id, order: [] }
+					],
+					backlogFilter: { labelIds: ['kept'], search: '' }
+				}
+			]
+		} as unknown as ScrapsCacheBackup;
+
+		const result = await notesStore.importBackup(backup, BackupImportMode.Replace);
+
+		expect(result).toEqual({ success: true });
+		// Both of the backup's labels are back, and neither under an id a delete knows.
+		const labels = new Map(notesStore.labels.map((item) => [item.name, item.id]));
+		expect([...labels.keys()].sort()).toEqual(['Deleted since the backup', 'Kept']);
+		const restoredLabel = labels.get('Deleted since the backup')!;
+		expect(restoredLabel).not.toBe(deletedSince.id);
+		expect(labels.get('Kept')).not.toBe('kept');
+		// The note and the board follow them to the new ids.
+		expect([...notesStore.notes[0].labels].sort()).toEqual([...labels.values()].sort());
+		const board = kanbanStore.boards.find((candidate) => candidate.name === 'Board');
+		expect(board?.id).not.toBe('board');
+		expect(board?.columns.map((column) => column.labelId)).toEqual([null, restoredLabel]);
+		expect(kanbanStore.boards.map((candidate) => candidate.name)).toEqual(['Board']);
+		// Every old one is deleted, on this device and, once that is sent, on the others:
+		// a sync that reads the relay's copy again brings none of them back.
+		const stored = await readStoredTombstones(workspaceA.id);
+		expect(stored.labels).toMatchObject({
+			[onlyHere.id]: expect.any(Number),
+			[deletedSince.id]: expect.any(Number),
+			kept: expect.any(Number)
+		});
+		expect(stored.boards).toMatchObject({
+			[boardBefore.id]: expect.any(Number),
+			board: expect.any(Number)
+		});
+		expect(await getSyncOutboxKeys(workspaceA.id)).toEqual(
+			expect.arrayContaining([
+				`label-tombstone:${onlyHere.id}`,
+				`board-tombstone:${boardBefore.id}`,
+				`label:${restoredLabel}`,
+				`board:${board!.id}`
+			])
+		);
+	});
+
+	it('brings nothing back that was waiting to be saved again when a backup replaced the workspace', async () => {
+		await openWorkspace(workspaceA);
+		vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		vi.spyOn(idb, 'saveLabel').mockRejectedValueOnce(new Error('Storage full'));
+		notesStore.createLabel('Waiting to be saved again');
+		await vi.waitFor(() => expect(notesStore.lastPersistError).toMatch(/Could not save label/));
+
+		const result = await notesStore.importBackup(
+			emptyBackup([backupNote('restored')]),
+			BackupImportMode.Replace
+		);
+		expect(result).toEqual({ success: true });
+		// Past the moment the failed save would have been tried again.
+		await new Promise((resolve) => setTimeout(resolve, 1_500));
+		await notesStore.waitForPendingProfileWrites();
+
+		expect(await getAllLabels(workspaceA.id)).toEqual([]);
+		expect(notesStore.labels).toEqual([]);
+		expect(pendingLabels.read(workspaceA.id)).toEqual({});
 	});
 
 	it('carries the canvas library and reminder history through a backup', async () => {

@@ -126,7 +126,7 @@ export function planBackupImport(input: {
 	const control = accountId ? syncControlKeys(accountId) : null;
 	return {
 		notes,
-		stateKeys: [NOTE_IDB, ...library],
+		stateKeys: [NOTE_IDB, LABEL_IDB, BOARD_IDB, BOARDS_IDB, ...library],
 		land: (stored) => {
 			// The notes return under new ids, so every copy under an old id goes.
 			const tombstones = {
@@ -134,28 +134,60 @@ export function planBackupImport(input: {
 				...sanitizeTombstones(backup.tombstones)
 			};
 			for (const id of [...stored.noteIds, ...importedIds.keys()]) tombstones[id] = now;
-			const labelTombstones = sanitizeTombstones(backup.labelTombstones);
-			const boardTombstones = sanitizeTombstones(backup.boardTombstones);
+			// So do the labels and the boards. A delete is for good: under its old id a
+			// label deleted since the backup was made would be taken away again by the
+			// next sync, and one the backup does not have would come back with it. Under
+			// new ids the backup's are safe, and every old one goes on every device.
+			const labelIds = new Map(backup.labels.map((label) => [label.id, uid()]));
+			const relabelled = (ids: readonly string[]) =>
+				ids.flatMap((id) => {
+					const imported = labelIds.get(id);
+					return imported ? [imported] : [];
+				});
+			const labels = backup.labels.map((label) => ({ ...label, id: labelIds.get(label.id)! }));
+			const labelTombstones = {
+				...sanitizeTombstones(stored.state[LABEL_IDB]),
+				...sanitizeTombstones(backup.labelTombstones)
+			};
+			for (const id of [...stored.labels.map((label) => label.id), ...labelIds.keys()])
+				labelTombstones[id] = now;
+			const deletedInBackup = sanitizeTombstones(backup.boardTombstones);
+			const boardTombstones = {
+				...sanitizeTombstones(stored.state[BOARD_IDB]),
+				...deletedInBackup
+			};
 			const boards = backup.boards.flatMap((board): KanbanBoard[] => {
 				const normalized = normalizeBoard({
 					...board,
 					columns: board.columns.map((column) => ({
 						...column,
+						labelId: column.labelId === null ? null : (labelIds.get(column.labelId) ?? null),
 						order: column.order.flatMap((id) => {
 							const imported = importedIds.get(id);
 							return imported ? [imported] : [];
 						})
-					}))
+					})),
+					backlogFilter: {
+						...board.backlogFilter,
+						labelIds: relabelled(board.backlogFilter.labelIds)
+					},
+					noteFilter: { ...board.noteFilter, labelIds: relabelled(board.noteFilter.labelIds) }
 				});
-				return normalized && (boardTombstones[normalized.id] || 0) < normalized.updatedAt
-					? [normalized]
+				return normalized && (deletedInBackup[normalized.id] || 0) < normalized.updatedAt
+					? [{ ...normalized, id: uid() }]
 					: [];
 			});
+			const before: unknown = stored.state[BOARDS_IDB];
+			for (const board of [...(Array.isArray(before) ? before : []), ...backup.boards]) {
+				const id = (board as { id?: unknown } | null)?.id;
+				if (typeof id === 'string') boardTombstones[id] = now;
+			}
 			const restored = restoredLibrary(stored, backup, true, now);
+			const relabelledNotes = notes.map((note) => ({ ...note, labels: relabelled(note.labels) }));
 			return {
 				clear: true,
-				notes,
-				labels: backup.labels,
+				notes: relabelledNotes,
+				labels,
 				state: {
 					[NOTE_IDB]: tombstones,
 					[LABEL_IDB]: labelTombstones,
@@ -168,8 +200,8 @@ export function planBackupImport(input: {
 					? [control.cursor, control.baseline, control.recordIds, control.relayAttachments]
 					: [],
 				outboxKeys: [
-					...notes.flatMap(noteRecordKeys),
-					...backup.labels.map((label) => `label:${label.id}`),
+					...relabelledNotes.flatMap(noteRecordKeys),
+					...labels.map((label) => `label:${label.id}`),
 					...boards.map((board) => `board:${board.id}`),
 					...tombstoneKeys('note', tombstones),
 					...tombstoneKeys('label', labelTombstones),

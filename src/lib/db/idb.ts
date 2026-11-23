@@ -1212,15 +1212,6 @@ function abortWrite(
 	return tx.done.catch(() => undefined);
 }
 
-async function loadOutboxGeneration(db: IDBPDatabase, dbName: string): Promise<number> {
-	let cached = outboxGenerations.get(dbName);
-	if (cached == null) {
-		cached = Number((await db.get(SYNC_STATE_STORE, OUTBOX_GENERATION_KEY)) ?? 0);
-		outboxGenerations.set(dbName, cached);
-	}
-	return cached;
-}
-
 async function nextOutboxGeneration(
 	tx: IDBPTransaction<unknown, string[], 'readwrite'>,
 	dbName: string
@@ -1244,9 +1235,20 @@ export async function uploadGeneration(pid: string): Promise<number> {
 	return Number((await db.get(SYNC_STATE_STORE, OUTBOX_GENERATION_KEY)) ?? 0);
 }
 
+/**
+ * How far the upload queue has come, read from the database: another window may
+ * have queued something since this one last looked, and a sync has to be able to
+ * settle that too.
+ */
 export function getOutboxGeneration(pid: string): Promise<number> {
 	const dbName = resolveDbName(pid);
-	return enqueueDeviceWrite(async () => loadOutboxGeneration(await getDB(pid), dbName));
+	return enqueueDeviceWrite(async () => {
+		const db = await getDB(pid);
+		const stored = Number((await db.get(SYNC_STATE_STORE, OUTBOX_GENERATION_KEY)) ?? 0);
+		const generation = Math.max(stored, outboxGenerations.get(dbName) ?? 0);
+		outboxGenerations.set(dbName, generation);
+		return generation;
+	});
 }
 
 function uniqueOutboxKeys(keys: Iterable<string>): string[] {

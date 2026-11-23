@@ -296,4 +296,15 @@ describe('durable sync outbox', () => {
 		});
 		expect(hydrated.images?.[0]?.dataUrl?.startsWith('data:image/png;base64,')).toBe(true);
 	});
+
+	it('reads how far the upload queue has come from the database, where another window moves it on', async () => {
+		await markSyncOutbox(TEST_WORKSPACE, ['note:queued-here']);
+		const here = await getOutboxGeneration(TEST_WORKSPACE);
+
+		// Another window queues something later: it writes the database, not this window's memory.
+		await setSyncState(TEST_WORKSPACE, 'scrapscache-outbox-generation', here + 1_000);
+
+		// A sync started in this window has to be able to settle what that window queued.
+		expect(await getOutboxGeneration(TEST_WORKSPACE)).toBe(here + 1_000);
+	});
 });

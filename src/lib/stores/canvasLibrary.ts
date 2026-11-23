@@ -195,8 +195,10 @@ export class CanvasLibraryStore {
 			console.error('[canvas library] could not save the library:', err);
 			this.owed.set(pid, new Set([...(this.owed.get(pid) ?? []), ...marks]));
 			this.saveRetries.failed(pid, () => {
-				if (pid === this.pid) this.persist(pid, []);
-				else {
+				if (pid === this.pid) {
+					this.persist(pid, []);
+					syncStore.requestAutoSync([]);
+				} else {
 					this.owed.delete(pid);
 					this.saveRetries.settled(pid);
 				}

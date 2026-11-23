@@ -657,7 +657,11 @@ describe('client sync state machine', () => {
 			[keys.cursor]: 3,
 			[keys.recordIds]: { 'note:note-1': 'remote-envelope' }
 		});
-		expect(Object.keys(read.control?.[keys.baseline] as object)).toEqual(['note:note-1']);
+		// The workspace's name is a record the relay holds too.
+		expect(Object.keys(read.control?.[keys.baseline] as object).sort()).toEqual([
+			'note:note-1',
+			'profile-meta'
+		]);
 		// Nothing on this device changed.
 		expect(await idb.getSyncState(TEST_WORKSPACE, keys.cursor)).toBe(9);
 		expect(await idb.getSyncState(TEST_WORKSPACE, keys.baseline)).toEqual({
@@ -1050,7 +1054,7 @@ describe('client sync state machine', () => {
 		expect(result.snapshot?.notes.map((item) => item.id)).toEqual(['note-1']);
 	});
 
-	it('resets stale control state and rebuilds it on the requested bootstrap pass', async () => {
+	it('sends its whole copy again once the relay says it was reset', async () => {
 		const image = attachment('image-1');
 		const local = note('note-1', { updatedAt: 5 }, [image]);
 		const { store, account, requests } = createHarness((request, index) => {
@@ -1059,9 +1063,6 @@ describe('client sync state machine', () => {
 					success: true,
 					data: emptyData({ cursor: 0, reset: true, writesAccepted: false })
 				};
-			}
-			if (index === 1 || index === 2 || index === 3) {
-				return { success: true, data: emptyData() };
 			}
 			return {
 				success: true,
@@ -1079,16 +1080,146 @@ describe('client sync state machine', () => {
 		expect(reset.success, reset.error).toBe(true);
 		expect(reset.bootstrap).toBe(true);
 		expect(requests[0].envelopes).toEqual([]);
-		const resetRequestCount = requests.length;
-		expect(resetRequestCount).toBe(2);
+		// The note, its photo and the workspace's name: nothing as a replacement of
+		// something the relay no longer has.
+		const uploads = requests.flatMap((request) => request.envelopes);
+		expect(uploads).toHaveLength(3);
+		expect(uploads.every((item) => item.expectedId === null)).toBe(true);
 
-		const rebuilt = await syncOpen(store, syncSnapshot({ notes: [local] }), passthrough);
-		expect(rebuilt.success, rebuilt.error).toBe(true);
-		const rebuiltUploads = requests
-			.slice(resetRequestCount)
-			.flatMap((request) => request.envelopes);
-		expect(rebuiltUploads).toHaveLength(2);
-		expect(rebuiltUploads.every((item) => item.expectedId === null)).toBe(true);
+		const sent = requests.length;
+		const again = await syncOpen(store, syncSnapshot({ notes: [local] }), passthrough);
+		expect(again.success, again.error).toBe(true);
+		expect(requests.slice(sent).flatMap((request) => request.envelopes)).toEqual([]);
+	});
+
+	it('sends what was not queued too after a reset, when something else was', async () => {
+		const edited = note('note-1', { updatedAt: 5 });
+		const untouched = note('note-2', { updatedAt: 5 });
+		const { store, account, requests } = createHarness((request, index) => ({
+			success: true,
+			data:
+				index === 0
+					? emptyData({ cursor: 0, reset: true, writesAccepted: false })
+					: emptyData({ cursor: request.envelopes.length })
+		}));
+		await seedControl(account.accountId, {
+			cursor: 99,
+			baseline: { 'note:note-1': 'stale', 'note:note-2': 'stale' },
+			recordIds: { 'note:note-1': 'stale-1', 'note:note-2': 'stale-2' }
+		});
+		// Only one of the two notes was waiting to be sent when the relay was reset.
+		await idb.markSyncOutbox(TEST_WORKSPACE, ['note:note-1']);
+		const local = syncSnapshot({ notes: [edited, untouched] });
+
+		// The reset pass, and the pass the caller runs after it with every byte loaded.
+		expect((await syncOpen(store, local, passthrough)).bootstrap).toBe(true);
+		expect((await syncOpen(store, local, passthrough)).success).toBe(true);
+
+		// What the first pass sent left a sync state that no longer looks like a first
+		// upload: the untouched note is sent because it was queued at the reset.
+		const sentNotes = requests
+			.flatMap((request) => request.envelopes)
+			.map(
+				(item) =>
+					decryptSyncPayload(account.syncKey, item.ciphertext, item.slot) as {
+						kind: string;
+						value?: { id?: string };
+					}
+			)
+			.filter((payload) => payload.kind === 'note')
+			.map((payload) => payload.value?.id);
+		expect([...new Set(sentNotes)].sort()).toEqual(['note-1', 'note-2']);
+		expect(await idb.getSyncOutboxKeys(TEST_WORKSPACE)).toEqual([]);
+	});
+
+	it('keeps a note queued that an earlier round settled and a later one found changed here', async () => {
+		const settled = note('note-n');
+		const queued = note('note-m', { title: 'Edited here', updatedAt: 5 });
+		// Another device changes the body of the note that the first round settles.
+		const theirs = note('note-n', {
+			body: 'Theirs',
+			updatedAt: 20,
+			fieldTimes: { ...settled.fieldTimes, body: 20 }
+		});
+		// As the relay holds them: the records this app itself would have sent.
+		const asSent = async (item: Note) =>
+			(await buildSyncRecords(syncSnapshot({ notes: [item] })))[0].payload;
+		const first = await asSent(settled);
+		const second = await asSent(theirs);
+		const { store, account, requests } = createHarness((_request, index) => ({
+			success: true,
+			data:
+				index === 0
+					? emptyData({ cursor: 1, envelopes: [envelope(account, 'n-1', 1, first)] })
+					: emptyData({
+							cursor: 3,
+							envelopes: index === 1 ? [envelope(account, 'n-2', 3, second)] : []
+						})
+		}));
+		await seedControl(account.accountId, {
+			cursor: 0,
+			baseline: { 'note:note-m': 'older' },
+			recordIds: { 'note:note-m': 'm-0' },
+			outbox: ['note:note-m']
+		});
+		let saves = 0;
+
+		const result = await syncOpen(
+			store,
+			syncSnapshot({ notes: [settled, queued] }),
+			async (snapshot) => {
+				saves += 1;
+				if (saves < 2) return snapshot;
+				// While the second round was with the relay the title was changed here:
+				// the save merged it with what was pulled and queued the note.
+				await idb.markSyncOutbox(TEST_WORKSPACE, ['note:note-n']);
+				return {
+					...snapshot,
+					notes: snapshot.notes.map((item) =>
+						item.id === 'note-n'
+							? {
+									...item,
+									title: 'Mine',
+									updatedAt: 30,
+									fieldTimes: { ...item.fieldTimes, title: 30 }
+								}
+							: item
+					)
+				};
+			}
+		);
+
+		expect(result.success, result.error).toBe(true);
+		expect(requests.length).toBeGreaterThanOrEqual(2);
+		// The relay holds their body without this device's title: the note is still owed.
+		expect(await idb.getSyncOutboxKeys(TEST_WORKSPACE)).toEqual(['note:note-n']);
+	});
+
+	it('does not send the workspace\u2019s name again when the relay already holds it', async () => {
+		const { store, account, requests } = createHarness((request) => ({
+			success: true,
+			data: emptyData({ cursor: request.envelopes.length ? 2 : 1 })
+		}));
+		const local = syncSnapshot({ notes: [note()] });
+		const names = () =>
+			requests
+				.flatMap((request) => request.envelopes)
+				.map(
+					(item) =>
+						decryptSyncPayload(account.syncKey, item.ciphertext, item.slot) as { kind: string }
+				)
+				.filter((payload) => payload.kind === 'profile-meta').length;
+
+		// Opening a workspace queues its name, every time.
+		await idb.markSyncOutbox(TEST_WORKSPACE, ['profile-meta']);
+		expect((await syncOpen(store, local, passthrough)).success).toBe(true);
+		expect(names()).toBe(1);
+
+		await idb.markSyncOutbox(TEST_WORKSPACE, ['profile-meta']);
+		expect((await syncOpen(store, local, passthrough)).success).toBe(true);
+
+		expect(names()).toBe(1);
+		expect(await idb.getSyncOutboxKeys(TEST_WORKSPACE)).toEqual([]);
 	});
 
 	it('keeps every upload round within the hosted relay mutation limit', async () => {

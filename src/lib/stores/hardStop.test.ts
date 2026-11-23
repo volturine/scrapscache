@@ -10,7 +10,7 @@ import { readCanvasLibrary } from '#lib/canvasLibrary.js';
 import * as idb from '#lib/db/idb.js';
 import { clearSyncOutbox, getSyncOutboxKeys, setSyncState } from '#lib/db/idb.js';
 import { normalizeBoard, type KanbanBoard } from '#lib/kanban.js';
-import { LABELS_MIRROR_KEY, pendingLabels } from '#lib/noteStorage.js';
+import { LABELS_MIRROR_KEY, pendingLabels, pendingNoteDeletes } from '#lib/noteStorage.js';
 import * as syncTombstones from '#lib/syncTombstones.js';
 import { BOARDS_IDB, loadBoardsFromDevice, readStoredTombstones } from '#lib/syncTombstones.js';
 import { CanvasLibraryStore } from './canvasLibrary';
@@ -82,6 +82,63 @@ describe('a label', () => {
 	});
 });
 
+describe('a note deleted for good', () => {
+	const trashed = async (title: string) => {
+		const note = notesStore.createNote({ title });
+		notesStore.trashNote(note.id);
+		await idb.waitForDeviceWrites(TEST_WORKSPACE);
+		return note;
+	};
+
+	it('stays deleted when the app stopped before its delete landed', async () => {
+		const note = await trashed('Gone for good');
+		vi.spyOn(syncTombstones, 'addTombstones').mockImplementation(neverLands);
+		void notesStore.deleteNoteForever(note.id);
+		await vi.waitFor(() => expect(syncTombstones.addTombstones).toHaveBeenCalled());
+		vi.mocked(syncTombstones.addTombstones).mockRestore();
+
+		await notesStore.reloadForProfile();
+
+		expect(notesStore.notes.map(({ id }) => id)).not.toContain(note.id);
+		await vi.waitFor(async () =>
+			expect((await readStoredTombstones(TEST_WORKSPACE)).notes).toHaveProperty(note.id)
+		);
+		expect(await getSyncOutboxKeys(TEST_WORKSPACE)).toContain(`note-tombstone:${note.id}`);
+		await vi.waitFor(async () =>
+			expect((await idb.getAllNotesMetadata(TEST_WORKSPACE)).map(({ id }) => id)).not.toContain(
+				note.id
+			)
+		);
+		await vi.waitFor(() => expect(pendingNoteDeletes.read(TEST_WORKSPACE)).toEqual({}));
+	});
+
+	it('is kept when it was taken out of the trash before the next start', async () => {
+		const note = await trashed('Restored after all');
+		// A delete that a stop left in the journal.
+		pendingNoteDeletes.add(TEST_WORKSPACE, { [note.id]: Date.now() });
+		await new Promise((resolve) => setTimeout(resolve, 2));
+		notesStore.restoreNote(note.id);
+		await idb.waitForDeviceWrites(TEST_WORKSPACE);
+
+		await notesStore.reloadForProfile();
+
+		expect(notesStore.notes.map(({ id }) => id)).toContain(note.id);
+		expect((await readStoredTombstones(TEST_WORKSPACE)).notes).not.toHaveProperty(note.id);
+		await vi.waitFor(() => expect(pendingNoteDeletes.read(TEST_WORKSPACE)).toEqual({}));
+	});
+
+	it('takes its entry out of the journal when the delete could not be saved', async () => {
+		const note = await trashed('Still here after a failed delete');
+		vi.spyOn(syncTombstones, 'addTombstones').mockRejectedValueOnce(new Error('Storage full'));
+
+		await expect(notesStore.deleteNoteForever(note.id)).rejects.toThrow('Storage full');
+
+		// The note is still shown, so nothing may delete it behind the person's back later.
+		expect(notesStore.notes.map(({ id }) => id)).toContain(note.id);
+		expect(pendingNoteDeletes.read(TEST_WORKSPACE)).toEqual({});
+	});
+});
+
 describe('a label change left in the journal', () => {
 	it('does not go over a later rename the database already holds', async () => {
 		const label = { id: 'renamed-elsewhere', name: 'Before', createdAt: 1, updatedAt: 10 };
@@ -95,6 +152,25 @@ describe('a label change left in the journal', () => {
 		expect((await idb.getAllLabels(TEST_WORKSPACE)).map(({ name }) => name)).toEqual([
 			'Later, by a sync'
 		]);
+	});
+
+	it('does not write a label back that was deleted since the change was journaled', async () => {
+		const label = {
+			id: 'deleted-since',
+			name: 'Renamed before a stop',
+			createdAt: 1,
+			updatedAt: 10
+		};
+		await syncTombstones.deleteLabelWithTombstone(TEST_WORKSPACE, label.id, 50);
+		pendingLabels.add(TEST_WORKSPACE, { [label.id]: label });
+
+		await notesStore.reloadForProfile();
+		await notesStore.waitForPendingProfileWrites();
+
+		expect(notesStore.labels).toEqual([]);
+		expect(await idb.getAllLabels(TEST_WORKSPACE)).toEqual([]);
+		expect(await getSyncOutboxKeys(TEST_WORKSPACE)).not.toContain(`label:${label.id}`);
+		expect(pendingLabels.read(TEST_WORKSPACE)).toEqual({});
 	});
 
 	it('leaves a newer change another window journaled while it is saved again', async () => {

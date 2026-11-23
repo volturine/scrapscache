@@ -298,6 +298,21 @@ describe('the sync scheduler', () => {
 		expect(rounds).toEqual(['open', 'open']);
 	});
 
+	it('still catches up after the device clock was set back', async () => {
+		expect(await syncScheduler.catchUp(open.id)).toBe(true);
+		expect(rounds).toEqual(['open']);
+		const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() - 3_600_000);
+		try {
+			// The last sync now looks like it lies an hour ahead: that is not "just now".
+			expect(await syncScheduler.catchUp(open.id, 30_000)).toBe(true);
+			expect(rounds).toEqual(['open', 'open']);
+			expect(await syncScheduler.catchUp(open.id)).toBe(true);
+			expect(rounds).toEqual(['open', 'open', 'open']);
+		} finally {
+			clock.mockRestore();
+		}
+	});
+
 	it('syncs a workspace at once only when it has something to send', async () => {
 		expect(await syncScheduler.flush(open.id)).toBe(false);
 		expect(rounds).toEqual([]);

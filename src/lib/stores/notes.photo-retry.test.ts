@@ -6,6 +6,7 @@ vi.mock('#lib/imageThumb.js', async (importOriginal) => {
 });
 
 import * as idb from '#lib/db/idb.js';
+import { makeImageThumbDataUrl } from '#lib/imageThumb.js';
 import type { NoteImage } from '#lib/types.js';
 import { notesStore } from './notes.svelte';
 import { syncScheduler } from './syncScheduler';
@@ -83,5 +84,37 @@ describe('photo bytes across a failed save', () => {
 			inMemory as NonNullable<typeof inMemory>
 		);
 		expect(hydrated.images?.[0]?.dataUrl).toBe(photo('shot').dataUrl);
+	});
+
+	it('lets go of its hold on the photo saves when the note left the list before its save landed', async () => {
+		const letGo = vi.fn();
+		vi.spyOn(idb, 'holdAttachmentWrites').mockReturnValue(letGo);
+		const save = deferred<void>();
+		vi.spyOn(idb, 'saveNote').mockImplementation(() => save.promise as never);
+		notesStore.createNote({ title: 'Photo', images: [photo('shot')] });
+		expect(idb.holdAttachmentWrites).toHaveBeenCalledOnce();
+
+		// Deleted, or the window moved to another workspace, while the save was under way.
+		notesStore.notes = [];
+		save.resolve();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		// Held on, every sync of the workspace would wait for it for good.
+		expect(letGo).toHaveBeenCalled();
+	});
+
+	it('writes over no other note when the list changed while the saved photo was shrunk', async () => {
+		const shrunk = deferred<string | null>();
+		vi.mocked(makeImageThumbDataUrl).mockImplementationOnce(() => shrunk.promise);
+		const withPhoto = notesStore.createNote({ title: 'Photo', images: [photo('shot')] });
+		await vi.waitFor(() => expect(makeImageThumbDataUrl).toHaveBeenCalled());
+
+		const newer = notesStore.createNote({ title: 'Newer' });
+		shrunk.resolve('data:image/jpeg;base64,/9j/2Q==');
+		await new Promise((resolve) => setTimeout(resolve, 10));
+
+		expect(notesStore.notes.find((note) => note.id === newer.id)?.title).toBe('Newer');
+		expect(notesStore.notes.find((note) => note.id === withPhoto.id)?.title).toBe('Photo');
+		expect(notesStore.notes).toHaveLength(2);
 	});
 });

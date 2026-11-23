@@ -643,6 +643,19 @@ export class RelaySync {
 					recordIds = {};
 					relay = emptyRelayAttachments();
 					cursor = 0;
+					// The relay holds nothing of this device any more, so everything it has is
+					// owed again. Queued here, in the database: whether this sync or the next
+					// sends it, and whatever is downloaded or uploaded first, none of it is
+					// taken for sent. What was acknowledged before the reset counts for nothing.
+					acknowledgedOutbox.clear();
+					if (!read) {
+						const everything = [...currentRecordKeys(merged), PROFILE_META_KEY];
+						const generation = await markSyncOutbox(pid, everything);
+						for (const key of everything) {
+							outboxKeys.add(key);
+							internallyMarkedOutbox.set(key, generation);
+						}
+					}
 					continue;
 				}
 
@@ -806,6 +819,8 @@ export class RelaySync {
 							for (const key of owed) {
 								outboxKeys.add(key);
 								internallyMarkedOutbox.set(key, generation);
+								// Owed again: an earlier round having settled it counts no more.
+								acknowledgedOutbox.delete(key);
 							}
 						}
 					});
@@ -828,12 +843,23 @@ export class RelaySync {
 					? Object.fromEntries(outgoing.map((record) => [record.key, record.fingerprint]))
 					: {};
 				const mergedFingerprints = fingerprintMapFrom(mergedRecords);
+				// The workspace's name is a record too, though not one of the snapshot's:
+				// left out here, what the relay holds of it was forgotten every round, and
+				// the name was sent again by every sync that had it queued.
+				const reconciledKeys = currentRecordKeys(merged);
+				if (currentKeys.has(PROFILE_META_KEY)) {
+					reconciledKeys.add(PROFILE_META_KEY);
+					mergedFingerprints[PROFILE_META_KEY] = await sha256({
+						kind: 'profile-meta',
+						value: { name: this.host.name(pid) }
+					});
+				}
 				const reconciled = reconcileBaseline({
 					previous: baseline,
 					uploaded: uploadedFingerprints,
 					remote: remoteFingerprints,
 					merged: mergedFingerprints,
-					currentKeys: currentRecordKeys(merged),
+					currentKeys: reconciledKeys,
 					referencedAttachments: referencedAttachmentIds(merged.notes, merged.tombstones),
 					catchUpComplete: downloadsDrained
 				});
@@ -844,6 +870,9 @@ export class RelaySync {
 					for (const key of reconciled.dirtyKeys) {
 						outboxKeys.add(key);
 						internallyMarkedOutbox.set(key, generation);
+						// Dirty again: a round that settled it earlier in this sync counts no
+						// more, or the mark just written would be cleared with it.
+						acknowledgedOutbox.delete(key);
 					}
 				}
 

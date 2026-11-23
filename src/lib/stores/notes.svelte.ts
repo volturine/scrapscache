@@ -58,6 +58,7 @@ import {
 	noteNeedsDurableWrite,
 	readLabelsMirror,
 	pendingLabels,
+	pendingNoteDeletes,
 	readNotesMirror,
 	readPendingNotes,
 	settlePendingNotes,
@@ -223,8 +224,9 @@ export class NotesStore {
 		// One read of the journal: these are the entries this boot replays, so only
 		// these may be settled. Another window may journal more while this awaits.
 		const pending = readPendingNotes(this.pid);
-		const loadingLabels = this.pid;
-		const unsavedLabels = pendingLabels.read(loadingLabels);
+		const loadedFor = this.pid;
+		const unsavedLabels = pendingLabels.read(loadedFor);
+		const unsavedNoteDeletes = pendingNoteDeletes.read(loadedFor);
 		const mirrorNotes = readNotesMirror(this.pid, pending);
 		const mirrorLabels = readLabelsMirror(this.pid);
 		let dbNotes: Note[] = [];
@@ -258,7 +260,15 @@ export class NotesStore {
 			labels: this.deletedLabelIds,
 			boards: {}
 		}));
-		this.deletedNoteIds = tombstones.notes;
+		// A delete for good that never landed stands for a note still in the trash as
+		// it was then: one restored or changed since is kept.
+		const owedNoteDeletes = Object.fromEntries(
+			Object.entries(unsavedNoteDeletes).filter(([id, deletedAt]) => {
+				const note = notes.find((candidate) => candidate.id === id);
+				return note?.trashed === true && note.updatedAt <= deletedAt;
+			})
+		);
+		this.deletedNoteIds = newestTombstones(tombstones.notes, owedNoteDeletes);
 		this.deletedLabelIds = newestTombstones(tombstones.labels, unsavedLabelDeletes);
 		// The boards hydrate from their mirror even when the device store cannot be
 		// read; the rest of the boot must still run, or reminders, the first sync
@@ -299,14 +309,37 @@ export class NotesStore {
 			this.mirrorToLS();
 			if (!deviceReadFailed) {
 				try {
-					await this.recoverMirrorIntoIndexedDB(dbNotes, dbLabels);
+					// The labels the journal names are saved by its replay below, once.
+					await this.recoverMirrorIntoIndexedDB(
+						dbNotes,
+						dbLabels,
+						new Set(Object.keys(unsavedLabels))
+					);
 					// Every edit journaled before this boot read the journal is in IndexedDB now.
 					settlePendingNotes(pending, this.pid);
 					// Each label change left unsaved is saved as it would have been, unless the
 					// window has moved on: its journal then waits for this workspace's next load.
-					if (loadingLabels === this.pid) {
-						for (const [id, change] of Object.entries(unsavedLabels))
-							this.writeLabel(loadingLabels, id, change, true);
+					if (loadedFor === this.pid) {
+						for (const [id, change] of Object.entries(unsavedLabels)) {
+							// Deleted since the change was journaled: the delete stands.
+							if (typeof change !== 'number' && this.deletedLabelIds[id])
+								pendingLabels.settle(loadedFor, { [id]: change });
+							else this.writeLabel(loadedFor, id, change, true);
+						}
+						if (Object.keys(owedNoteDeletes).length) {
+							const stored = await addTombstones(
+								loadedFor,
+								owedNoteDeletes,
+								Object.keys(owedNoteDeletes).map((id) => `note-tombstone:${id}`)
+							);
+							reminderHistoryStore.forgetNotes(loadedFor, stored);
+							await Promise.all(
+								Object.keys(owedNoteDeletes).map((id) => deleteNote(loadedFor, id))
+							);
+						}
+						// What the journal held when this load read it is deleted now, or was
+						// a delete of something restored since.
+						pendingNoteDeletes.settle(loadedFor, unsavedNoteDeletes);
 					}
 				} catch (err) {
 					this.recordPersistenceError('Could not restore IndexedDB from mirror', err);
@@ -431,9 +464,10 @@ export class NotesStore {
 		try {
 			await saveNote(pid, note, noteRecordKeys(note));
 			settlePendingNotes({ [note.id]: noteForLocalStorage(note) }, pid);
-			this.lastPersistError = null;
-			syncScheduler.changed(this.pid);
 			bytesLanded();
+			// The window may show another workspace by now: this one is what was saved.
+			if (pid === this.pid) this.lastPersistError = null;
+			syncScheduler.changed(pid);
 		} catch (err) {
 			this.recordPersistenceError(`Could not save note ${id}`, err);
 			this.scheduleNoteRetry(id, bytesLanded);
@@ -699,9 +733,7 @@ export class NotesStore {
 	async deleteNoteForever(id: string): Promise<void> {
 		actionUndo.dropNotes([id]);
 		const pid = this.pid;
-		// The delete and its upload marker are saved together, on top of the deletes
-		// stored by then.
-		const stored = await addTombstones(pid, { [id]: Date.now() }, [`note-tombstone:${id}`]);
+		const stored = await this.saveNoteDeletes(pid, { [id]: Date.now() });
 		reminderHistoryStore.forgetNotes(pid, stored);
 		if (pid === this.pid) {
 			this.deletedNoteIds = newestTombstones(this.deletedNoteIds, stored);
@@ -902,13 +934,7 @@ export class NotesStore {
 					),
 				// The workspace is the backup's now: a mirror of the boards before would merge
 				// back in, and so would a change from before that was never saved.
-				afterLanding: replace
-					? () => {
-							clearBoardsMirror(pid);
-							canvasLibraryStore.forgetUnsaved(pid);
-							clearPendingJournals(pid);
-						}
-					: undefined,
+				afterLanding: replace ? () => this.forgetUnsaved(pid) : undefined,
 				whenOpen: replace
 					? () => {
 							if (
@@ -929,7 +955,7 @@ export class NotesStore {
 		files: Record<string, Uint8Array>,
 		mode: BackupImportMode
 	): Promise<{ success: boolean; error?: string }> {
-		return this.runImport('Could not import Google Keep notes', async () => {
+		return this.runImport('Could not import Google Keep notes', async (pid) => {
 			// The Keep reader loads only when a Takeout is imported.
 			const loaded = await loadImportModule(() => import('#lib/keepImport.js'));
 			if (!loaded.success) return loaded;
@@ -942,7 +968,8 @@ export class NotesStore {
 			return {
 				success: true,
 				notes,
-				plan: () => planKeepImport({ notes, labels, mode, now: Date.now() })
+				plan: () => planKeepImport({ notes, labels, mode, now: Date.now() }),
+				afterLanding: mode === BackupImportMode.Replace ? () => this.forgetUnsaved(pid) : undefined
 			};
 		});
 	}
@@ -1262,12 +1289,9 @@ export class NotesStore {
 		actionUndo.dropNotes(ids);
 		const pid = this.pid;
 		const deletedAt = Date.now();
-		// The deletes and their upload markers are saved together, on top of the
-		// deletes stored by then.
-		const stored = await addTombstones(
+		const stored = await this.saveNoteDeletes(
 			pid,
-			Object.fromEntries(ids.map((id) => [id, deletedAt])),
-			ids.map((id) => `note-tombstone:${id}`)
+			Object.fromEntries(ids.map((id) => [id, deletedAt]))
 		);
 		reminderHistoryStore.forgetNotes(pid, stored);
 		if (pid === this.pid) {
@@ -1277,6 +1301,51 @@ export class NotesStore {
 		}
 		syncScheduler.changed(pid);
 		await Promise.all(ids.map((id) => deleteNote(pid, id)));
+	}
+
+	/**
+	 * Save deletes of notes for good with their upload marks, in one step, on top of
+	 * the deletes stored by then. They are journaled first: a stop before they land
+	 * is replayed by the next start instead of bringing the notes back. The entry is
+	 * taken out when the save ends either way: one that failed leaves the notes
+	 * where they were, for the person to see, and must not delete them later.
+	 */
+	private async saveNoteDeletes(pid: string, deletes: Record<string, number>) {
+		if (!isProfileReleased(pid) && !pendingNoteDeletes.add(pid, deletes))
+			console.error('[notes] could not journal unsaved deletes: localStorage write failed');
+		try {
+			return await addTombstones(
+				pid,
+				deletes,
+				Object.keys(deletes).map((id) => `note-tombstone:${id}`)
+			);
+		} finally {
+			pendingNoteDeletes.settle(pid, deletes);
+		}
+	}
+
+	/** No label save of this workspace waits to be tried again. */
+	private forgetUnsavedLabels(pid: string): void {
+		const ofWorkspace = (slot: string) => slot.startsWith(`${pid}\n`);
+		this.labelRetries.settleWhere(ofWorkspace);
+		for (const slot of [...this.labelsAsked.keys()])
+			if (ofWorkspace(slot)) this.labelsAsked.delete(slot);
+	}
+
+	/**
+	 * A workspace was replaced whole: nothing from before that waits to be saved, or
+	 * to be saved again, comes back into it.
+	 */
+	private forgetUnsaved(pid: string): void {
+		clearBoardsMirror(pid);
+		canvasLibraryStore.forgetUnsaved(pid);
+		this.forgetUnsavedLabels(pid);
+		if (pid === this.pid) {
+			this.noteRetries.clear();
+			for (const held of this.noteRetryHolds.values()) held.forEach((landed) => landed());
+			this.noteRetryHolds.clear();
+		}
+		clearPendingJournals(pid);
 	}
 
 	private markLabelsDeleted(ids: string[], deletedAt = Date.now()): void {
@@ -1354,8 +1423,9 @@ export class NotesStore {
 		// A workspace removed in another window keeps no mirror either: writing
 		// one back would leave note text behind for a workspace that is gone.
 		if (isProfileReleased(this.pid)) return false;
-		// Another window has written newer notes than this one holds.
-		return this.staleWhileHidden !== this.pid;
+		// Another window has written newer notes than this one holds, or rewrote the
+		// workspace: what this window holds is not to be written anywhere until it has read.
+		return this.staleWhileHidden !== this.pid && this.rewrittenWhileHidden !== this.pid;
 	}
 
 	/** Write the fast-boot mirror now: every note and label this window holds. */
@@ -1471,7 +1541,12 @@ export class NotesStore {
 	}
 
 	/** Replay localStorage notes/labels that never landed in IndexedDB after a crash. */
-	private async recoverMirrorIntoIndexedDB(dbNotes: Note[], dbLabels: Label[]): Promise<void> {
+	private async recoverMirrorIntoIndexedDB(
+		dbNotes: Note[],
+		dbLabels: Label[],
+		/** Labels something else saves in this load. */
+		skipLabels: ReadonlySet<string> = new Set()
+	): Promise<void> {
 		const dbById = new Map(dbNotes.map((item) => [item.id, item]));
 		for (const item of this.notes) {
 			if (noteNeedsDurableWrite(dbById.get(item.id), item))
@@ -1479,6 +1554,7 @@ export class NotesStore {
 		}
 		const dbLabelById = new Map(dbLabels.map((item) => [item.id, item]));
 		for (const label of this.labels) {
+			if (skipLabels.has(label.id)) continue;
 			const current = dbLabelById.get(label.id);
 			if (current && current.name === label.name && current.updatedAt === label.updatedAt) continue;
 			await saveLabel(this.pid, label, [`label:${label.id}`]);
@@ -1506,7 +1582,7 @@ export class NotesStore {
 				})
 			)
 		).then(() => settlePendingNotes(landed, pid));
-		syncScheduler.changed(this.pid);
+		syncScheduler.changed(pid);
 	}
 
 	/**
@@ -1521,33 +1597,52 @@ export class NotesStore {
 		const written = new Set(
 			(note.images ?? []).filter((image) => image.dataUrl).map((image) => image.id)
 		);
-		return saveNote(pid, note, noteRecordKeys(note))
-			.then(async () => {
-				this.lastPersistError = null;
-				// Keep only small thumbs in memory after a durable write of full blobs.
-				const idx = this.notes.findIndex((item) => item.id === id);
-				if (idx < 0) return true;
-				const current = this.notes[idx];
-				const images = await Promise.all(
-					(current.images ?? []).map((image) =>
-						written.has(image.id) ? prepareAttachmentForMemory(image) : image
-					)
-				);
-				if (images.some((image, i) => image !== current.images?.[i])) {
-					this.notes[idx] = { ...current, images };
-					this.scheduleMirror();
-				}
+		return saveNote(pid, note, noteRecordKeys(note)).then(
+			async () => {
+				// The bytes are in the database, so whoever waits to read them goes on,
+				// whatever has become of the note in this window meanwhile.
 				bytesLanded();
+				if (pid !== this.pid) return true;
+				this.lastPersistError = null;
+				await this.letGoOfSavedBytes(pid, id, written).catch((err) =>
+					console.error('[notes] could not shrink saved photos in memory', err)
+				);
 				return true;
-			})
-			.catch((err) => {
+			},
+			(err) => {
 				this.recordPersistenceError(`Could not save note ${id}`, err);
 				this.scheduleNoteRetry(id, bytesLanded);
 				return false;
-			});
+			}
+		);
 	}
 
-	/** What changed here has to reach the relay: the open workspace syncs once changes pause. */
+	/**
+	 * Keep only small previews in memory of the photos a save has put in the
+	 * database. Making them takes a while, and the note may have moved in the list,
+	 * left it, or got another photo under the same id meanwhile: it is found again,
+	 * and only a photo that is still the one that was saved is swapped.
+	 */
+	private async letGoOfSavedBytes(pid: string, id: string, written: Set<string>): Promise<void> {
+		const before = this.notes.find((item) => item.id === id);
+		if (!before) return;
+		const lean = new Map<NoteImage, NoteImage>();
+		await Promise.all(
+			(before.images ?? [])
+				.filter((image) => written.has(image.id))
+				.map(async (image) => lean.set(image, await prepareAttachmentForMemory(image)))
+		);
+		if (pid !== this.pid) return;
+		const idx = this.notes.findIndex((item) => item.id === id);
+		if (idx < 0) return;
+		const current = this.notes[idx];
+		const images = (current.images ?? []).map((image) => lean.get(image) ?? image);
+		if (images.some((image, i) => image !== current.images?.[i])) {
+			this.notes[idx] = { ...current, images };
+			this.scheduleMirror();
+		}
+	}
+
 	private async notesForMemory(notes: Note[]): Promise<Note[]> {
 		return Promise.all(
 			notes.map(async (note) => ({
@@ -1603,6 +1698,10 @@ export class NotesStore {
 			this.staleWhileHidden = pid;
 			return;
 		}
+		// Another window rewrote this workspace and this one has not loaded it again
+		// yet: what it holds is from before, and nothing is merged into that. The load
+		// that follows, once the window is shown, reads what this sync saved too.
+		if (pid === this.pid && this.rewrittenWhileHidden === pid) return;
 		// A load under way read the database before or after this was saved: either
 		// way what was saved is merged into what it loaded.
 		await this.boot;
@@ -1688,8 +1787,14 @@ export class NotesStore {
 						throw new Error('This workspace changed meanwhile. Try again.');
 					return planRelayReplacement(pid, snapshot, control, signal);
 				},
-				// Boards that returned under a new id are not the mirror's any more.
-				{ landed: () => clearBoardsMirror(pid) }
+				// Boards and labels that returned under a new id are not the mirror's any
+				// more, nor a save of the old ones still waiting to be tried again.
+				{
+					landed: () => {
+						clearBoardsMirror(pid);
+						this.forgetUnsavedLabels(pid);
+					}
+				}
 			);
 			if (!there) return { success: false, error: 'That workspace is no longer on this device' };
 		} catch (err) {

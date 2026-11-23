@@ -134,7 +134,9 @@ export class ReminderHistoryClient {
 		// what other devices handled.
 		const refresh = () => {
 			// Focus and visibility often arrive together when the app comes back.
-			if (Date.now() - refreshedAt < 1000) return;
+			// A clock set back since is not "a moment ago".
+			const elapsed = Date.now() - refreshedAt;
+			if (elapsed >= 0 && elapsed < 1000) return;
 			refreshedAt = Date.now();
 			for (const profile of this.profiles()) {
 				if (profile.syncKey) this.requestExchange(profile.id);

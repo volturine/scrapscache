@@ -211,7 +211,7 @@ export class SyncScheduler {
 		if (!this.syncs(pid)) return Promise.resolve(false);
 		const lane = this.lanes.get(pid);
 		if (lane?.flight) return lane.flight.promise;
-		if (lane && Date.now() - lane.syncedAt < fresh) return Promise.resolve(true);
+		if (lane && this.within(lane.syncedAt, fresh)) return Promise.resolve(true);
 		return this.request(pid);
 	}
 
@@ -248,7 +248,7 @@ export class SyncScheduler {
 			const pid = profile.id;
 			const lane = this.lanes.get(pid);
 			if (!this.profile(pid) || lane?.flight) continue;
-			if (lane && Date.now() - lane.syncedAt < fresh) {
+			if (lane && this.within(lane.syncedAt, fresh)) {
 				const keys = await this.queued(pid);
 				if (keys.length === 0 || keys.join('\n') === lane.leftover) continue;
 			}
@@ -280,6 +280,16 @@ export class SyncScheduler {
 		}
 		this.lanes.clear();
 		await Promise.all(pumped);
+	}
+
+	/**
+	 * True when `since` was less than `ms` ago. A clock set back makes it look like
+	 * the future: that is not "just now", or nothing would catch up until the clock
+	 * had caught up with it.
+	 */
+	private within(since: number, ms: number): boolean {
+		const elapsed = Date.now() - since;
+		return elapsed >= 0 && elapsed < ms;
 	}
 
 	/** The workspace as this device holds it, when it syncs. */

@@ -122,6 +122,12 @@ export const pendingLabels = new PendingJournal<Label | number>(
 	dropNotesMirror
 );
 
+/** Notes being deleted for good whose delete has not landed: the time of the delete. */
+export const pendingNoteDeletes = new PendingJournal<number>(
+	'scrapscache-note-deletes-pending',
+	dropNotesMirror
+);
+
 export type PendingNotes = Pending<MirroredNote>;
 
 /** The pending-write journal as stored: one entry per note id. */
@@ -191,6 +197,7 @@ export function clearNotesMirror(pid: string): void {
 		localStorage.removeItem(notesMirrorKey(pid));
 		localStorage.removeItem(labelsMirrorKey(pid));
 		pendingNotes.clear(pid);
+		pendingNoteDeletes.clear(pid);
 		pendingLabels.clear(pid);
 	} catch {}
 }

@@ -42,3 +42,40 @@ describe('what a window calls itself to the relay', () => {
 		expect(sent[0]).not.toBe(sent[1]);
 	});
 });
+
+describe('a sign-in the relay answers with a no', () => {
+	afterEach(() => vi.unstubAllGlobals());
+
+	const signInAnswers = (status: number, body: unknown) =>
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => new Response(JSON.stringify(body), { status }))
+		);
+	const send = (relay: RelayClient, account: ReturnType<typeof createSyncIdentity>) =>
+		relay.sendSyncRequest('/api/sync/v2/delta', '{}', 2, () => undefined, account);
+
+	it('is a refusal that stands, when the key was deleted from the relay', async () => {
+		const relay = new RelayClient();
+		const retired = vi.fn();
+		relay.onRetired = retired;
+		const account = createSyncIdentity();
+		signInAnswers(410, { retired: true });
+
+		const answer = await send(relay, account);
+
+		// With its status a sync is refused, not tried again for as long as it has something queued.
+		expect(answer).toMatchObject({ success: false, status: 410 });
+		expect(answer.unreachable).toBeUndefined();
+		expect(retired).toHaveBeenCalledWith(account);
+	});
+
+	it('is a relay that was not reached, when it could not serve the sign-in', async () => {
+		const relay = new RelayClient();
+		signInAnswers(503, {});
+
+		const answer = await send(relay, createSyncIdentity());
+
+		// Nothing is wrong on this device: it is not shown as an error.
+		expect(answer).toMatchObject({ success: false, status: 503, unreachable: true });
+	});
+});

@@ -637,13 +637,16 @@ describe('a workspace removed in another window', () => {
 		try {
 			let releaseSwitch!: () => void;
 			const switchGate = new Promise<void>((resolve) => (releaseSwitch = resolve));
-			// A switch the user started is holding the lock.
-			const userSwitch = navigator.locks.request(SYNC_LOCK, async () => {
+			// A switch the user started is holding the workspace lock.
+			const userSwitch = navigator.locks.request(WORKSPACE_LOCK, async () => {
 				await switchGate;
 				syncStore.activateProfile(chosen);
 			});
 			localStorage.setItem('scrapscache-sync-profiles', JSON.stringify([kept, chosen]));
 			const adopting = new ProfileCoordinator().adoptKeyring();
+			// The handover has asked for the lock and waits behind the switch.
+			await new Promise((resolve) => setTimeout(resolve, 5));
+			expect(syncStore.activeId).toBe(removed.id);
 
 			releaseSwitch();
 			await userSwitch;

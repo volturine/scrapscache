@@ -225,6 +225,19 @@ describe('the sync scheduler', () => {
 		]);
 	});
 
+	it('tells the window when another window rewrote a workspace, apart from when it synced', async () => {
+		const heard: string[] = [];
+		syncScheduler.onSynced = (pid) => void heard.push(`synced ${name(pid)}`);
+		syncScheduler.onRewritten = (pid) => void heard.push(`rewritten ${name(pid)}`);
+		const { channel } = syncScheduler as unknown as { channel: BroadcastChannel };
+
+		channel.onmessage?.({ data: { type: 'rewritten', pid: other.id } } as MessageEvent);
+		channel.onmessage?.({ data: { type: 'local-sync-complete', pid: open.id } } as MessageEvent);
+
+		expect(heard).toEqual(['rewritten other', 'synced open']);
+		syncScheduler.onRewritten = null;
+	});
+
 	it('catches every workspace up, shown or not, with or without something to send', async () => {
 		await clearSyncOutbox(other.id, ['note:queued']);
 		const local: StoredProfile = { id: 'local', name: 'Local', syncKey: '', createdAt: 1 };

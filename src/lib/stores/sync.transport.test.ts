@@ -35,7 +35,7 @@ class FakeXhr {
 	onerror: (() => void) | null = null;
 	ontimeout: (() => void) | null = null;
 	onabort: (() => void) | null = null;
-	onprogress: (() => void) | null = null;
+	onprogress: ((event: { lengthComputable: boolean }) => void) | null = null;
 	onloadend: (() => void) | null = null;
 	private headers: Record<string, string> = {};
 	open(_method: string, url: string): void {
@@ -127,25 +127,18 @@ describe('sync transport', () => {
 	});
 
 	it('forgets its sessions and reconnects when the server setting moves', async () => {
-		const sessions = store as unknown as {
-			session: unknown;
-			backgroundSessions: Map<string, unknown>;
+		const held = store as unknown as {
+			sessions: Map<string, unknown>;
 			pendingSessions: Map<string, unknown>;
 		};
-		sessions.session = {
-			accountId: 'a',
-			accessToken: 'old-server',
-			expiresAt: Date.now() + 60_000
-		};
-		sessions.backgroundSessions.set('a', {});
-		sessions.pendingSessions.set('a', Promise.resolve('old-server'));
+		held.sessions.set('a', { accessToken: 'old-server', expiresAt: Date.now() + 60_000 });
+		held.pendingSessions.set('a', Promise.resolve('old-server'));
 		store.onAccountChange = vi.fn();
 
 		store.serverChanged();
 
-		expect(sessions.session).toBeNull();
-		expect(sessions.backgroundSessions.size).toBe(0);
-		expect(sessions.pendingSessions.size).toBe(0);
+		expect(held.sessions.size).toBe(0);
+		expect(held.pendingSessions.size).toBe(0);
 		expect(store.onAccountChange).toHaveBeenCalledOnce();
 		// The store's own device reads run on the faked clock.
 		await vi.runAllTimersAsync();
@@ -282,7 +275,7 @@ describe('sync transport', () => {
 			await vi.advanceTimersByTimeAsync(0);
 			for (let step = 0; step < 6; step += 1) {
 				await vi.advanceTimersByTimeAsync(50_000);
-				if (step % 2) lastXhr?.onprogress?.();
+				if (step % 2) lastXhr?.onprogress?.({ lengthComputable: false });
 				else lastXhr?.upload.onprogress?.();
 			}
 			expect(dropped).toBe(0);

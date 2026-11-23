@@ -187,6 +187,12 @@ applies the same rules to every workspace on the device:
    left alone.
 6. The cloud icon turns while a round runs, whichever workspace it is for.
 
+How a workspace's sync went (its last error, progress, storage used, whether its
+key was retired) is recorded for that workspace, under the key it was learned
+with, whichever workspace a window shows. The sync indicator and Sync settings
+read the open workspace's, so another workspace's trouble is shown once it is
+opened. Each account has one sign-in, good for every window and workspace.
+
 So what other devices changed in a workspace is saved into its database without
 anyone opening it, and opening it shows that at once. A workspace left by a
 switch, or by the app closing, still sends what was written in it, and a sync
@@ -204,9 +210,11 @@ its attachment bytes and its upload marks, in one transaction, so no other
 window's save can land in between. Whichever of two saves lands last, the result
 is the same. An
 edit never undoes what a sync brought, and a sync never undoes an edit. A window
-that shows a workspace merges what a sync saved into what it holds and writes
-nothing for it; another window showing the same workspace reads the database
-again.
+that shows a workspace takes in what something else saved one way, writing
+nothing: after a sync that ran in it, what that sync saved is merged into what
+it holds; after a sync in another window, what the database holds is. A rewrite
+in another window takes things away as well, so after one the workspace is
+loaded again.
 
 Two things do not merge, and each lands whole in one transaction as a rewrite of
 the workspace (`rewriteWorkspace`): an import, and replacing the cloud copy.

@@ -373,6 +373,27 @@ describe('a workspace that is not open', () => {
 		expect(notesStore.notes.map((item) => item.title)).toEqual(['Theirs']);
 	});
 
+	// How a sync ended is recorded for the workspace it ran for. The indicator shows
+	// the open workspace's, so another one's trouble is there once it is opened.
+	it('records how its sync ended, and shows that once it is opened', async () => {
+		await putNote(left.id, note('unsent', 'Refused by the relay'), ['note:unsent']);
+		await waitForDeviceWrites(left.id);
+		vi.spyOn(
+			syncStore as unknown as { sendSyncRequest: Send },
+			'sendSyncRequest'
+		).mockResolvedValueOnce({ success: false, error: 'Account storage is full' });
+
+		expect(await syncScheduler.request(left.id)).toBe(false);
+
+		expect(syncStore.stateOf(left.id).lastError).toBe('Account storage is full');
+		expect(syncStore.lastError).toBeNull();
+		expect(syncStore.stateOf(here.id).lastError).toBeNull();
+
+		syncStore.activateProfile(left);
+		expect(syncStore.lastError).toBe('Account storage is full');
+		await notesStore.reloadForProfile();
+	});
+
 	// Pairing gives this device a key. The workspace it gets syncs like any other
 	// before a window opens it, so it starts as the account's copy: nothing this
 	// device makes up for a workspace it opens (a board to show, a name) is sent.

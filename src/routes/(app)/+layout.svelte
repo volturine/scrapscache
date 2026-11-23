@@ -20,6 +20,7 @@
 	import { getAllNotesMetadata } from '#lib/db/idb.js';
 	import { withoutTombstoned } from '#lib/model/index.js';
 	import { readStoredTombstones } from '#lib/syncTombstones.js';
+	import { syncScheduler } from '#lib/stores/syncScheduler.js';
 	import { preloadVapidPublicKey } from '#lib/reminderWake.js';
 	import { registerServiceWorker } from '#lib/serviceWorker.js';
 	import { provideEditorActions } from '#lib/editorContext.js';
@@ -289,9 +290,7 @@
 			reconcile: reconcileReminders,
 			openNote: (pid, noteId) => void openNoteInWorkspace(pid, noteId),
 			openWorkspace: (pid) => void openWorkspace(pid),
-			triggerSync: (pid) => {
-				if (pid === syncStore.activeId) void notesStore.triggerSync();
-			}
+			triggerSync: (pid) => void syncScheduler.request(pid)
 		});
 		void preloadVapidPublicKey();
 		if ('serviceWorker' in navigator) {

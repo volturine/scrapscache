@@ -230,15 +230,97 @@ function mergeTombstoneMaps(
 	return merged;
 }
 
+/** What is known of one workspace's sync. */
+export type WorkspaceSyncState = {
+	lastSync: number;
+	lastError: string | null;
+	/** The error of the last sync that failed only because the relay was not reached. */
+	unreachableError: string | null;
+	/** The key's cloud data was deleted, so the relay will never accept it again.
+	 * The workspace can only keep syncing on a new key. */
+	keyRetired: boolean;
+	progress: SyncProgress | null;
+	usage: SyncUsage | null;
+	syncedCursor: number;
+};
+
+const NOTHING_KNOWN: Readonly<WorkspaceSyncState> = Object.freeze({
+	lastSync: 0,
+	lastError: null,
+	unreachableError: null,
+	keyRetired: false,
+	progress: null,
+	usage: null,
+	syncedCursor: 0
+});
+
 export class SyncStore {
 	account = $state<SyncAccount | null>(null);
-	lastSync = $state(0);
-	lastError = $state<string | null>(null);
-	/** The active key's cloud data was deleted, so the relay will never accept it
-	 * again. The workspace can only keep syncing on a new key. */
-	keyRetired = $state(false);
-	/** The error of the last sync that failed only because the relay was not reached. */
-	private unreachableError = $state<string | null>(null);
+	/**
+	 * Every workspace's sync state, by workspace, with the key it was learned under:
+	 * under another key, or none, nothing of it holds. A sync records what happened
+	 * for the workspace it ran for, whichever one a window shows; the indicator and
+	 * Sync settings read the open workspace's through the accessors below.
+	 */
+	private states = $state<Record<string, WorkspaceSyncState & { key: string }>>({});
+
+	private keyOf(pid: string): string {
+		return this.profiles.find((entry) => entry.id === pid)?.syncKey ?? '';
+	}
+
+	/**
+	 * A workspace's sync state, to record into. What a sync learned under `syncKey`
+	 * is recorded only while the workspace is still on that key.
+	 */
+	private state(pid: string, syncKey?: string): WorkspaceSyncState {
+		const key = this.keyOf(pid);
+		if (syncKey !== undefined && syncKey !== key) return { ...NOTHING_KNOWN };
+		if (this.states[pid]?.key !== key) this.states[pid] = { ...NOTHING_KNOWN, key };
+		return this.states[pid];
+	}
+
+	/** What is known of a workspace's sync, whichever workspace this window shows. */
+	stateOf(pid: string): Readonly<WorkspaceSyncState> {
+		const state = this.states[pid];
+		return state && state.key === this.keyOf(pid) ? state : NOTHING_KNOWN;
+	}
+
+	get lastSync(): number {
+		return this.stateOf(this.activeId).lastSync;
+	}
+	set lastSync(value: number) {
+		this.state(this.activeId).lastSync = value;
+	}
+	get lastError(): string | null {
+		return this.stateOf(this.activeId).lastError;
+	}
+	set lastError(value: string | null) {
+		this.state(this.activeId).lastError = value;
+	}
+	get keyRetired(): boolean {
+		return this.stateOf(this.activeId).keyRetired;
+	}
+	set keyRetired(value: boolean) {
+		this.state(this.activeId).keyRetired = value;
+	}
+	get progress(): SyncProgress | null {
+		return this.stateOf(this.activeId).progress;
+	}
+	set progress(value: SyncProgress | null) {
+		this.state(this.activeId).progress = value;
+	}
+	get usage(): SyncUsage | null {
+		return this.stateOf(this.activeId).usage;
+	}
+	set usage(value: SyncUsage | null) {
+		this.state(this.activeId).usage = value;
+	}
+	get syncedCursor(): number {
+		return this.stateOf(this.activeId).syncedCursor;
+	}
+	set syncedCursor(value: number) {
+		this.state(this.activeId).syncedCursor = value;
+	}
 
 	/**
 	 * True while the open workspace's last sync failed only because the relay could
@@ -246,12 +328,10 @@ export class SyncStore {
 	 * user: what was saved here waits, and the scheduler tries again.
 	 */
 	get relayUnreachable(): boolean {
-		return this.lastError !== null && this.lastError === this.unreachableError;
+		const { lastError, unreachableError } = this.stateOf(this.activeId);
+		return lastError !== null && lastError === unreachableError;
 	}
-	progress = $state<SyncProgress | null>(null);
-	usage = $state<SyncUsage | null>(null);
 	readonly syncClientId = uid();
-	syncedCursor = $state<number>(0);
 	/** Every workspace on this device. Synced ones carry a sync key. */
 	profiles = $state<StoredProfile[]>([]);
 	/** The workspace this window reads and writes. */
@@ -259,8 +339,8 @@ export class SyncStore {
 	activeId = $state('');
 	private profilesReady: Promise<void> | null = null;
 	private pendingOutboxWrites: Promise<void> = Promise.resolve();
-	private backgroundSessions = new Map<string, { accessToken: string; expiresAt: number }>();
-	private session: { accountId: string; accessToken: string; expiresAt: number } | null = null;
+	/** Sign-ins by account: a workspace's is good whichever workspace a window shows. */
+	private sessions = new Map<string, { accessToken: string; expiresAt: number }>();
 	private pendingSessions = new Map<string, Promise<string>>();
 	/**
 	 * Attachment ids a note's retained versions list, as of the note's last change. Quota
@@ -411,6 +491,7 @@ export class SyncStore {
 
 	private forgetProfile(id: string): void {
 		this.profiles = this.profiles.filter((entry) => entry.id !== id);
+		delete this.states[id];
 		try {
 			localStorage.removeItem(`${LS_SYNC_STATUS_PREFIX}:${id}`);
 		} catch {
@@ -444,8 +525,11 @@ export class SyncStore {
 		return { lastSync: parseLastSync(localStorage.getItem(`${LS_SYNC_STATUS_PREFIX}:${pid}`)) };
 	}
 
+	/** When a workspace last synced is kept across starts; the rest is learned from its next sync. */
 	private restoreStatus(pid: string): void {
-		this.lastSync = this.readStatus(pid).lastSync;
+		const state = this.state(pid);
+		// Another window may have synced it since.
+		state.lastSync = Math.max(state.lastSync, this.readStatus(pid).lastSync);
 	}
 
 	/**
@@ -483,7 +567,7 @@ export class SyncStore {
 		return statuses;
 	}
 
-	private saveStatus(pid: string = this.activePid, lastSync: number = this.lastSync): void {
+	private saveStatus(pid: string, lastSync: number): void {
 		if (typeof localStorage === 'undefined') return;
 		try {
 			localStorage.setItem(`${LS_SYNC_STATUS_PREFIX}:${pid}`, JSON.stringify({ lastSync }));
@@ -497,22 +581,14 @@ export class SyncStore {
 			this.activateLocalWorkspace(profile.id);
 			return;
 		}
+		// Opening a workspace changes nothing about its sync: what its last sync
+		// recorded is shown as it is, and its sign-in stays good.
 		this.activeId = profile.id;
-		this.activateAccount(identityFromSyncKey(profile.syncKey));
-		const generation = this.authenticationGeneration;
-		this.lastError = null;
-		this.keyRetired = false;
-		this.progress = null;
-		this.usage = null;
-		this.syncedCursor = 0;
-		const keys = syncControlKeys(identityFromSyncKey(profile.syncKey).accountId);
-		void getSyncState<number>(profile.id, keys.cursor).then((c) => {
-			if (
-				typeof c === 'number' &&
-				generation === this.authenticationGeneration &&
-				this.activeProfile?.id === profile.id
-			)
-				this.syncedCursor = c;
+		this.account = identityFromSyncKey(profile.syncKey);
+		this.onAccountChange?.();
+		const keys = syncControlKeys(this.account.accountId);
+		void getSyncState<number>(profile.id, keys.cursor).then((cursor) => {
+			if (typeof cursor === 'number') this.state(profile.id, profile.syncKey).syncedCursor = cursor;
 		});
 		setLastActiveProfileId(profile.id);
 		this.restoreStatus(profile.id);
@@ -520,26 +596,10 @@ export class SyncStore {
 
 	/** Activate a local-only namespace without removing any saved sync keys. */
 	activateLocalWorkspace(id: string): void {
-		this.authenticationGeneration += 1;
-		this.pendingSessions.clear();
-		this.session = null;
 		this.account = null;
 		this.activeId = id;
-		this.lastError = null;
-		this.keyRetired = false;
-		this.progress = null;
-		this.usage = null;
-		this.syncedCursor = 0;
 		setLastActiveProfileId(id);
 		this.restoreStatus(id);
-		this.onAccountChange?.();
-	}
-
-	private activateAccount(account: SyncAccount): void {
-		// A sign-in under way for this account is kept: its sync runs whichever
-		// workspace this window shows, and is not cut short by opening it.
-		this.session = null;
-		this.account = account;
 		this.onAccountChange?.();
 	}
 
@@ -547,8 +607,9 @@ export class SyncStore {
 	serverChanged(): void {
 		this.authenticationGeneration += 1;
 		this.pendingSessions.clear();
-		this.backgroundSessions.clear();
-		this.session = null;
+		this.sessions.clear();
+		// What was learned of each workspace's sync was the old server's too.
+		this.states = {};
 		this.onAccountChange?.();
 	}
 
@@ -565,9 +626,8 @@ export class SyncStore {
 		if (!profile.syncKey) throw new Error('That workspace is not synced');
 		const account = identityFromSyncKey(profile.syncKey);
 		// Only this account starts over: a sign-in under way for another workspace is its own.
-		this.backgroundSessions.delete(account.accountId);
+		this.sessions.delete(account.accountId);
 		this.pendingSessions.delete(account.accountId);
-		if (this.session?.accountId === account.accountId) this.session = null;
 		try {
 			await untilAborted(this.accessToken(account), signal);
 			return;
@@ -786,14 +846,8 @@ export class SyncStore {
 
 	private async accessToken(account: SyncAccount | null = this.account): Promise<string> {
 		if (!account) throw new Error('Sync is not set up on this device');
-		if (
-			this.session?.accountId === account.accountId &&
-			this.session.expiresAt - Date.now() > 5_000
-		)
-			return this.session.accessToken;
-		const backgroundSession = this.backgroundSessions.get(account.accountId);
-		if (backgroundSession && backgroundSession.expiresAt - Date.now() > 5_000)
-			return backgroundSession.accessToken;
+		const session = this.sessions.get(account.accountId);
+		if (session && session.expiresAt - Date.now() > 5_000) return session.accessToken;
 		const pendingSession = this.pendingSessions.get(account.accountId);
 		if (pendingSession) return pendingSession;
 		const generation = this.authenticationGeneration;
@@ -841,9 +895,12 @@ export class SyncStore {
 		}
 	}
 
-	/** Record that the relay refused this key for good, when it is the active one. */
+	/** Record that the relay refused this key for good, for every workspace on it. */
 	private retired(account: SyncAccount): Error {
-		if (this.account?.accountId === account.accountId) this.keyRetired = true;
+		for (const profile of this.profiles) {
+			if (profile.syncKey === account.syncKey)
+				this.state(profile.id, account.syncKey).keyRetired = true;
+		}
 		return new Error('This sync key was deleted from the cloud. Create a new key to keep syncing.');
 	}
 
@@ -863,22 +920,10 @@ export class SyncStore {
 		) {
 			throw new Error('Sync authentication failed');
 		}
-		const active = this.account?.accountId === account.accountId;
-		// Recovery, or unlinking the key, discards a sign-in that was under way for it.
-		// A token for another workspace still saved here stays good.
-		if (
-			generation !== this.authenticationGeneration &&
-			(active || !this.profiles.some((profile) => profile.syncKey === account.syncKey))
-		)
+		// A sign-in that the server before the setting moved answered is not kept.
+		if (generation !== this.authenticationGeneration)
 			throw new Error('Sync authentication was cancelled');
-		if (active) {
-			this.session = {
-				accountId: account.accountId,
-				accessToken: issued.accessToken,
-				expiresAt: issued.expiresAt
-			};
-		}
-		this.backgroundSessions.set(account.accountId, {
+		this.sessions.set(account.accountId, {
 			accessToken: issued.accessToken,
 			expiresAt: issued.expiresAt
 		});
@@ -894,10 +939,7 @@ export class SyncStore {
 	}
 
 	private invalidateSession(accountId: string, accessToken: string): void {
-		if (this.backgroundSessions.get(accountId)?.accessToken === accessToken)
-			this.backgroundSessions.delete(accountId);
-		if (this.session?.accountId === accountId && this.session.accessToken === accessToken)
-			this.session = null;
+		if (this.sessions.get(accountId)?.accessToken === accessToken) this.sessions.delete(accountId);
 	}
 
 	/**
@@ -966,7 +1008,7 @@ export class SyncStore {
 		path: string,
 		payload: string,
 		uploadBytes: number,
-		shown: () => boolean,
+		progress: (progress: SyncProgress) => void,
 		account: SyncAccount | null = this.account,
 		signal?: AbortSignal,
 		// The sync this request is for decides when it is given up.
@@ -992,7 +1034,14 @@ export class SyncStore {
 			const result = await retryTransient(
 				() =>
 					live()
-						? this.sendSyncRequestWithToken(path, payload, uploadBytes, shown, accessToken, signal)
+						? this.sendSyncRequestWithToken(
+								path,
+								payload,
+								uploadBytes,
+								progress,
+								accessToken,
+								signal
+							)
 						: Promise.resolve({ success: false, error: 'Sync was cancelled' }),
 				(response) => response.transient === true && live(),
 				transientRetry,
@@ -1008,8 +1057,8 @@ export class SyncStore {
 		path: string,
 		payload: string,
 		uploadBytes: number,
-		/** True while the transfer belongs on the sync indicator. */
-		shown: () => boolean,
+		/** Told how far a large transfer has come. */
+		progress: (progress: SyncProgress) => void,
 		accessToken: string,
 		signal?: AbortSignal
 	): Promise<SyncResult> {
@@ -1045,25 +1094,20 @@ export class SyncStore {
 			xhr.setRequestHeader(SYNC_PROTOCOL_HEADER, SYNC_PROTOCOL_VERSION);
 
 			const large = uploadBytes >= 32 * 1024;
-			if (large && shown())
-				this.progress = { phase: 'upload', loadedBytes: 0, totalBytes: uploadBytes };
+			if (large) progress({ phase: 'upload', loadedBytes: 0, totalBytes: uploadBytes });
 			xhr.upload.onprogress = (event) => {
 				moving();
-				if (!large || !shown()) return;
-				this.progress = {
+				if (!large) return;
+				progress({
 					phase: 'upload',
 					loadedBytes: event.loaded,
 					totalBytes: event.lengthComputable ? event.total : uploadBytes
-				};
+				});
 			};
 			xhr.onprogress = (event) => {
 				moving();
-				if (!shown() || !event.lengthComputable || event.total < 32 * 1024) return;
-				this.progress = {
-					phase: 'download',
-					loadedBytes: event.loaded,
-					totalBytes: event.total
-				};
+				if (!event.lengthComputable || event.total < 32 * 1024) return;
+				progress({ phase: 'download', loadedBytes: event.loaded, totalBytes: event.total });
 			};
 
 			let sentAt = 0;
@@ -1157,7 +1201,7 @@ export class SyncStore {
 	/**
 	 * Sync a workspace with the relay, whichever workspace this window shows. `local`
 	 * is what its database holds and `applyPulled` saves there. Progress, usage and
-	 * errors reach the sync indicator while the workspace is the open one.
+	 * errors are recorded for that workspace, and shown while it is the open one.
 	 */
 	syncWorkspace(
 		profile: StoredProfile,
@@ -1185,9 +1229,9 @@ export class SyncStore {
 
 	/** Photos this device could not read were left out of a sync that otherwise settled. */
 	attachmentsUnreadable(pid: string, some: boolean): void {
-		if (pid !== this.activeId) return;
-		if (some) this.lastError = UNREADABLE_ATTACHMENTS;
-		else if (this.lastError === UNREADABLE_ATTACHMENTS) this.lastError = null;
+		const state = this.state(pid);
+		if (some) state.lastError = UNREADABLE_ATTACHMENTS;
+		else if (state.lastError === UNREADABLE_ATTACHMENTS) state.lastError = null;
 	}
 
 	/** End-to-end encrypted per-record delta. Uploads only dirty outbox keys. */
@@ -1203,9 +1247,8 @@ export class SyncStore {
 		// What it had not committed stays queued, and the next sync sends or reads it again.
 		// So does taking the workspace, or its key, off this device.
 		const syncCancelled = (): boolean => signal?.aborted === true || !this.holds(pid, account);
-		// The sync indicator speaks for the workspace this window shows, at that moment.
-		const open = (): boolean =>
-			this.activeId === pid && this.account?.accountId === account.accountId;
+		// What this sync learns is recorded for its workspace, while it is on this key.
+		const record = (): WorkspaceSyncState => this.state(pid, account.syncKey);
 		let bootstrap = false;
 		try {
 			const ATTACHMENT_UPLOAD_BUDGET = 2;
@@ -1481,7 +1524,7 @@ export class SyncStore {
 					SYNC_DELTA_PATH,
 					payload,
 					new Blob([payload]).size,
-					open,
+					(progress) => (record().progress = progress),
 					account,
 					signal,
 					syncCancelled
@@ -1510,7 +1553,7 @@ export class SyncStore {
 					await wait(Math.min(response.retryAfterSeconds, 30) * 1000, signal);
 					continue;
 				}
-				if (!response.success || !response.data) return this.fail(response, open());
+				if (!response.success || !response.data) return this.fail(response, record());
 				throttledWaits = 0;
 				const remoteUsage = response.data.usage;
 				if (remoteUsage && typeof remoteUsage === 'object') {
@@ -1523,7 +1566,7 @@ export class SyncStore {
 							candidate.maxBytes
 						].every((value) => typeof value === 'number' && Number.isFinite(value))
 					) {
-						if (open()) this.usage = candidate as SyncUsage;
+						record().usage = candidate as SyncUsage;
 					}
 				}
 				const writesAccepted = response.data.writesAccepted === true;
@@ -1822,7 +1865,7 @@ export class SyncStore {
 								}))
 							]
 						);
-						if (open()) this.syncedCursor = cursor;
+						record().syncedCursor = cursor;
 					}
 					for (const keysAtGeneration of internalAcknowledgements.values()) {
 						for (const key of keysAtGeneration) internallyMarkedOutbox.delete(key);
@@ -1864,16 +1907,15 @@ export class SyncStore {
 						error: 'Sync incomplete: account storage quota prevented some uploads',
 						refused: true
 					},
-					open()
+					record()
 				);
 			const syncedAt = Date.now();
-			if (open()) {
-				this.lastError =
-					poisonCount > 0
-						? `Skipped ${poisonCount} unreadable sync record${poisonCount === 1 ? '' : 's'}`
-						: null;
-				this.lastSync = syncedAt;
-			}
+			const state = record();
+			state.lastError =
+				poisonCount > 0
+					? `Skipped ${poisonCount} unreadable sync record${poisonCount === 1 ? '' : 's'}`
+					: null;
+			state.lastSync = syncedAt;
 			this.saveStatus(pid, syncedAt);
 			return { success: true, snapshot: merged, ...(bootstrap ? { bootstrap } : {}) };
 		} catch (err) {
@@ -1887,20 +1929,18 @@ export class SyncStore {
 							: 'Encrypted sync failed',
 					...(relayNotReached(err) ? { unreachable: true } : {})
 				},
-				open()
+				record()
 			);
 		} finally {
-			if (open()) this.progress = null;
+			record().progress = null;
 		}
 	}
 
-	/** A failed sync's answer. A failure of the open workspace shows on the sync indicator. */
-	private fail(result: SyncResult, open: boolean): SyncResult {
+	/** A failed sync's answer, recorded for its workspace. */
+	private fail(result: SyncResult, state: WorkspaceSyncState): SyncResult {
 		const error = result.error || 'Sync failed';
-		if (open) {
-			this.unreachableError = result.unreachable ? error : null;
-			this.lastError = error;
-		}
+		state.unreachableError = result.unreachable ? error : null;
+		state.lastError = error;
 		// The relay's own "no" stands until something changes. A sign-in that expired,
 		// a request it gave up on and a request to slow down are not that.
 		const refused =

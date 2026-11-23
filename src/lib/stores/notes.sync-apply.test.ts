@@ -600,9 +600,12 @@ describe('edits made while a sync saves', () => {
 	const show = (snapshot: SyncSnapshot) =>
 		(
 			notesStore as unknown as {
-				showSynced(pid: string, saved: unknown, decisions: Map<string, unknown>): Promise<void>;
+				show(
+					pid: string,
+					synced: { snapshot: SyncSnapshot; decisions: Map<string, unknown> }
+				): Promise<void>;
 			}
-		).showSynced(TEST_WORKSPACE, snapshot, new Map());
+		).show(TEST_WORKSPACE, { snapshot, decisions: new Map() });
 
 	it('keeps what a sync saved when an edit of the older copy is saved after it', async () => {
 		linkTestWorkspace();

@@ -104,6 +104,9 @@ export class SyncScheduler {
 		| ((pid: string, saved?: { snapshot: SyncSnapshot; decisions: AttachmentDecisions }) => unknown)
 		| null = null;
 
+	/** Another window rewrote a workspace's database whole. A window showing it loads it again. */
+	onRewritten: ((pid: string) => unknown) | null = null;
+
 	constructor() {
 		syncStore.onWorkspaceOwes = (pid) => this.changed(pid, SYNC_OWING_MS);
 		if (typeof window === 'undefined') return;
@@ -114,6 +117,7 @@ export class SyncScheduler {
 				const pid: unknown = event.data?.pid;
 				if (typeof pid !== 'string') return;
 				if (type === 'local-sync-complete') void this.onSynced?.(pid);
+				else if (type === 'rewritten') void this.onRewritten?.(pid);
 				// Another window is rewriting the workspace and waits for its lock.
 				else if (type === 'rewrite') this.giveWay(this.lanes.get(pid));
 			};
@@ -215,9 +219,12 @@ export class SyncScheduler {
 		}
 	}
 
-	/** Tell the other windows a workspace's database holds what was just saved. */
-	announce(pid: string): void {
-		this.post({ type: 'local-sync-complete', pid });
+	/**
+	 * Tell the other windows a workspace's database holds what was just saved: merged
+	 * into it by a sync, or `rewritten` whole, which takes things away too.
+	 */
+	announce(pid: string, rewritten = false): void {
+		this.post({ type: rewritten ? 'rewritten' : 'local-sync-complete', pid });
 	}
 
 	/**

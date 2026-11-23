@@ -660,18 +660,18 @@ export async function getNote(pid: string, id: string): Promise<Note | undefined
 export async function pruneOrphanImageBlobs(pid: string): Promise<void> {
 	await enqueueDeviceWrite(async () => {
 		const db = await getDB(pid);
-		const notes = (await db.getAll(NOTES_STORE)) as Note[];
+		// One transaction: bytes another window saves meanwhile, with the note that
+		// lists them, are either both seen here or both land after.
+		const tx = db.transaction([NOTES_STORE, IMAGES_STORE], 'readwrite');
+		const images = tx.objectStore(IMAGES_STORE);
+		const notes = (await tx.objectStore(NOTES_STORE).getAll()) as Note[];
 		const referenced = new Set<string>();
 		for (const note of notes) {
-			for (const image of note.images ?? []) {
-				referenced.add(`${note.id}::${image.id}`);
-			}
+			for (const image of note.images ?? []) referenced.add(`${note.id}::${image.id}`);
 		}
-		const storedKeys = (await db.getAllKeys(IMAGES_STORE)) as string[];
-		const orphans = storedKeys.filter((key) => !referenced.has(key));
-		if (orphans.length === 0) return;
-		const tx = db.transaction(IMAGES_STORE, 'readwrite');
-		for (const key of orphans) void tx.objectStore(IMAGES_STORE).delete(key);
+		for (const key of (await images.getAllKeys()) as string[]) {
+			if (!referenced.has(key)) await images.delete(key);
+		}
 		await tx.done;
 	});
 }
@@ -841,8 +841,8 @@ export async function saveLabel(
 	const outboxKeys = uniqueOutboxKeys(syncOutboxKeys);
 	const lean = plainLabel(label);
 	const dbName = resolveDbName(pid);
-	const previousGeneration = outboxGenerations.get(dbName) ?? null;
 	await enqueueDeviceWrite(async () => {
+		const previousGeneration = outboxGenerations.get(dbName) ?? null;
 		const db = await getDB(pid);
 		const tx = db.transaction(
 			outboxKeys.length ? [LABELS_STORE, SYNC_STATE_STORE, SYNC_OUTBOX_STORE] : [LABELS_STORE],
@@ -878,8 +878,8 @@ export async function deleteLabelRecordingIt(
 ): Promise<Record<string, unknown>> {
 	const outboxKeys = uniqueOutboxKeys(syncOutboxKeys);
 	const dbName = resolveDbName(pid);
-	const previousGeneration = outboxGenerations.get(dbName) ?? null;
 	return enqueueDeviceWrite(async () => {
+		const previousGeneration = outboxGenerations.get(dbName) ?? null;
 		const db = await getDB(pid);
 		const tx = db.transaction(
 			outboxKeys.length
@@ -1225,11 +1225,10 @@ async function nextOutboxGeneration(
 	tx: IDBPTransaction<unknown, string[], 'readwrite'>,
 	dbName: string
 ): Promise<number> {
-	let cached = outboxGenerations.get(dbName);
-	if (cached == null) {
-		cached = Number((await tx.objectStore(SYNC_STATE_STORE).get(OUTBOX_GENERATION_KEY)) ?? 0);
-	}
-	const generation = Math.max(Date.now(), cached + 1);
+	// Read where it is written: another window may have moved it on since this one
+	// last looked, and it must never repeat or go back, whatever the clock does.
+	const stored = Number((await tx.objectStore(SYNC_STATE_STORE).get(OUTBOX_GENERATION_KEY)) ?? 0);
+	const generation = Math.max(Date.now(), stored + 1, (outboxGenerations.get(dbName) ?? 0) + 1);
 	outboxGenerations.set(dbName, generation);
 	await tx.objectStore(SYNC_STATE_STORE).put(generation, OUTBOX_GENERATION_KEY);
 	return generation;

@@ -40,9 +40,12 @@ function note(id: string, title = id): Note {
 function showSynced(snapshot: SyncSnapshot, pid: string): Promise<void> {
 	return (
 		notesStore as unknown as {
-			showSynced(pid: string, saved: SyncSnapshot, decisions: Map<string, unknown>): Promise<void>;
+			show(
+				pid: string,
+				synced: { snapshot: SyncSnapshot; decisions: Map<string, unknown> }
+			): Promise<void>;
 		}
-	).showSynced(pid, snapshot, new Map());
+	).show(pid, { snapshot, decisions: new Map() });
 }
 
 function snapshotOf(notes: Note[]) {

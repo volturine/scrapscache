@@ -47,6 +47,7 @@ import { currentRecordKeys, syncControlKeys } from '#lib/syncEngine.js';
 import { buildForcePushSnapshot } from '#lib/syncForcePush.js';
 import { identityFromSyncKey } from '#lib/syncPairing.js';
 import type { SyncSnapshot } from '#lib/syncRecords.js';
+import { withinTime } from '#lib/syncRetry.js';
 import {
 	BOARD_IDB,
 	BOARDS_IDB,
@@ -85,7 +86,7 @@ function newest(stored: Tombstones, pulled: Record<string, number>): Tombstones 
 }
 
 /** Everything of a workspace that syncs, as its database holds it. Attachments come without bytes. */
-async function readWorkspace(pid: string): Promise<SyncSnapshot> {
+export async function readWorkspace(pid: string): Promise<SyncSnapshot> {
 	const [notes, labels, tombstones, boards, library] = await Promise.all([
 		getAllNotesMetadata(pid),
 		getAllLabels(pid),
@@ -327,17 +328,18 @@ export async function planRelayReplacement(
 	signal: AbortSignal
 ): Promise<RewritePlan> {
 	await localWritesLanded(pid);
+	// Taken first: whatever is saved from here on, the photos held included, is
+	// noticed when the plan lands.
+	const readAt = await uploadGeneration(pid);
 	// This copy becomes the relay's, so every photo it lists has to be here in the
 	// version listed: one that was never received, or could not be saved, stops it.
 	// Asking waits for photo saves under way, which a save that keeps failing never
 	// ends: it is given up rather than waited for with a workspace held.
-	const held = await getStoredAttachmentVersions(
-		pid,
-		AbortSignal.any([signal, AbortSignal.timeout(BYTES_LANDING_MS)])
+	const held = await withinTime(BYTES_LANDING_MS, signal, (limited) =>
+		getStoredAttachmentVersions(pid, limited)
 	).catch(() => {
 		throw new Error('Photos are still being saved on this device. Try again in a moment.');
 	});
-	const readAt = await uploadGeneration(pid);
 	const stored = await readWorkspace(pid);
 	const notes = withoutTombstoned(stored.notes, stored.tombstones);
 	for (const note of notes) {

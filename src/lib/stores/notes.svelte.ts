@@ -90,7 +90,7 @@ import { planBackupImport, planKeepImport } from '#lib/workspaceImport.js';
 import { identityFromSyncKey } from '#lib/syncPairing.js';
 import { CAUGHT_UP_MS, syncScheduler } from '#lib/stores/syncScheduler.js';
 import { withWorkspaceLock } from '#lib/webLock.js';
-import { planRelayReplacement, WorkspaceChanged } from '#lib/workspaceSync.js';
+import { planRelayReplacement, readWorkspace, WorkspaceChanged } from '#lib/workspaceSync.js';
 import type { StoredProfile } from '#lib/profiles.js';
 
 const IMPORT_TARGET_GONE =
@@ -168,13 +168,14 @@ export class NotesStore {
 		this.notes = readNotesMirror(this.pid);
 		this.labels = readLabelsMirror(this.pid);
 		syncStore.onLocalDataChange = () => this.scheduleSyncPush();
-		syncScheduler.onSynced = (pid, saved) =>
-			saved ? this.showSynced(pid, saved.snapshot, saved.decisions) : this.otherWindowSynced(pid);
+		syncScheduler.onSynced = (pid, saved) => this.show(pid, saved);
+		syncScheduler.onRewritten = (pid) => this.showRewritten(pid);
 		if (this.notes.length > 0) this.loaded = true;
 		if (typeof window !== 'undefined') {
 			window.addEventListener('visibilitychange', () => {
 				if (document.visibilityState === 'hidden') this.mirrorToLS();
-				else if (this.staleWhileHidden === this.pid) void this.rehydrateFromIDB();
+				else if (this.rewrittenWhileHidden === this.pid) void this.showRewritten(this.pid);
+				else if (this.staleWhileHidden === this.pid) void this.show(this.pid);
 			});
 			window.addEventListener('pagehide', () => this.mirrorToLS());
 		}
@@ -213,6 +214,7 @@ export class NotesStore {
 
 	private async load() {
 		this.staleWhileHidden = null;
+		this.rewrittenWhileHidden = null;
 		await syncStore.ensureProfilesLoaded();
 
 		// One read of the journal: these are the entries this boot replays, so only
@@ -309,59 +311,6 @@ export class NotesStore {
 		// Every workspace catches up, not only this one: one left behind may still owe
 		// the relay something, and other devices may have changed any of them.
 		void syncScheduler.catchUpAll();
-	}
-
-	/**
-	 * Another window saved what it synced. The browser may freeze a hidden window in
-	 * the middle of re-reading it, and its open transactions then hold every other
-	 * window's writes to this workspace until it thaws. A hidden window has nothing to
-	 * show, so it catches up once it is shown again, or when a sync of its own lands.
-	 */
-	private otherWindowSynced(pid: string): void {
-		if (pid !== this.pid) return;
-		if (document.visibilityState === 'hidden') this.staleWhileHidden = this.pid;
-		else void this.rehydrateFromIDB();
-	}
-
-	private async rehydrateFromIDB() {
-		this.staleWhileHidden = null;
-		const pid = this.pid;
-		try {
-			const [dbNotes, dbLabels, stored] = await Promise.all([
-				getAllNotesMetadata(pid),
-				getAllLabels(pid),
-				readStoredTombstones(pid)
-			]);
-			if (pid !== this.pid) return;
-			// What the other window saved may delete notes this one still shows.
-			const newest = (held: Record<string, number>, saved: Record<string, number>) => {
-				const merged = { ...held };
-				for (const [id, at] of Object.entries(saved)) if (at > (merged[id] || 0)) merged[id] = at;
-				return merged;
-			};
-			this.deletedNoteIds = newest(this.deletedNoteIds, stored.notes);
-			this.deletedLabelIds = newest(this.deletedLabelIds, stored.labels);
-			// The boards are saved whole from memory, so memory has to hold what was saved.
-			await kanbanStore.hydrateFromDevice(pid, stored.boards, () => pid === this.pid);
-			if (pid !== this.pid) return;
-			const mirrorNotes = readNotesMirror(this.pid);
-			const mirrorLabels = readLabelsMirror(this.pid);
-			this.notes = withoutTombstoned(
-				mergeNoteLists(mirrorNotes, dbNotes),
-				this.deletedNoteIds
-			).sort((a, b) => b.updatedAt - a.updatedAt);
-			this.labels = withoutTombstoned(
-				mergeLabelLists(mirrorLabels, dbLabels),
-				this.deletedLabelIds
-			).sort((a, b) => a.name.localeCompare(b.name));
-			this.mirrorToLS();
-			await Promise.all([
-				canvasLibraryStore.hydrate(this.pid),
-				reminderHistoryStore.hydrate(this.pid)
-			]);
-		} catch (err) {
-			this.recordPersistenceError('Could not rehydrate from IndexedDB', err);
-		}
 	}
 
 	/** Fill a note's attachment placeholders without blocking the initial note render. */
@@ -1097,7 +1046,7 @@ export class NotesStore {
 					this.recordPersistenceError('Could not show what a rewrite landed', err);
 				} finally {
 					syncScheduler.changed(pid);
-					syncScheduler.announce(pid);
+					syncScheduler.announce(pid, true);
 				}
 				return true;
 			})
@@ -1130,12 +1079,9 @@ export class NotesStore {
 		for (const held of this.noteRetryHolds.values()) held.forEach((landed) => landed());
 		this.noteRetryHolds.clear();
 		this.noteRetryAttempts.clear();
-		for (const timer of this.labelRetries.values()) clearTimeout(timer);
-		this.labelRetries.clear();
 		this.attachmentLoads.clear();
 		this.visibleAttachmentQueue.clear();
 		this.lastPersistError = null;
-		syncStore.lastError = null;
 		this.loaded = false;
 		this.notes = [];
 		this.labels = [];
@@ -1319,39 +1265,48 @@ export class NotesStore {
 		for (const id of ids) this.persistLabel(id);
 	}
 
-	/** Label saves that failed and wait to be tried again, by label. */
+	/** Label saves that failed and wait to be tried again, by workspace and label. */
 	private labelRetries = new Map<string, ReturnType<typeof setTimeout>>();
 
-	/**
-	 * Save a label as this window holds it now, or its delete, with the upload marker
-	 * in the same step. A save that failed is tried again, later each time, for as
-	 * long as the window stays on the workspace: nothing else would save it before
-	 * the next start.
-	 */
-	private persistLabel(id: string, attempt = 0): void {
-		const pid = this.pid;
-		const pending = this.labelRetries.get(id);
-		if (pending) clearTimeout(pending);
-		this.labelRetries.delete(id);
+	/** Save a label as this window holds it now, or its delete. */
+	private persistLabel(id: string): void {
 		const label = this.labels.find((item) => item.id === id);
 		const deletedAt = this.deletedLabelIds[id];
-		const saved = label
-			? saveLabel(pid, label, [`label:${id}`])
-			: deletedAt
-				? deleteLabelWithTombstone(pid, id, deletedAt, [`label-tombstone:${id}`])
-				: null;
-		if (!saved) return;
+		if (label) this.writeLabel(this.pid, id, { ...label });
+		else if (deletedAt) this.writeLabel(this.pid, id, deletedAt);
+	}
+
+	/**
+	 * Save a label, or the time it was deleted, with the upload marker in the same
+	 * step. One that failed is tried again, later each time, whichever workspace the
+	 * window shows by then: nothing else would save it before the next start, and
+	 * saves merge, so one that lands late cannot go over a later one.
+	 */
+	private writeLabel(pid: string, id: string, change: Label | number, attempt = 0): void {
+		const slot = `${pid}\n${id}`;
+		const forget = () => {
+			clearTimeout(this.labelRetries.get(slot));
+			this.labelRetries.delete(slot);
+		};
+		forget();
+		const deleting = typeof change === 'number';
+		const saved: Promise<unknown> = deleting
+			? deleteLabelWithTombstone(pid, id, change, [`label-tombstone:${id}`])
+			: saveLabel(pid, change, [`label:${id}`]);
 		void saved.then(
 			() => syncScheduler.changed(pid),
 			(err) => {
-				this.recordPersistenceError(label ? 'Could not save label' : 'Could not delete label', err);
-				if (pid !== this.pid) return;
+				const failure = deleting ? 'Could not delete label' : 'Could not save label';
+				if (pid === this.pid) this.recordPersistenceError(failure, err);
+				else console.error(`[notes] ${failure}`, err);
+				if (isProfileReleased(pid)) return;
+				forget();
 				this.labelRetries.set(
-					id,
+					slot,
 					setTimeout(
 						() => {
-							this.labelRetries.delete(id);
-							if (pid === this.pid) this.persistLabel(id, attempt + 1);
+							this.labelRetries.delete(slot);
+							this.writeLabel(pid, id, change, attempt + 1);
 						},
 						Math.min(30_000, 1_000 * 2 ** attempt)
 					)
@@ -1432,6 +1387,8 @@ export class NotesStore {
 	private noteRetryAttempts = new Map<string, number>();
 	/** The workspace another window synced while this one was hidden and skipped re-reading. */
 	private staleWhileHidden: string | null = null;
+	/** The workspace another window rewrote while this one was hidden. */
+	private rewrittenWhileHidden: string | null = null;
 
 	/**
 	 * Hold the attachment-writes lock for a write of this note that carries bytes,
@@ -1586,21 +1543,69 @@ export class NotesStore {
 	}
 
 	/**
-	 * A sync saved into this workspace's database: memory takes what it brought.
-	 * Nothing is written here. Every save merges with what is stored, so an edit made
-	 * while the sync ran is in the database with what the sync saved, whichever of
-	 * the two landed first.
+	 * Another window rewrote the workspace this one shows: an import, or replacing
+	 * the cloud copy. A rewrite takes things away as well as adding them, so nothing
+	 * this window holds is merged with it: the workspace is loaded again from what
+	 * landed, once this window's own saves are in. A hidden window waits until it is
+	 * shown, and mirrors nothing meanwhile.
 	 */
-	private async showSynced(
+	private async showRewritten(pid: string): Promise<void> {
+		if (pid !== this.pid) return;
+		if (document.visibilityState === 'hidden') {
+			this.rewrittenWhileHidden = pid;
+			this.staleWhileHidden = pid;
+			return;
+		}
+		this.rewrittenWhileHidden = null;
+		await withWorkspaceLock(async () => {
+			if (pid !== this.pid || isProfileReleased(pid)) return;
+			await this.waitForPendingProfileWrites();
+			await this.reloadForProfile();
+		}).catch((err) =>
+			this.recordPersistenceError('Could not show what another window landed', err)
+		);
+	}
+
+	/**
+	 * Something else saved into the database of the workspace this window shows:
+	 * memory takes what it brought. A sync that ran here hands over what it saved;
+	 * after a save in another window the database is read. Nothing is written here.
+	 * Every save merges with what is stored, so an edit made meanwhile is in the
+	 * database with what was saved, whichever of the two landed first.
+	 *
+	 * The browser may freeze a hidden window in the middle of a read, and its open
+	 * transactions then hold every other window's writes to this workspace until it
+	 * thaws. A hidden window has nothing to show, so it reads once it is shown again,
+	 * or when a sync of its own lands.
+	 */
+	private async show(
 		pid: string,
-		saved: SyncSnapshot,
-		decisions: AttachmentDecisions
+		synced?: { snapshot: SyncSnapshot; decisions: AttachmentDecisions }
 	): Promise<void> {
-		// A load under way read the database before or after this sync saved: either
+		// Noted at once, before anything is waited for: until it has read, this window
+		// holds older notes than the database and must not mirror them.
+		if (!synced && pid === this.pid && document.visibilityState === 'hidden') {
+			this.staleWhileHidden = pid;
+			return;
+		}
+		// A load under way read the database before or after this was saved: either
 		// way what was saved is merged into what it loaded.
 		await this.boot;
 		if (pid !== this.pid || !this.loaded) return;
-		if (this.staleWhileHidden === pid) await this.rehydrateFromIDB();
+		let saved = synced?.snapshot;
+		if (!saved || this.staleWhileHidden === pid) {
+			this.staleWhileHidden = null;
+			try {
+				// What a sync here saved is part of what the database holds.
+				saved = await readWorkspace(pid);
+				if (pid !== this.pid) return;
+				await reminderHistoryStore.hydrate(pid);
+			} catch (err) {
+				this.recordPersistenceError('Could not read what another window saved', err);
+				if (!saved) return;
+			}
+		}
+		const decisions: AttachmentDecisions = synced?.decisions ?? new Map();
 		const lean = await this.notesForMemory(saved.notes);
 		if (pid !== this.pid || !this.loaded) return;
 		// Nothing is awaited from here until memory holds the result: an edit made in
@@ -1636,7 +1641,7 @@ export class NotesStore {
 		kanbanStore.applySync(saved.boards, saved.boardTombstones);
 		canvasLibraryStore.applySync(saved.libraryItems, saved.libraryTombstones);
 		this.scheduleMirror();
-		this.lastPersistError = null;
+		if (synced) this.lastPersistError = null;
 		this.onAfterSync?.();
 	}
 
@@ -1681,8 +1686,10 @@ export class NotesStore {
 			};
 		}
 		if (await syncScheduler.request(pid)) return { success: true };
-		const shown = pid === this.pid ? syncStore.lastError : null;
-		return { success: false, error: shown ?? 'Replacing the cloud copy did not finish' };
+		return {
+			success: false,
+			error: syncStore.stateOf(pid).lastError ?? 'Replacing the cloud copy did not finish'
+		};
 	}
 
 	syncWithCloudManual(): Promise<boolean> {

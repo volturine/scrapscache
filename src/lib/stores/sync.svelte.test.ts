@@ -144,6 +144,23 @@ function createHarness(
 	return { store, account, requests };
 }
 
+type Sessions = { sessions: Map<string, { accessToken: string; expiresAt: number }> };
+
+/** A store on a device that holds these keys, with the first one's workspace open. */
+async function storeHolding(...accounts: SyncIdentity[]): Promise<SyncStore> {
+	const store = new SyncStore();
+	// The keyring loads once a store exists, and would replace the entries added here.
+	await store.ensureProfilesLoaded();
+	store.profiles = accounts.map((account, index) => ({
+		id: index === 0 ? TEST_WORKSPACE : `workspace-${index}`,
+		name: '',
+		syncKey: account.syncKey,
+		createdAt: index
+	}));
+	store.activateProfile(store.profiles[0]);
+	return store;
+}
+
 async function passthrough(snapshot: SyncSnapshot): Promise<SyncSnapshot> {
 	return snapshot;
 }
@@ -182,8 +199,7 @@ describe('client sync state machine', () => {
 
 	it('signs one challenge and caches the issued session', async () => {
 		const account = createSyncIdentity();
-		const store = new SyncStore();
-		store.account = account;
+		const store = await storeHolding(account);
 		const fetchMock = vi
 			.fn()
 			.mockResolvedValueOnce(
@@ -228,8 +244,7 @@ describe('client sync state machine', () => {
 	it('keeps concurrent authentication scoped to the requested account', async () => {
 		const accountA = createSyncIdentity();
 		const accountB = createSyncIdentity();
-		const store = new SyncStore();
-		store.account = accountB;
+		const store = await storeHolding(accountB, accountA);
 		let releaseAccountA: ((response: Response) => void) | undefined;
 		const accountAChallenge = new Promise<Response>((resolve) => {
 			releaseAccountA = resolve;
@@ -249,9 +264,8 @@ describe('client sync state machine', () => {
 			);
 		});
 		vi.stubGlobal('fetch', fetchMock);
-		const privateStore = store as unknown as {
+		const privateStore = store as unknown as Sessions & {
 			accessToken(account: SyncIdentity): Promise<string>;
-			session: { accountId: string; accessToken: string; expiresAt: number } | null;
 		};
 
 		const tokenA = privateStore.accessToken(accountA);
@@ -261,13 +275,18 @@ describe('client sync state machine', () => {
 		releaseAccountA?.(new Response(JSON.stringify({ challengeId: 'a', challenge: 'challenge-a' })));
 		await expect(tokenA).resolves.toBe(`token-${accountA.accountId}`);
 		expect(fetchMock).toHaveBeenCalledTimes(4);
-		expect(privateStore.session?.accountId).toBe(accountB.accountId);
+		// Each account has its own sign-in, whichever workspace is open.
+		expect(privateStore.sessions.get(accountA.accountId)?.accessToken).toBe(
+			`token-${accountA.accountId}`
+		);
+		expect(privateStore.sessions.get(accountB.accountId)?.accessToken).toBe(
+			`token-${accountB.accountId}`
+		);
 	});
 
-	it('does not accept an authentication session that finishes after logout', async () => {
+	it('does not keep a sign-in the server answered before the server setting moved', async () => {
 		const account = createSyncIdentity();
-		const store = new SyncStore();
-		store.account = account;
+		const store = await storeHolding(account);
 		let releaseChallenge: ((response: Response) => void) | undefined;
 		const challenge = new Promise<Response>((resolve) => {
 			releaseChallenge = resolve;
@@ -283,18 +302,42 @@ describe('client sync state machine', () => {
 					)
 				)
 		);
-		const privateStore = store as unknown as {
-			accessToken(): Promise<string>;
-			session: { accountId: string; accessToken: string; expiresAt: number } | null;
-		};
+		const privateStore = store as unknown as Sessions & { accessToken(): Promise<string> };
 		const pending = privateStore.accessToken();
-		store.activateLocalWorkspace(TEST_WORKSPACE);
+		store.serverChanged();
 		releaseChallenge?.(
 			new Response(JSON.stringify({ challengeId: 'late', challenge: 'challenge' }))
 		);
 
 		await expect(pending).rejects.toThrow('Sync authentication was cancelled');
-		expect(privateStore.session).toBeNull();
+		expect(privateStore.sessions.size).toBe(0);
+	});
+
+	// Taking a key off this device is followed by telling the relay to forget this
+	// device's push registration, which signs in with the key that just left.
+	it('still signs in with a key that has just left this device', async () => {
+		const account = createSyncIdentity();
+		const store = await storeHolding(account);
+		store.profiles = [{ ...store.profiles[0], syncKey: '' }];
+		store.activateLocalWorkspace(TEST_WORKSPACE);
+		vi.stubGlobal(
+			'fetch',
+			vi
+				.fn()
+				.mockResolvedValueOnce(Response.json({ challengeId: 'c', challenge: 'challenge' }))
+				.mockResolvedValueOnce(
+					Response.json({ accessToken: 'goodbye-token', expiresAt: Date.now() + 60_000 })
+				)
+				.mockResolvedValueOnce(new Response(null, { status: 204 }))
+		);
+
+		const response = await store.authorizedFetch(
+			'/api/sync/push/wakes',
+			{ method: 'DELETE' },
+			account
+		);
+
+		expect(response.status).toBe(204);
 	});
 
 	// A workspace syncs whichever one the window shows, so opening it while its
@@ -332,23 +375,19 @@ describe('client sync state machine', () => {
 
 	it('hands the live socket a token that a refusal drops', async () => {
 		const account = createSyncIdentity();
-		const store = new SyncStore();
-		store.account = account;
-		const privateStore = store as unknown as {
-			session: { accountId: string; accessToken: string; expiresAt: number } | null;
-		};
-		privateStore.session = {
-			accountId: account.accountId,
+		const store = await storeHolding(account);
+		const { sessions } = store as unknown as Sessions;
+		sessions.set(account.accountId, {
 			accessToken: 'cached-token',
 			expiresAt: Date.now() + 60_000
-		};
+		});
 		const { token, refused } = await store.connectionToken();
 		expect(token).toBe('cached-token');
 		refused();
-		expect(privateStore.session).toBeNull();
+		expect(sessions.size).toBe(0);
 	});
 
-	it('keeps a background workspace token that finishes after a workspace switch', async () => {
+	it('keeps a sign-in that finishes after the window moved to another workspace', async () => {
 		const background = createSyncIdentity();
 		const store = new SyncStore();
 		await store.ensureProfilesLoaded();
@@ -372,7 +411,6 @@ describe('client sync state machine', () => {
 		);
 		const privateStore = store as unknown as {
 			accessToken(account: typeof background): Promise<string>;
-			session: { accountId: string; accessToken: string; expiresAt: number } | null;
 		};
 		const pending = privateStore.accessToken(background);
 		store.activateLocalWorkspace(TEST_WORKSPACE);
@@ -381,24 +419,17 @@ describe('client sync state machine', () => {
 		);
 
 		await expect(pending).resolves.toBe('background-token');
-		expect(privateStore.session).toBeNull();
-		// Cached for the next background request, with no second sign-in.
+		// Cached for its next request, with no second sign-in.
 		await expect(privateStore.accessToken(background)).resolves.toBe('background-token');
 	});
 
 	it('reauthenticates and retries an authorized request once after a rejected session', async () => {
 		const account = createSyncIdentity();
-		const store = new SyncStore();
-		store.account = account;
-		(
-			store as unknown as {
-				session: { accountId: string; accessToken: string; expiresAt: number };
-			}
-		).session = {
-			accountId: account.accountId,
+		const store = await storeHolding(account);
+		(store as unknown as Sessions).sessions.set(account.accountId, {
 			accessToken: 'stale-token',
 			expiresAt: Date.now() + 60_000
-		};
+		});
 		const resourceTokens: string[] = [];
 		const resourceHeaders: Headers[] = [];
 		const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -426,10 +457,9 @@ describe('client sync state machine', () => {
 		]);
 	});
 
-	it('marks the active key retired when the relay refuses it for good', async () => {
+	it('marks a key retired when the relay refuses it for good', async () => {
 		const account = createSyncIdentity();
-		const store = new SyncStore();
-		store.account = account;
+		const store = await storeHolding(account);
 		vi.stubGlobal(
 			'fetch',
 			vi.fn(async () => Response.json({ error: 'deleted', retired: true }, { status: 410 }))
@@ -453,29 +483,26 @@ describe('client sync state machine', () => {
 
 	it('reauthenticates and retries the same delta request once after HTTP 401', async () => {
 		const account = createSyncIdentity();
-		const store = new SyncStore();
-		store.account = account;
-		const privateStore = store as unknown as {
-			session: { accountId: string; accessToken: string; expiresAt: number };
+		const store = await storeHolding(account);
+		const privateStore = store as unknown as Sessions & {
 			sendSyncRequest(
 				path: string,
 				payload: string,
 				uploadBytes: number,
-				indicate: boolean
+				progress: () => void
 			): Promise<{ success: boolean; status?: number; data?: RelayData }>;
 			sendSyncRequestWithToken(
 				path: string,
 				payload: string,
 				uploadBytes: number,
-				indicate: boolean,
+				progress: () => void,
 				accessToken: string
 			): Promise<{ success: boolean; status?: number; data?: RelayData }>;
 		};
-		privateStore.session = {
-			accountId: account.accountId,
+		privateStore.sessions.set(account.accountId, {
 			accessToken: 'stale-token',
 			expiresAt: Date.now() + 60_000
-		};
+		});
 		const request = vi
 			.spyOn(privateStore, 'sendSyncRequestWithToken')
 			.mockResolvedValueOnce({ success: false, status: 401 })
@@ -494,7 +521,9 @@ describe('client sync state machine', () => {
 				)
 		);
 
-		await expect(privateStore.sendSyncRequest(SYNC_DELTA_PATH, '{}', 0, false)).resolves.toEqual({
+		await expect(
+			privateStore.sendSyncRequest(SYNC_DELTA_PATH, '{}', 0, () => undefined)
+		).resolves.toEqual({
 			success: true,
 			data: emptyData()
 		});

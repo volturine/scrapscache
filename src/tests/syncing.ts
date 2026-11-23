@@ -20,6 +20,7 @@ export function showOpenWorkspaceSyncing(on: boolean): void {
  */
 export function linkTestWorkspace(syncKey: string = createSyncIdentity().syncKey): SyncAccount {
 	const profile = { id: TEST_WORKSPACE, name: 'Test workspace', syncKey, createdAt: 0 };
+	forgetSyncStates();
 	syncStore.profiles = [profile];
 	syncStore.activateProfile(profile);
 	if (!syncStore.account) throw new Error('The test workspace did not link');
@@ -30,5 +31,10 @@ export function linkTestWorkspace(syncKey: string = createSyncIdentity().syncKey
 export function unlinkTestWorkspace(): void {
 	syncStore.profiles = [];
 	syncStore.activateLocalWorkspace(TEST_WORKSPACE);
-	syncStore.lastError = null;
+	forgetSyncStates();
+}
+
+/** What earlier cases learned of each workspace's sync is not the next one's. */
+export function forgetSyncStates(): void {
+	(syncStore as unknown as { states: object }).states = {};
 }

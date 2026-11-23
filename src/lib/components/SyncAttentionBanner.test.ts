@@ -61,16 +61,18 @@ describe('SyncAttentionBanner', () => {
 
 	it('stays quiet when the server could only not be reached, since the sync is tried again', async () => {
 		render(SyncAttentionBanner);
-		const store = syncStore as unknown as { unreachableError: string | null };
+		const state = (
+			syncStore as unknown as { state(pid: string): { unreachableError: string | null } }
+		).state(syncStore.activeId);
 
-		store.unreachableError = 'Sync network error';
+		state.unreachableError = 'Sync network error';
 		syncStore.lastError = 'Sync network error';
 		await tick();
 		try {
 			expect(syncStore.relayUnreachable).toBe(true);
 			expect(banner()).toBeNull();
 		} finally {
-			store.unreachableError = null;
+			state.unreachableError = null;
 		}
 	});
 

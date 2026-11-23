@@ -6,6 +6,7 @@ import { useNotificationBackend } from '#lib/reminderNotify.js';
 import { syncStore } from '#lib/stores/sync.svelte.js';
 import { uiStore } from '#lib/stores/ui.svelte.js';
 import ReminderPicker from './ReminderPicker.svelte';
+import { forgetSyncStates } from '../../tests/syncing';
 
 const editorActions = vi.hoisted(() => ({
 	openNote: vi.fn(),
@@ -230,6 +231,7 @@ describe('ReminderPicker closed-app alerts', () => {
 	}
 
 	beforeEach(() => {
+		forgetSyncStates();
 		syncStore.activateLocalWorkspace(localId);
 	});
 

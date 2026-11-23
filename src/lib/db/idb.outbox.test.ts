@@ -5,17 +5,18 @@ import {
 	commitSyncControl,
 	deleteLabelRecordingIt,
 	deleteNote,
-	mergeNote,
 	getAllLabels,
 	getAllNotesMetadata,
+	getOutboxGeneration,
 	getSyncOutboxKeys,
 	getSyncState,
-	getOutboxGeneration,
 	hydrateNoteAttachments,
 	markSyncOutbox,
-	saveLabel,
+	mergeNote,
 	putNote,
-	setSyncState
+	saveLabel,
+	setSyncState,
+	uploadGeneration
 } from './idb';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 
@@ -163,6 +164,24 @@ describe('durable sync outbox', () => {
 			[label.id]: 200
 		});
 		expect(await getSyncOutboxKeys(TEST_WORKSPACE)).toEqual([]);
+	});
+
+	// Rewrites of a workspace tell that nothing was saved since they read it by this
+	// number, so it has to move on with every save from every window, whatever the
+	// clock does: one that repeated would let a rewrite go over a save.
+	it('moves the upload generation past what another window stored, even on a clock set back', async () => {
+		await markSyncOutbox(TEST_WORKSPACE, ['note:first']);
+		const mine = await uploadGeneration(TEST_WORKSPACE);
+		// Another window, whose clock ran ahead, saved since this one last looked.
+		const theirs = mine + 60_000;
+		await setSyncState(TEST_WORKSPACE, 'scrapscache-outbox-generation', theirs);
+
+		await markSyncOutbox(TEST_WORKSPACE, ['note:second']);
+		const after = await uploadGeneration(TEST_WORKSPACE);
+		expect(after).toBeGreaterThan(theirs);
+
+		await markSyncOutbox(TEST_WORKSPACE, ['note:third']);
+		expect(await uploadGeneration(TEST_WORKSPACE)).toBeGreaterThan(after);
 	});
 
 	// A sync saves a note it pulled as merged with what is stored when its turn

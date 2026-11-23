@@ -20,13 +20,13 @@ import { clearFiredReminderMirror } from './reminders.svelte';
 import {
 	isLocalWorkspace,
 	nextProfileName,
+	LS_PROFILES,
 	profileForSyncKey,
 	type StoredProfile
 } from '#lib/profiles.js';
 import { randomOpaqueId, identityFromSyncKey } from '#lib/syncPairing.js';
 import {
 	isProfileReleased,
-	LS_PROFILES,
 	markSyncOutbox,
 	onProfileDeleted,
 	releaseProfile,

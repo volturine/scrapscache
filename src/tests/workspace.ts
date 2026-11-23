@@ -1,4 +1,5 @@
-import { LS_PROFILES, rewriteWorkspace } from '#lib/db/idb.js';
+import { rewriteWorkspace } from '#lib/db/idb.js';
+import { LS_PROFILES } from '#lib/profiles.js';
 
 /** The workspace every store starts on in tests. */
 export const TEST_WORKSPACE = 'test-workspace';

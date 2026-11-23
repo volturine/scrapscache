@@ -19,11 +19,11 @@
 	import { appLinkBase } from '#lib/serverOrigin.svelte.js';
 	import { syncStore } from '#lib/stores/sync.svelte.js';
 	import {
-		pollDeviceLink,
 		startDeviceLink,
 		startExistingDeviceLink,
 		type StartedDeviceLink
 	} from '#lib/deviceLink.js';
+	import { waitForDeviceLink } from '#lib/deviceLinkWait.js';
 	import type { SyncAccount } from '#lib/relayClient.js';
 	import { profileCoordinator } from '#lib/stores/profiles.svelte.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
@@ -78,7 +78,8 @@
 	 */
 	let sharing: SyncAccount | null = null;
 	let now = $state(Date.now());
-	let timer: ReturnType<typeof setTimeout> | null = null;
+	/** Stops the wait for the other device of the link under way. */
+	let watching: AbortController | null = null;
 	let confirmation = $state<'delete' | 'force' | 'remove' | 'new-key' | null>(null);
 	let confirmTarget = $state<string | null>(null);
 	let expandedId = $state<string | null>(null);
@@ -186,16 +187,8 @@
 	}
 
 	function stopWaiting() {
-		if (timer) clearTimeout(timer);
-		timer = null;
-	}
-
-	function schedulePoll(active: StartedDeviceLink) {
-		stopWaiting();
-		timer = setTimeout(() => {
-			timer = null;
-			void pollLink(active);
-		}, 1500);
+		watching?.abort();
+		watching = null;
 	}
 
 	onDestroy(() => {
@@ -337,14 +330,16 @@
 		void pollLink(result.link);
 	}
 
+	/** Wait for the other device, and finish the link when it answers. */
 	async function pollLink(active: StartedDeviceLink) {
 		if (waiting?.id !== active.id) return;
-		now = Date.now();
+		stopWaiting();
+		const mine = (watching = new AbortController());
 		let result;
 		try {
-			result = await pollDeviceLink(active, sharing);
+			result = await waitForDeviceLink(active, sharing, mine.signal, () => (now = Date.now()));
 		} catch (err) {
-			if (waiting?.id !== active.id) return;
+			if (mine.signal.aborted || waiting?.id !== active.id) return;
 			stopWaiting();
 			waiting = null;
 			mode = active.role === 'existing' ? 'menu' : 'link';
@@ -354,6 +349,7 @@
 			);
 			return;
 		}
+		if (!result) return;
 		if (waiting?.id !== active.id) return;
 		if (result.linked) {
 			const wasExisting = active.role === 'existing';
@@ -392,9 +388,7 @@
 			waiting = null;
 			mode = active.role === 'existing' ? 'menu' : 'link';
 			error = friendlyError(result.error, 'Connection timed out. Try again on both devices.');
-			return;
 		}
-		schedulePoll(active);
 	}
 
 	async function startExistingConnection() {

@@ -543,6 +543,15 @@ export class NotesStore {
 
 	setReminder(id: string, reminder: number | null, repeat: ReminderRepeat | null = null): void {
 		this.updateNote(id, { reminder, repeat: repeat ?? undefined });
+		this.reminderChanged();
+	}
+
+	/**
+	 * A reminder was set, moved or cleared. Another device has to know before it is
+	 * due, so it is sent now, not after the pause that typing gets.
+	 */
+	reminderChanged(): void {
+		void syncScheduler.request(this.pid);
 	}
 
 	/** Toggle `[ ]` / `[x]` line in unified body text. */
@@ -654,6 +663,7 @@ export class NotesStore {
 		for (const note of this.present(ids)) {
 			this.updateNote(note.id, { reminder, repeat: repeat ?? undefined });
 		}
+		this.reminderChanged();
 	}
 
 	/** Put the label on every note, or take it off every note. */

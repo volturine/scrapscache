@@ -8,7 +8,7 @@ import {
 	type KanbanBoard,
 	type KanbanColumn
 } from '#lib/kanban.js';
-import { workspaceKey, writeMirror } from '#lib/db/idb.js';
+import { workspaceKey, writeMirror } from '#lib/localMirror.js';
 import { recordKey } from '#lib/syncRecords.js';
 import { syncStore } from '#lib/stores/sync.svelte.js';
 import { loadBoardsFromDevice, sanitizeTombstones, writeKanbanState } from '#lib/syncTombstones.js';

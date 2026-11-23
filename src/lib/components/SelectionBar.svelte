@@ -29,8 +29,6 @@
 	} from '$panda/styles';
 	import { getAppOverlayHost, portalToAppOverlay } from '#lib/appViewport.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
-	import { syncStore } from '#lib/stores/sync.svelte.js';
-	import { syncScheduler } from '#lib/stores/syncScheduler.js';
 	import { reminderStore } from '#lib/stores/reminders.svelte.js';
 	import { selectionStore } from '#lib/stores/selection.svelte.js';
 	import { uiStore } from '#lib/stores/ui.svelte.js';
@@ -331,7 +329,6 @@
 						onApply={(reminder, repeat) => {
 							notesStore.setReminderMany(ids, reminder, repeat);
 							reminderStore.sync(notesStore.notes);
-							void syncScheduler.request(syncStore.activeId);
 							reminderOpen = false;
 						}}
 						onClose={() => (reminderOpen = false)}

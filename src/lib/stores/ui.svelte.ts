@@ -1,5 +1,5 @@
 // Rune-based UI store: sidebar open, dark mode, density, Markdown mode, active view, search.
-import { writeMirror } from '#lib/db/idb.js';
+import { writeMirror } from '#lib/localMirror.js';
 import { selectionStore } from './selection.svelte.js';
 import { NO_FILTERS, type SearchFilters } from '#lib/search.js';
 import {

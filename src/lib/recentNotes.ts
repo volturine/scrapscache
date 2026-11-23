@@ -1,6 +1,6 @@
 // The notes opened last in a workspace, newest first, for the palette's Recent list.
 // They stay on this device: a list of ids in localStorage, never synced or backed up.
-import { workspaceKey } from '#lib/db/idb.js';
+import { workspaceKey } from '#lib/localMirror.js';
 
 const KEY = 'scrapscache-recent-notes';
 const LIMIT = 8;

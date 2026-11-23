@@ -13,7 +13,6 @@ import {
 	DEVICE_DB_NAME,
 	setRegisteredWorkspaces,
 	deleteProfileDatabase,
-	deleteStoredProfile,
 	dropDatabase,
 	getAllLabels,
 	getAllNotesMetadata,
@@ -22,13 +21,12 @@ import {
 	isProfileReleased,
 	saveLabel,
 	putNote,
-	putStoredProfile,
-	readStoredProfiles,
 	releaseProfile,
 	resolveDbName,
 	resumeProfile,
 	setSyncState
 } from './idb';
+import { readProfiles, removeProfileRecord, saveProfile } from '../profiles';
 import type { Label, Note } from '#lib/types.js';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 
@@ -201,12 +199,12 @@ describe('deleteProfileDatabase', () => {
 
 describe('deleteStoredProfile', () => {
 	it('takes the workspace off the keyring once its data is gone', async () => {
-		await putStoredProfile({ id: PROFILE, name: 'Removed', syncKey: '', createdAt: 1 });
+		await saveProfile({ id: PROFILE, name: 'Removed', syncKey: '', createdAt: 1 });
 		await putNote(PROFILE, note('removed'));
 
-		await deleteStoredProfile(PROFILE);
+		await removeProfileRecord(PROFILE);
 
-		expect(readStoredProfiles().map((entry) => entry.id)).not.toContain(PROFILE);
+		expect(readProfiles().map((entry) => entry.id)).not.toContain(PROFILE);
 		expect(await databaseNames()).not.toContain(PROFILE_DB);
 	});
 
@@ -214,23 +212,23 @@ describe('deleteStoredProfile', () => {
 	// while the data stayed, it would leave every note on the device with nothing
 	// able to reach or remove it; kept after the data went, it would name nothing.
 	it('keeps the keyring entry while a delete is held up, and drops it when it lands', async () => {
-		await putStoredProfile({ id: PROFILE, name: 'Held up', syncKey: '', createdAt: 1 });
+		await saveProfile({ id: PROFILE, name: 'Held up', syncKey: '', createdAt: 1 });
 		await putNote(PROFILE, note('kept-for-now'));
 		await closeDeviceDatabase();
 		// A connection this module does not own, as another tab would hold.
 		const other = await openDB(PROFILE_DB);
 
-		const failure = await deleteStoredProfile(PROFILE).catch((error: Error) => error);
+		const failure = await removeProfileRecord(PROFILE).catch((error: Error) => error);
 
 		expect(failure).toBeInstanceOf(DeleteBlockedError);
-		expect(readStoredProfiles().map((entry) => entry.id)).toContain(PROFILE);
+		expect(readProfiles().map((entry) => entry.id)).toContain(PROFILE);
 		expect(await databaseNames()).toContain(PROFILE_DB);
 
 		other.close();
 		await (failure as DeleteBlockedError).completion;
 		await Promise.resolve();
 
-		expect(readStoredProfiles().map((entry) => entry.id)).not.toContain(PROFILE);
+		expect(readProfiles().map((entry) => entry.id)).not.toContain(PROFILE);
 		expect(await databaseNames()).not.toContain(PROFILE_DB);
 	});
 });

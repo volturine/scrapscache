@@ -33,8 +33,7 @@
 	import { photoMarker } from '#lib/photoMarker.js';
 	import { composerStore, type ComposerSeed } from '#lib/stores/composer.svelte.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
-	import { syncStore } from '#lib/stores/sync.svelte.js';
-	import { syncScheduler } from '#lib/stores/syncScheduler.js';
+	import { notePutAway } from '#lib/stores/editSession.js';
 	import { reminderStore } from '#lib/stores/reminders.svelte.js';
 	import { storagePersistenceStore } from '#lib/stores/storagePersistence.svelte.js';
 	import type { NoteColor, NoteImage } from '#lib/types.js';
@@ -219,7 +218,7 @@
 			reset();
 			if (id) await notesStore.discardIfEmpty(id);
 			composerStore.draftId = null;
-			if (id) void syncScheduler.flush(syncStore.activeId);
+			if (id) void notePutAway();
 		} finally {
 			transitioning = false;
 		}
@@ -376,7 +375,7 @@
 		const id = ensureNote();
 		notesStore.updateNote(id, { title, body: text });
 		composerStore.draftId = null;
-		void notesStore.discardIfEmpty(id).then(() => syncScheduler.flush(syncStore.activeId));
+		void notesStore.discardIfEmpty(id).then(notePutAway);
 	}
 
 	$effect(() => {

@@ -100,7 +100,7 @@
 	// The row that currently owns Escape, so the dialog leaves the key alone.
 	let rowHoldingEscape = $state<string | null>(null);
 
-	const authenticationFailed = $derived(/authentication/i.test(syncStore.lastError ?? ''));
+	const authenticationFailed = $derived(syncStore.issue?.kind === 'sign-in');
 	let syncError = $derived(syncStore.lastError ?? '');
 	const confirmProfile = $derived(
 		syncStore.profiles.find((profile) => profile.id === confirmTarget) ?? syncStore.activeProfile

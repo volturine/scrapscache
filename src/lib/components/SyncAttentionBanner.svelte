@@ -22,8 +22,7 @@
 		syncAttentions({
 			synced: syncStore.isLoggedIn,
 			keyRetired: syncStore.keyRetired,
-			lastError: syncStore.lastError,
-			unreachable: syncStore.relayUnreachable,
+			issue: syncStore.issue,
 			usage: syncStore.usage,
 			online,
 			lastSync: syncStore.lastSync,

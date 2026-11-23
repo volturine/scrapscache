@@ -466,9 +466,19 @@ export function mergeKanbanBoards(
 		const current = byId.get(board.id);
 		byId.set(board.id, current ? mergeTwoBoards(current, board) : board);
 	}
-	return [...byId.values()].filter(
-		(board) => board.updatedAt > (Number(tombstones[board.id]) || 0)
-	);
+	return [...byId.values()].filter((board) => boardOutlives(board, tombstones));
+}
+
+/**
+ * True when a board is alive given the deletes known of: it was never deleted, or
+ * it was put back since, which stamps it past its delete. Deciding by the id alone
+ * would let a delete that was undone take the board away again on another device.
+ */
+export function boardOutlives(
+	board: Pick<KanbanBoard, 'id' | 'updatedAt'>,
+	tombstones: Record<string, number>
+): boolean {
+	return board.updatedAt > (Number(tombstones[board.id]) || 0);
 }
 
 /**

@@ -617,7 +617,7 @@ describe('SyncModal profile interactions', () => {
 	});
 
 	it('offers recovery for authentication failure and places joining under new workspace only', async () => {
-		syncStore.lastError = 'Could not start sync authentication';
+		syncStore.issue = { kind: 'sign-in', message: 'Could not start sync authentication' };
 		render(SyncModal, { props: { onClose: vi.fn() } });
 		expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull();
 		expect(screen.getByRole('button', { name: 'Replace the cloud copy' })).toBeTruthy();

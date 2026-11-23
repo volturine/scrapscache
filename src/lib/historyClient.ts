@@ -2,6 +2,7 @@ import { decryptSyncPayload } from '#lib/syncPairing.js';
 import {
 	attachmentToImage,
 	isSyncRecordPayload,
+	recordKey,
 	type SyncAttachment,
 	type SyncNote
 } from '#lib/syncRecords.js';
@@ -61,7 +62,7 @@ export async function loadNoteHistory(
 	noteId: string,
 	signal?: AbortSignal
 ): Promise<NoteHistoryEntry[]> {
-	const slot = await sha256(`${account.syncKey}\u0000note:${noteId}`);
+	const slot = await sha256(`${account.syncKey}\u0000${recordKey('note', noteId)}`);
 	const { versions } = await listVersions(account, slot, signal);
 	return versions.flatMap(({ historyId, savedAt, ciphertext }) => {
 		const payload = decode(account, ciphertext, slot);
@@ -79,7 +80,7 @@ export async function loadCurrentAttachment(
 	id: string,
 	signal?: AbortSignal
 ): Promise<SyncAttachment | null> {
-	const slot = await sha256(`${account.syncKey}\u0000attachment:${id}`);
+	const slot = await sha256(`${account.syncKey}\u0000${recordKey('attachment', id)}`);
 	// A sync waits on this, so a request that stalls gives up and the sync fails,
 	// and one the sync no longer waits for (`signal`) is dropped with it.
 	// No version is saved that far ahead, so the relay answers with the live record.
@@ -108,7 +109,7 @@ export async function hydrateHistoryNote(
 	const images: NoteImage[] = [];
 	let missingAttachments = 0;
 	for (const image of entry.note.images ?? []) {
-		const slot = await sha256(`${account.syncKey}\u0000attachment:${image.id}`);
+		const slot = await sha256(`${account.syncKey}\u0000${recordKey('attachment', image.id)}`);
 		const matching = (ciphertext: string) => {
 			const payload = decode(account, ciphertext, slot);
 			return payload.kind === 'attachment' &&

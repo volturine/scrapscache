@@ -47,6 +47,7 @@ import { currentRecordKeys, syncControlKeys } from '#lib/syncEngine.js';
 import { buildForcePushSnapshot } from '#lib/syncForcePush.js';
 import { identityFromSyncKey } from '#lib/syncPairing.js';
 import type { SyncSnapshot } from '#lib/syncRecords.js';
+import { recordKey } from '#lib/syncRecords.js';
 import { withinTime } from '#lib/syncRetry.js';
 import {
 	BOARD_IDB,
@@ -110,8 +111,8 @@ async function withBytesToSend(
 		const wanted =
 			images.length > 0 &&
 			(queued === null ||
-				queued.has(`note:${note.id}`) ||
-				images.some((image) => queued.has(`attachment:${image.id}`)));
+				queued.has(recordKey('note', note.id)) ||
+				images.some((image) => queued.has(recordKey('attachment', image.id))));
 		loaded.push(
 			wanted
 				? await hydrateNoteAttachments(pid, note).catch(() => {

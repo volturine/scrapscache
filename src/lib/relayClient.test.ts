@@ -66,6 +66,8 @@ describe('a sign-in the relay answers with a no', () => {
 		// With its status a sync is refused, not tried again for as long as it has something queued.
 		expect(answer).toMatchObject({ success: false, status: 410 });
 		expect(answer.unreachable).toBeUndefined();
+		// Nothing signs a deleted key in again, so it is not offered as a sign-in to repair.
+		expect(answer.signInRefused).toBeUndefined();
 		expect(retired).toHaveBeenCalledWith(account);
 	});
 
@@ -77,5 +79,15 @@ describe('a sign-in the relay answers with a no', () => {
 
 		// Nothing is wrong on this device: it is not shown as an error.
 		expect(answer).toMatchObject({ success: false, status: 503, unreachable: true });
+		expect(answer.signInRefused).toBeUndefined();
+	});
+
+	it('says so when the relay would not sign in a key it knows', async () => {
+		const relay = new RelayClient();
+		signInAnswers(403, { error: 'Invalid signature' });
+
+		const answer = await send(relay, createSyncIdentity());
+
+		expect(answer).toMatchObject({ success: false, status: 403, signInRefused: true });
 	});
 });

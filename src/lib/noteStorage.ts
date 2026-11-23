@@ -1,7 +1,7 @@
 import { mergeNoteLists } from './model/merge';
 import type { Label, Note, NoteImage } from './types';
 import { stableStringify } from './model/stableStringify';
-import { PendingJournal, type Pending } from './pendingJournal';
+import { PendingJournal, type Pending, type PendingChange } from './pendingJournal';
 
 /**
  * Fast-boot mirrors, so notes show before IndexedDB answers. IndexedDB remains
@@ -116,8 +116,8 @@ export function dropNotesMirror(pid: string): void {
 
 const pendingNotes = new PendingJournal<MirroredNote>(PENDING_NOTES_KEY, dropNotesMirror);
 
-/** Labels whose save has not landed: the label, or the time it was deleted. */
-export const pendingLabels = new PendingJournal<Label | number>(
+/** Labels whose save has not landed. */
+export const pendingLabels = new PendingJournal<PendingChange<Label>>(
 	'scrapscache-labels-pending',
 	dropNotesMirror
 );

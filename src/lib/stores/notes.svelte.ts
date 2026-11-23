@@ -46,6 +46,7 @@ import { composerStore } from '#lib/stores/composer.svelte.js';
 import { canvasLibraryStore } from '#lib/stores/canvasLibrary.js';
 import { reminderHistoryStore } from '#lib/stores/reminderHistory.js';
 import type { SyncSnapshot } from '#lib/syncRecords.js';
+import { recordKey } from '#lib/syncRecords.js';
 import { uiStore } from '#lib/stores/ui.svelte.js';
 import { trashPurgeAt, cloneNote } from '#lib/utils.js';
 import { appClock } from '#lib/appClock.svelte.js';
@@ -93,7 +94,7 @@ import { planBackupImport, planKeepImport } from '#lib/workspaceImport.js';
 import { identityFromSyncKey } from '#lib/syncPairing.js';
 import { syncScheduler } from '#lib/stores/syncScheduler.js';
 import { Retries, saveRetry } from '#lib/syncRetry.js';
-import { clearPendingJournals } from '#lib/pendingJournal.js';
+import { clearPendingJournals, type PendingChange } from '#lib/pendingJournal.js';
 import { localWritesLanded } from '#lib/localWrites.js';
 import { withWorkspaceLock } from '#lib/webLock.js';
 import { planRelayReplacement, readWorkspace, WorkspaceChanged } from '#lib/workspaceSync.js';
@@ -244,11 +245,15 @@ export class NotesStore {
 		// as it was changed, or the time it was deleted.
 		const labels = mergeLabelLists(
 			mergeLabelLists(mirrorLabels, dbLabels),
-			Object.values(unsavedLabels).filter((change) => typeof change !== 'number')
+			Object.values(unsavedLabels).flatMap((change) =>
+				change.kind === 'put' ? [change.value] : []
+			)
 		).sort((a, b) => a.name.localeCompare(b.name));
 		const unsavedLabelDeletes = Object.fromEntries(
-			Object.entries(unsavedLabels).filter(([, change]) => typeof change === 'number')
-		) as Record<string, number>;
+			Object.entries(unsavedLabels).flatMap(([id, change]) =>
+				change.kind === 'delete' ? [[id, change.at]] : []
+			)
+		);
 		const seededFlag =
 			typeof localStorage !== 'undefined' ? localStorage.getItem('scrapscache-seeded') : null;
 
@@ -319,7 +324,7 @@ export class NotesStore {
 					if (loadedFor === this.pid) {
 						for (const [id, change] of Object.entries(unsavedLabels)) {
 							// Deleted since the change was journaled: the delete stands.
-							if (typeof change !== 'number' && this.deletedLabelIds[id])
+							if (change.kind === 'put' && this.deletedLabelIds[id])
 								pendingLabels.settle(loadedFor, { [id]: change });
 							else this.writeLabel(loadedFor, id, change, true);
 						}
@@ -327,7 +332,7 @@ export class NotesStore {
 							const stored = await addTombstones(
 								loadedFor,
 								owedNoteDeletes,
-								Object.keys(owedNoteDeletes).map((id) => `note-tombstone:${id}`)
+								Object.keys(owedNoteDeletes).map((id) => recordKey('note-tombstone', id))
 							);
 							reminderHistoryStore.forgetNotes(loadedFor, stored);
 							await Promise.all(
@@ -1310,7 +1315,7 @@ export class NotesStore {
 			return await addTombstones(
 				pid,
 				deletes,
-				Object.keys(deletes).map((id) => `note-tombstone:${id}`)
+				Object.keys(deletes).map((id) => recordKey('note-tombstone', id))
 			);
 		} finally {
 			pendingNoteDeletes.settle(pid, deletes);
@@ -1352,26 +1357,25 @@ export class NotesStore {
 	/** Label saves that failed and wait to be tried again, by workspace and label. */
 	private labelRetries = new Retries(saveRetry);
 	/** What was last asked for each label that has not been saved yet, by workspace and label. */
-	private labelsAsked = new Map<string, Label | number>();
+	private labelsAsked = new Map<string, PendingChange<Label>>();
 
 	/** Save a label as this window holds it now, or its delete. */
 	private persistLabel(id: string): void {
 		const label = this.labels.find((item) => item.id === id);
 		const deletedAt = this.deletedLabelIds[id];
-		if (label) this.writeLabel(this.pid, id, { ...label });
-		else if (deletedAt) this.writeLabel(this.pid, id, deletedAt);
+		if (label) this.writeLabel(this.pid, id, { kind: 'put', value: { ...label } });
+		else if (deletedAt) this.writeLabel(this.pid, id, { kind: 'delete', at: deletedAt });
 	}
 
 	/**
-	 * Save a label, or the time it was deleted, with the upload marker in the same
-	 * step. One that failed is tried again, later each time, whichever workspace the
+	 * Save a label, or its delete, with the upload marker in the same step. One that failed is tried again, later each time, whichever workspace the
 	 * window shows by then: nothing else would save it before the next start. What is
 	 * tried again is what was asked for last, whichever save failed last.
 	 */
 	private writeLabel(
 		pid: string,
 		id: string,
-		change: Label | number,
+		change: PendingChange<Label>,
 		/** A start saving what it read from the journal: it is journaled already. */
 		replayed = false
 	): void {
@@ -1386,10 +1390,11 @@ export class NotesStore {
 				this.recordPersistenceError('Could not journal an unsaved label', failure);
 			else console.error('[notes] Could not journal an unsaved label', failure);
 		}
-		const deleting = typeof change === 'number';
-		const saved: Promise<unknown> = deleting
-			? deleteLabelWithTombstone(pid, id, change, [`label-tombstone:${id}`])
-			: saveLabel(pid, change, [`label:${id}`]);
+		const deleting = change.kind === 'delete';
+		const saved: Promise<unknown> =
+			change.kind === 'delete'
+				? deleteLabelWithTombstone(pid, id, change.at, [recordKey('label-tombstone', id)])
+				: saveLabel(pid, change.value, [recordKey('label', id)]);
 		void saved.then(
 			() => {
 				pendingLabels.settle(pid, { [id]: change });
@@ -1550,7 +1555,7 @@ export class NotesStore {
 			if (skipLabels.has(label.id)) continue;
 			const current = dbLabelById.get(label.id);
 			if (current && current.name === label.name && current.updatedAt === label.updatedAt) continue;
-			await saveLabel(this.pid, label, [`label:${label.id}`]);
+			await saveLabel(this.pid, label, [recordKey('label', label.id)]);
 		}
 	}
 
@@ -1801,7 +1806,7 @@ export class NotesStore {
 		if (await syncScheduler.request(pid)) return { success: true };
 		return {
 			success: false,
-			error: syncStore.stateOf(pid).lastError ?? 'Replacing the cloud copy did not finish'
+			error: syncStore.stateOf(pid).issue?.message ?? 'Replacing the cloud copy did not finish'
 		};
 	}
 

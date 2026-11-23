@@ -387,9 +387,9 @@ describe('a workspace that is not open', () => {
 
 		expect(await syncScheduler.request(left.id)).toBe(false);
 
-		expect(syncStore.stateOf(left.id).lastError).toBe('Account storage is full');
+		expect(syncStore.stateOf(left.id).issue?.message ?? null).toBe('Account storage is full');
 		expect(syncStore.lastError).toBeNull();
-		expect(syncStore.stateOf(here.id).lastError).toBeNull();
+		expect(syncStore.stateOf(here.id).issue?.message ?? null).toBeNull();
 
 		syncStore.activateProfile(left);
 		expect(syncStore.lastError).toBe('Account storage is full');

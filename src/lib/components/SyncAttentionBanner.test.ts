@@ -62,19 +62,12 @@ describe('SyncAttentionBanner', () => {
 
 	it('stays quiet when the server could only not be reached, since the sync is tried again', async () => {
 		render(SyncAttentionBanner);
-		const state = (
-			syncStore as unknown as { state(pid: string): { unreachableError: string | null } }
-		).state(syncStore.activeId);
 
-		state.unreachableError = 'Sync network error';
-		syncStore.lastError = 'Sync network error';
+		syncStore.issue = { kind: 'unreachable', message: 'Sync network error' };
 		await tick();
-		try {
-			expect(syncStore.relayUnreachable).toBe(true);
-			expect(banner()).toBeNull();
-		} finally {
-			state.unreachableError = null;
-		}
+
+		expect(syncStore.relayUnreachable).toBe(true);
+		expect(banner()).toBeNull();
 	});
 
 	it('offers a retry for a sync error and goes away when dismissed, until a new error', async () => {
@@ -129,7 +122,7 @@ describe('SyncAttentionBanner', () => {
 
 	it('shows a warning from a sync that went through as written, with a retry', async () => {
 		render(SyncAttentionBanner);
-		syncStore.lastError = 'Skipped 1 unreadable sync record';
+		syncStore.issue = { kind: 'warning', message: 'Skipped 1 unreadable sync record' };
 		await tick();
 
 		expect(screen.getByText('Skipped 1 unreadable sync record')).toBeTruthy();

@@ -144,14 +144,14 @@ describe('sync transport', () => {
 		};
 		const before = syncStore.profiles;
 		syncStore.profiles = [...before, workspace];
-		syncStore.state(workspace.id).lastError = 'The old server said no';
+		syncStore.state(workspace.id).issue = { kind: 'stopped', message: 'The old server said no' };
 		const accountChanged = vi.spyOn(syncEventsClient, 'accountChanged');
 		try {
 			serverChanged();
 
 			expect(held.sessions.size).toBe(0);
 			expect(held.pendingSessions.size).toBe(0);
-			expect(syncStore.stateOf(workspace.id).lastError).toBeNull();
+			expect(syncStore.stateOf(workspace.id).issue).toBeNull();
 			expect(accountChanged).toHaveBeenCalledOnce();
 		} finally {
 			syncStore.profiles = before;

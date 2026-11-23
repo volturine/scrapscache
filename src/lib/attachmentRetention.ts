@@ -1,7 +1,6 @@
 import { isTombstoned } from '#lib/model/index.js';
+import { recordId } from '#lib/syncRecords.js';
 import type { Note } from '#lib/types.js';
-
-const ATTACHMENT = 'attachment:';
 
 /**
  * Drop attachment deletions that a live note's retained history still needs, so an image
@@ -18,9 +17,7 @@ export async function withoutAttachmentsHistoryNeeds(
 	noteTombstones: Record<string, number>,
 	versionAttachmentIds: (note: Note) => Promise<Set<string> | null>
 ): Promise<string[]> {
-	const removing = new Set(
-		keys.filter((key) => key.startsWith(ATTACHMENT)).map((key) => key.slice(ATTACHMENT.length))
-	);
+	const removing = new Set(keys.flatMap((key) => recordId(key, 'attachment') ?? []));
 	if (removing.size === 0) return keys;
 	const needed = new Set<string>();
 	for (const note of notes) {
@@ -30,7 +27,8 @@ export async function withoutAttachmentsHistoryNeeds(
 		const inHistory = await versionAttachmentIds(note);
 		for (const id of removed) if (!inHistory || inHistory.has(id)) needed.add(id);
 	}
-	return keys.filter(
-		(key) => !key.startsWith(ATTACHMENT) || !needed.has(key.slice(ATTACHMENT.length))
-	);
+	return keys.filter((key) => {
+		const attachmentId = recordId(key, 'attachment');
+		return attachmentId === null || !needed.has(attachmentId);
+	});
 }

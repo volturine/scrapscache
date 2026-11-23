@@ -50,6 +50,8 @@ export type RelayAnswer = {
 	transient?: boolean;
 	/** The relay was not reached, or did not answer: nothing here is wrong. */
 	unreachable?: boolean;
+	/** The relay would not sign this key in, though the key is one it still knows. */
+	signInRefused?: boolean;
 };
 
 /** A request that never got an answer, as `fetch` and the time limit report it. */
@@ -242,7 +244,9 @@ export class RelayClient {
 					...(status !== undefined ? { status } : {}),
 					...(relayNotReached(error) || (status !== undefined && status >= 500)
 						? { unreachable: true }
-						: {})
+						: {}),
+					// A key deleted for good is its own case: nothing signs it in again.
+					...(status !== undefined && status < 500 && status !== 410 ? { signInRefused: true } : {})
 				};
 			}
 			// A delta round is idempotent: an upload the relay already stored carries

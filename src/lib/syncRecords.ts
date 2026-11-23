@@ -1,4 +1,4 @@
-import type { KanbanBoard } from '#lib/kanban.js';
+import { boardOutlives, type KanbanBoard } from '#lib/kanban.js';
 import type { Label, Note, NoteImage } from '#lib/types.js';
 import { sha256 } from '#lib/syncHash.js';
 import { isCanvasLibraryEntry, type CanvasLibraryEntry } from '#lib/canvasLibrary.js';
@@ -67,28 +67,54 @@ export type SyncRecord = { key: string; payload: SyncRecordPayload; fingerprint:
 
 export const PROFILE_META_KEY = 'profile-meta';
 
+/**
+ * The kinds of record a workspace syncs. A record's key is its kind and its id,
+ * `note:<id>`; the workspace's name is the one record without an id.
+ */
+export type RecordKind = Exclude<SyncRecordPayload['kind'], 'profile-meta'>;
+
+const RECORD_KINDS: ReadonlySet<string> = new Set<RecordKind>([
+	'note',
+	'attachment',
+	'label',
+	'board',
+	'library-item',
+	'note-tombstone',
+	'label-tombstone',
+	'board-tombstone',
+	'library-item-tombstone'
+]);
+
+/** The key of the record of `kind` with this id. */
+export function recordKey(kind: RecordKind, id: string): string {
+	return `${kind}:${id}`;
+}
+
+/** The kind and id a key names. Null for the workspace's name, and for what is no record key. */
+export function parseRecordKey(key: string): { kind: RecordKind; id: string } | null {
+	const at = key.indexOf(':');
+	const kind = at < 0 ? '' : key.slice(0, at);
+	return RECORD_KINDS.has(kind) ? { kind: kind as RecordKind, id: key.slice(at + 1) } : null;
+}
+
+/** The id a key names when it is of `kind`, and null otherwise. */
+export function recordId(key: string, kind: RecordKind): string | null {
+	const parsed = parseRecordKey(key);
+	return parsed?.kind === kind ? parsed.id : null;
+}
+
 export function syncRecordKey(payload: SyncRecordPayload): string {
 	switch (payload.kind) {
-		case 'note':
-			return `note:${payload.value.id}`;
-		case 'attachment':
-			return `attachment:${payload.value.id}`;
-		case 'label':
-			return `label:${payload.value.id}`;
-		case 'board':
-			return `board:${payload.value.id}`;
-		case 'note-tombstone':
-			return `note-tombstone:${payload.id}`;
-		case 'label-tombstone':
-			return `label-tombstone:${payload.id}`;
-		case 'board-tombstone':
-			return `board-tombstone:${payload.id}`;
-		case 'library-item':
-			return `library-item:${payload.value.id}`;
-		case 'library-item-tombstone':
-			return `library-item-tombstone:${payload.id}`;
 		case 'profile-meta':
 			return PROFILE_META_KEY;
+		case 'note':
+		case 'attachment':
+		case 'label':
+		case 'board':
+		case 'library-item':
+			return recordKey(payload.kind, payload.value.id);
+		default:
+			return recordKey(payload.kind, payload.id);
 	}
 }
 
@@ -246,67 +272,67 @@ export async function buildSyncRecords(
 	const seenAttachments = new Set<string>();
 
 	for (const note of notes.filter((item) => !(Number(tombstones[item.id]) || 0))) {
-		const noteKey = `note:${note.id}`;
+		const noteKey = recordKey('note', note.id);
 		// An attachment travels with a note that lists it, so wanting one wants the other.
 		const wanted =
 			!onlyKeys ||
 			onlyKeys.has(noteKey) ||
-			(note.images ?? []).some((image) => onlyKeys.has(`attachment:${image.id}`));
+			(note.images ?? []).some((image) => onlyKeys.has(recordKey('attachment', image.id)));
 		if (!wanted) continue;
 		const split = await splitNoteForSync(note);
 		values.push({ key: noteKey, payload: { kind: 'note', value: split.note } });
 		for (const attachment of split.attachments) {
-			if (onlyKeys && !onlyKeys.has(`attachment:${attachment.id}`)) continue;
+			if (onlyKeys && !onlyKeys.has(recordKey('attachment', attachment.id))) continue;
 			if (seenAttachments.has(attachment.id)) continue;
 			seenAttachments.add(attachment.id);
 			values.push({
-				key: `attachment:${attachment.id}`,
+				key: recordKey('attachment', attachment.id),
 				payload: { kind: 'attachment', value: attachment }
 			});
 		}
 	}
 
 	for (const label of labels.filter((item) => !(Number(labelTombstones[item.id]) || 0))) {
-		if (onlyKeys && !onlyKeys.has(`label:${label.id}`)) continue;
-		values.push({ key: `label:${label.id}`, payload: { kind: 'label', value: label } });
+		if (onlyKeys && !onlyKeys.has(recordKey('label', label.id))) continue;
+		values.push({ key: recordKey('label', label.id), payload: { kind: 'label', value: label } });
 	}
-	for (const board of boards.filter((item) => !(Number(boardTombstones[item.id]) || 0))) {
-		if (onlyKeys && !onlyKeys.has(`board:${board.id}`)) continue;
-		values.push({ key: `board:${board.id}`, payload: { kind: 'board', value: board } });
+	for (const board of boards.filter((item) => boardOutlives(item, boardTombstones))) {
+		if (onlyKeys && !onlyKeys.has(recordKey('board', board.id))) continue;
+		values.push({ key: recordKey('board', board.id), payload: { kind: 'board', value: board } });
 	}
 	for (const [id, deletedAt] of validTombstones(tombstones)) {
-		if (onlyKeys && !onlyKeys.has(`note-tombstone:${id}`)) continue;
+		if (onlyKeys && !onlyKeys.has(recordKey('note-tombstone', id))) continue;
 		values.push({
-			key: `note-tombstone:${id}`,
+			key: recordKey('note-tombstone', id),
 			payload: { kind: 'note-tombstone', id, deletedAt }
 		});
 	}
 	for (const [id, deletedAt] of validTombstones(labelTombstones)) {
-		if (onlyKeys && !onlyKeys.has(`label-tombstone:${id}`)) continue;
+		if (onlyKeys && !onlyKeys.has(recordKey('label-tombstone', id))) continue;
 		values.push({
-			key: `label-tombstone:${id}`,
+			key: recordKey('label-tombstone', id),
 			payload: { kind: 'label-tombstone', id, deletedAt }
 		});
 	}
 	for (const [id, deletedAt] of validTombstones(boardTombstones)) {
-		if (onlyKeys && !onlyKeys.has(`board-tombstone:${id}`)) continue;
+		if (onlyKeys && !onlyKeys.has(recordKey('board-tombstone', id))) continue;
 		values.push({
-			key: `board-tombstone:${id}`,
+			key: recordKey('board-tombstone', id),
 			payload: { kind: 'board-tombstone', id, deletedAt }
 		});
 	}
 	for (const entry of libraryItems) {
 		if (entry.updatedAt <= (Number(libraryTombstones[entry.id]) || 0)) continue;
-		if (onlyKeys && !onlyKeys.has(`library-item:${entry.id}`)) continue;
+		if (onlyKeys && !onlyKeys.has(recordKey('library-item', entry.id))) continue;
 		values.push({
-			key: `library-item:${entry.id}`,
+			key: recordKey('library-item', entry.id),
 			payload: { kind: 'library-item', value: entry }
 		});
 	}
 	for (const [id, deletedAt] of validTombstones(libraryTombstones)) {
-		if (onlyKeys && !onlyKeys.has(`library-item-tombstone:${id}`)) continue;
+		if (onlyKeys && !onlyKeys.has(recordKey('library-item-tombstone', id))) continue;
 		values.push({
-			key: `library-item-tombstone:${id}`,
+			key: recordKey('library-item-tombstone', id),
 			payload: { kind: 'library-item-tombstone', id, deletedAt }
 		});
 	}

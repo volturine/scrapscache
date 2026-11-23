@@ -8,15 +8,16 @@ import {
 	type KanbanBoard,
 	type KanbanColumn
 } from '#lib/kanban.js';
-import { isProfileReleased, workspaceKey, writeMirror } from '#lib/db/idb.js';
+import { workspaceKey, writeMirror } from '#lib/db/idb.js';
+import { recordKey } from '#lib/syncRecords.js';
 import { syncStore } from '#lib/stores/sync.svelte.js';
 import { loadBoardsFromDevice, sanitizeTombstones, writeKanbanState } from '#lib/syncTombstones.js';
 import { uid } from '#lib/model/index.js';
 import { editContext, syncClock } from '#lib/editContext.js';
 import { actionUndo } from '#lib/stores/actionUndo.svelte.js';
 import { dropNotesMirror } from '#lib/noteStorage.js';
-import { PendingJournal, type Pending } from '#lib/pendingJournal.js';
-import { Retries, saveRetry } from '#lib/syncRetry.js';
+import { PendingJournal, type Pending, type PendingChange } from '#lib/pendingJournal.js';
+import { UnsavedChanges } from '#lib/unsavedChanges.js';
 import { trackLocalWrites } from '#lib/localWrites.js';
 import { syncScheduler } from '#lib/stores/syncScheduler.js';
 
@@ -30,7 +31,7 @@ const ACTIVE_BOARD_KEY = 'scrapscache-kanban-active-board-v1';
 const BOARD_TOMBSTONES_KEY = 'scrapscache-kanban-board-tombstones-v1';
 
 /** Boards whose save has not landed: the board, or the time it was deleted. */
-const pendingBoards = new PendingJournal<KanbanBoard | number>(
+const pendingBoards = new PendingJournal<PendingChange<KanbanBoard>>(
 	'scrapscache-boards-pending',
 	dropNotesMirror
 );
@@ -40,9 +41,8 @@ const pendingBoards = new PendingJournal<KanbanBoard | number>(
  * tried again included, so nothing of them outlives what replaced them.
  */
 export function clearBoardsMirror(pid: string): void {
-	kanbanStore.forgetUnsaved(pid);
+	kanbanStore.dropUnsaved(pid);
 	if (typeof localStorage === 'undefined') return;
-	pendingBoards.clear(pid);
 	for (const key of [BOARDS_KEY, ACTIVE_BOARD_KEY, BOARD_TOMBSTONES_KEY]) {
 		localStorage.removeItem(workspaceKey(key, pid));
 	}
@@ -83,8 +83,7 @@ export class KanbanStore {
 	#boardTombstones = $state<Record<string, number>>(readTombstones(syncStore.activePid));
 	private pendingDeviceWrites: Promise<void> = Promise.resolve();
 	/** Saves that failed and wait to be tried again, by workspace, with the upload marks they owe. */
-	private saveRetries = new Retries(saveRetry);
-	private owed = new Map<string, Set<string>>();
+	private unsaved = new UnsavedChanges(pendingBoards, 'boards');
 	/** The workspace whose boards this store holds: the one last loaded, not always the one shown. */
 	private holding = syncStore.activePid;
 	#persistable = false;
@@ -152,9 +151,9 @@ export class KanbanStore {
 		const mirroredBoards = readBoards(pid);
 		const mirroredTombstones = readTombstones(pid);
 		// Board changes whose save never landed: the board as changed, or when it was deleted.
-		const unsaved = pendingBoards.read(pid);
+		const unsaved = this.unsaved.read(pid);
 		const unsavedBoards = normalizeBoards(
-			Object.values(unsaved).filter((change) => typeof change !== 'number')
+			Object.values(unsaved).flatMap((change) => (change.kind === 'put' ? [change.value] : []))
 		);
 		let stored: KanbanBoard[] | undefined;
 		let deviceReadError: unknown = null;
@@ -175,10 +174,11 @@ export class KanbanStore {
 		const tombstones = { ...mirroredTombstones, ...remoteTombstones };
 		const unsavedDeletes: string[] = [];
 		for (const [id, change] of Object.entries(unsaved)) {
-			if (typeof change !== 'number') continue;
-			if (change > (tombstones[id] || 0)) tombstones[id] = change;
+			if (change.kind !== 'delete') continue;
+			if (change.at > (tombstones[id] || 0)) tombstones[id] = change.at;
 			// Owed unless the database has it: the mirror having it says nothing of that.
-			if (change > (remoteTombstones[id] || 0)) unsavedDeletes.push(`board-tombstone:${id}`);
+			if (change.at > (remoteTombstones[id] || 0))
+				unsavedDeletes.push(recordKey('board-tombstone', id));
 		}
 		this.holding = pid;
 		this.boardTombstones = tombstones;
@@ -201,16 +201,16 @@ export class KanbanStore {
 			// by part, so one that looks no newer than the stored one may still carry a
 			// change the database has not got.
 			const keys = new Set([
-				...recovered.map((board) => `board:${board.id}`),
+				...recovered.map((board) => recordKey('board', board.id)),
 				...unsavedBoards
 					.filter((board) => this.boards.some((candidate) => candidate.id === board.id))
-					.map((board) => `board:${board.id}`),
+					.map((board) => recordKey('board', board.id)),
 				...unsavedDeletes
 			]);
 			// Once that has landed, what the journal held when this load read it is saved,
 			// or lost to something newer. With nothing to save, it is that already.
 			if (keys.size) void this.requestSync(keys, unsaved);
-			else pendingBoards.settle(pid, unsaved);
+			else this.unsaved.settle(pid, unsaved);
 		}
 		await this.pendingDeviceWrites;
 		if (deviceReadError !== null) throw deviceReadError;
@@ -258,29 +258,26 @@ export class KanbanStore {
 		pid: string,
 		outboxKeys: string[],
 		/** What a start read from the journal and saves again: it is journaled already. */
-		replayed?: Pending<KanbanBoard | number>
+		replayed?: Pending<PendingChange<KanbanBoard>>
 	): Promise<void> {
 		const boards = this.boardsForSync();
 		const tombstones = this.boardTombstonesForSync();
-		// Written before the save starts, so the change outlives a stop that comes first.
-		// A replay writes nothing: another window may have journaled something newer since.
-		const changes: Pending<KanbanBoard | number> = replayed ?? {};
-		for (const key of replayed ? [] : outboxKeys) {
-			const id = key.slice(key.indexOf(':') + 1);
-			// A board that is here was put back after its delete, so it is the newer of the two.
-			const board = boards.find((candidate) => candidate.id === id);
-			if (board) changes[id] = board;
-			else if (tombstones[id]) changes[id] = tombstones[id];
-		}
-		if (!replayed && !isProfileReleased(pid) && !pendingBoards.add(pid, changes))
-			console.error('[kanban] could not journal unsaved boards: localStorage write failed');
+		// A replay journals nothing: another window may have journaled something newer since.
+		const changes =
+			replayed ??
+			this.unsaved.journalFor(pid, outboxKeys, (id): PendingChange<KanbanBoard> | undefined => {
+				// A board that is here was put back after its delete, so it is the newer of the two.
+				const board = boards.find((candidate) => candidate.id === id);
+				if (board) return { kind: 'put', value: board };
+				return tombstones[id] ? { kind: 'delete', at: tombstones[id] } : undefined;
+			});
 		const write = this.pendingDeviceWrites
 			.then(() =>
 				writeKanbanState(pid, boards, tombstones, outboxKeys, (stored, mine, deleted) =>
 					mergeKanbanBoards(normalizeBoards(stored), mine, deleted)
 				)
 			)
-			.then(() => pendingBoards.settle(pid, changes));
+			.then(() => this.unsaved.settle(pid, changes));
 		this.pendingDeviceWrites = write.catch(() => undefined);
 		return write;
 	}
@@ -293,7 +290,7 @@ export class KanbanStore {
 		const board = createKanbanBoard(name);
 		this.boards = [...this.boards, board];
 		this.activeBoardId = board.id;
-		this.requestSync([`board:${board.id}`]);
+		this.requestSync([recordKey('board', board.id)]);
 		return board;
 	}
 
@@ -335,14 +332,14 @@ export class KanbanStore {
 		const deletedAt = this.nextVersion(existing.updatedAt);
 		this.boardTombstones = { ...this.boardTombstones, [boardId]: deletedAt };
 		const remaining = this.boards.filter((board) => board.id !== boardId);
-		const syncKeys = [`board-tombstone:${boardId}`];
+		const syncKeys = [recordKey('board-tombstone', boardId)];
 		let replacement: KanbanBoard | null = null;
 
 		if (remaining.length === 0) {
 			replacement = createKanbanBoard();
 			this.boards = [replacement];
 			this.activeBoardId = replacement.id;
-			syncKeys.push(`board:${replacement.id}`);
+			syncKeys.push(recordKey('board', replacement.id));
 		} else {
 			this.boards = remaining;
 			if (this.activeBoardId === boardId) this.activeBoardId = remaining[0].id;
@@ -362,7 +359,7 @@ export class KanbanStore {
 		};
 		this.boards = [...this.boards.slice(0, index), restored, ...this.boards.slice(index)];
 		if (select) this.activeBoardId = board.id;
-		this.requestSync([`board:${board.id}`]);
+		this.requestSync([recordKey('board', board.id)]);
 	}
 
 	addTagColumn(boardId: string, labelId: string): KanbanColumn | null {
@@ -450,7 +447,7 @@ export class KanbanStore {
 			changed = edited !== board;
 			return edited;
 		});
-		if (changed) this.requestSync([`board:${boardId}`]);
+		if (changed) this.requestSync([recordKey('board', boardId)]);
 	}
 
 	/**
@@ -461,25 +458,22 @@ export class KanbanStore {
 	 */
 	private requestSync(
 		keys: Iterable<string> = [],
-		replayed?: Pending<KanbanBoard | number>
+		replayed?: Pending<PendingChange<KanbanBoard>>
 	): Promise<boolean> {
 		const pid = syncStore.activePid;
-		const marks = new Set([...(this.owed.get(pid) ?? []), ...keys]);
-		this.owed.delete(pid);
-		this.saveRetries.trying(pid);
-		const saved = this.save(pid, [...marks], replayed).then(
+		const marks = this.unsaved.begin(pid, keys);
+		const saved = this.save(pid, marks, replayed).then(
 			() => {
-				this.saveRetries.succeeded(pid);
+				this.unsaved.succeeded(pid);
 				return true;
 			},
 			(err) => {
 				console.error('[kanban] could not save the boards:', err);
-				this.owed.set(pid, new Set([...(this.owed.get(pid) ?? []), ...marks]));
-				this.saveRetries.failed(pid, () => {
+				this.unsaved.failed(pid, marks, () => {
 					// Between a switch and its load the store still holds the boards of the
 					// workspace being left: those are never saved into another one.
 					if (pid === syncStore.activePid && pid === this.holding) void this.requestSync();
-					else this.forgetUnsaved(pid);
+					else this.unsaved.forget(pid);
 				});
 				return false;
 			}
@@ -491,8 +485,12 @@ export class KanbanStore {
 
 	/** No save of this workspace's boards waits to be tried again. The journal keeps what it has. */
 	forgetUnsaved(pid: string): void {
-		this.owed.delete(pid);
-		this.saveRetries.settled(pid);
+		this.unsaved.forget(pid);
+	}
+
+	/** Nothing unsaved of this workspace's boards is kept: what replaced them stands. */
+	dropUnsaved(pid: string): void {
+		this.unsaved.clear(pid);
 	}
 
 	waitForPendingWrites(): Promise<void> {

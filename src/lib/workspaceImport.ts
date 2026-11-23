@@ -14,6 +14,7 @@ import {
 import { normalizeBoard, type KanbanBoard } from '#lib/kanban.js';
 import { uid } from '#lib/model/index.js';
 import { noteRecordKeys, syncControlKeys } from '#lib/syncEngine.js';
+import { recordKey } from '#lib/syncRecords.js';
 import {
 	BOARD_IDB,
 	BOARDS_IDB,
@@ -59,8 +60,11 @@ function addLabels(
 	};
 }
 
-function tombstoneKeys(kind: string, tombstones: Record<string, number>): string[] {
-	return Object.keys(tombstones).map((id) => `${kind}-tombstone:${id}`);
+function tombstoneKeys(
+	kind: 'note' | 'label' | 'board',
+	tombstones: Record<string, number>
+): string[] {
+	return Object.keys(tombstones).map((id) => recordKey(`${kind}-tombstone`, id));
 }
 
 function restoredLibrary(
@@ -114,7 +118,7 @@ export function planBackupImport(input: {
 					},
 					outboxKeys: [
 						...added.notes.flatMap(noteRecordKeys),
-						...added.labels.map((label) => `label:${label.id}`),
+						...added.labels.map((label) => recordKey('label', label.id)),
 						...restored.keys
 					]
 				};
@@ -200,8 +204,8 @@ export function planBackupImport(input: {
 					: [],
 				outboxKeys: [
 					...relabelledNotes.flatMap(noteRecordKeys),
-					...labels.map((label) => `label:${label.id}`),
-					...boards.map((board) => `board:${board.id}`),
+					...labels.map((label) => recordKey('label', label.id)),
+					...boards.map((board) => recordKey('board', board.id)),
 					...tombstoneKeys('note', tombstones),
 					...tombstoneKeys('label', labelTombstones),
 					...tombstoneKeys('board', boardTombstones),
@@ -235,7 +239,7 @@ export function planKeepImport(input: {
 					labels: added.labels,
 					outboxKeys: [
 						...added.notes.flatMap(noteRecordKeys),
-						...added.labels.map((label) => `label:${label.id}`)
+						...added.labels.map((label) => recordKey('label', label.id))
 					]
 				};
 			}
@@ -259,7 +263,7 @@ export function planKeepImport(input: {
 				state: { [NOTE_IDB]: tombstones, [LABEL_IDB]: labelTombstones },
 				outboxKeys: [
 					...notes.flatMap(noteRecordKeys),
-					...labels.map((label) => `label:${label.id}`),
+					...labels.map((label) => recordKey('label', label.id)),
 					...tombstoneKeys('note', tombstones),
 					...tombstoneKeys('label', labelTombstones)
 				]

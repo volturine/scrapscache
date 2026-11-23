@@ -1,3 +1,4 @@
+import type { SyncIssue } from '#lib/relaySync.js';
 /**
  * What, if anything, sync needs from the user right now. The cloud icon stays
  * quiet; a banner above the feed speaks up only for these states, each with the
@@ -34,12 +35,8 @@ export type SyncAttentionInput = {
 	/** Whether the open workspace syncs at all; a private one has nothing to say. */
 	synced: boolean;
 	keyRetired: boolean;
-	lastError: string | null;
-	/**
-	 * The last sync failed only because the server was not reached. The app tries
-	 * again by itself and nothing is asked of the user, so it is not worth a banner.
-	 */
-	unreachable: boolean;
+	/** What the last sync has to say, and what kind of thing it is. */
+	issue: SyncIssue | null;
 	usage: { storageBytes: number; maxBytes: number } | null;
 	online: boolean;
 	/** Time of the last sync, 0 when none. */
@@ -51,15 +48,6 @@ export type SyncAttentionInput = {
 export const OFFLINE_ATTENTION_MS = 24 * 60 * 60 * 1000;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-/**
- * A sync that went through but has something to say: skipped records, a photo
- * that could not be prepared, uploads the quota held back. Those read as written;
- * everything else in `lastError` is a sync that stopped.
- */
-export function isSyncWarning(raw: string): boolean {
-	return /^(Synced\b|Skipped\b|Sync incomplete\b)/.test(raw);
-}
 
 /** Sync errors as people read them: a dead connection is not a stack of fetch jargon. */
 export function friendlySyncError(raw: string | null | undefined, fallback: string): string {
@@ -91,17 +79,21 @@ export function syncAttentions(input: SyncAttentionInput): SyncAttention[] {
 			dismissible: false
 		});
 	}
-	if (input.lastError && !input.unreachable) {
-		const warning = isSyncWarning(input.lastError);
-		const reason = friendlySyncError(input.lastError, 'something went wrong');
+	// A relay that was not reached is tried again by itself and nothing is asked of
+	// the user, so it is not worth a banner.
+	if (input.issue && input.issue.kind !== 'unreachable') {
+		// A sync that went through but has something to say reads as written.
+		const warning = input.issue.kind === 'warning';
+		const { message } = input.issue;
+		const reason = friendlySyncError(message, 'something went wrong');
 		all.push({
 			kind: SyncAttentionKind.Error,
 			tone: warning ? 'warning' : 'danger',
-			title: warning ? input.lastError : `Sync stopped: ${reason.replace(/\.$/, '')}.`,
+			title: warning ? message : `Sync stopped: ${reason.replace(/\.$/, '')}.`,
 			body: warning ? '' : 'Your notes are safe on this device.',
 			action: 'retry',
 			actionLabel: 'Retry',
-			key: `${SyncAttentionKind.Error}:${input.lastError}`,
+			key: `${SyncAttentionKind.Error}:${message}`,
 			dismissible: true
 		});
 	}

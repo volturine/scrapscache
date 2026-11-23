@@ -12,26 +12,25 @@ const DAY = 24 * 60 * 60 * 1000;
 const quiet: SyncAttentionInput = {
 	synced: true,
 	keyRetired: false,
-	lastError: null,
-	unreachable: false,
+	issue: null,
 	usage: { storageBytes: 10, maxBytes: 100 },
 	online: true,
 	lastSync: 1_000_000,
 	now: 1_000_000 + 60_000
 };
 
+const stopped = (message: string) => ({ kind: 'stopped' as const, message });
+const notReached = { kind: 'unreachable' as const, message: 'Sync network error' };
+
 describe('resolveSyncAttention', () => {
 	// The notes are saved here and the sync is tried again by itself: nothing to do.
 	it('says nothing when the server could only not be reached', () => {
-		expect(
-			resolveSyncAttention({ ...quiet, lastError: 'Sync network error', unreachable: true })
-		).toBeNull();
+		expect(resolveSyncAttention({ ...quiet, issue: notReached })).toBeNull();
 		// What does need the user still speaks up beside it.
 		expect(
 			syncAttentions({
 				...quiet,
-				lastError: 'Sync network error',
-				unreachable: true,
+				issue: notReached,
 				usage: { storageBytes: 100, maxBytes: 100 }
 			}).map((attention) => attention.kind)
 		).toEqual([SyncAttentionKind.StorageFull]);
@@ -43,7 +42,7 @@ describe('resolveSyncAttention', () => {
 			resolveSyncAttention({
 				...quiet,
 				synced: false,
-				lastError: 'Failed to fetch',
+				issue: stopped('Failed to fetch'),
 				keyRetired: true
 			})
 		).toBeNull();
@@ -61,7 +60,10 @@ describe('resolveSyncAttention', () => {
 	});
 
 	it('offers a retry for a sync error, in plain words for a dead connection', () => {
-		const attention = resolveSyncAttention({ ...quiet, lastError: 'TypeError: Failed to fetch' });
+		const attention = resolveSyncAttention({
+			...quiet,
+			issue: stopped('TypeError: Failed to fetch')
+		});
 		expect(attention).toMatchObject({
 			kind: SyncAttentionKind.Error,
 			tone: 'danger',
@@ -73,22 +75,28 @@ describe('resolveSyncAttention', () => {
 	});
 
 	it('shows what a sync that went through still has to say, as written', () => {
-		// These are set on the success path, so the sync did not stop.
+		// These are set on the success path, so the sync did not stop. Their kind says so,
+		// not their wording: the same words from a sync that stopped read as an error.
+		expect(
+			resolveSyncAttention({ ...quiet, issue: stopped('Skipped 2 unreadable sync records') })?.tone
+		).toBe('danger');
 		for (const message of [
 			'Skipped 2 unreadable sync records',
 			'Sync incomplete: account storage quota prevented some uploads',
 			'Synced, but some photos could not be prepared for upload. They will retry on the next sync.'
 		]) {
-			expect(resolveSyncAttention({ ...quiet, lastError: message })).toMatchObject({
-				kind: SyncAttentionKind.Error,
-				tone: 'warning',
-				title: message,
-				body: '',
-				action: 'retry'
-			});
+			expect(resolveSyncAttention({ ...quiet, issue: { kind: 'warning', message } })).toMatchObject(
+				{
+					kind: SyncAttentionKind.Error,
+					tone: 'warning',
+					title: message,
+					body: '',
+					action: 'retry'
+				}
+			);
 		}
 		expect(
-			resolveSyncAttention({ ...quiet, lastError: 'Encrypted sync failed: bad key' })
+			resolveSyncAttention({ ...quiet, issue: stopped('Encrypted sync failed: bad key') })
 		).toMatchObject({
 			tone: 'danger',
 			title: 'Sync stopped: Encrypted sync failed: bad key.'
@@ -134,7 +142,7 @@ describe('resolveSyncAttention', () => {
 		const everything: SyncAttentionInput = {
 			...quiet,
 			keyRetired: true,
-			lastError: 'Failed to fetch',
+			issue: stopped('Failed to fetch'),
 			usage: { storageBytes: 100, maxBytes: 100 },
 			online: false,
 			now: quiet.lastSync + 3 * DAY
@@ -143,7 +151,7 @@ describe('resolveSyncAttention', () => {
 		expect(resolveSyncAttention({ ...everything, keyRetired: false })?.kind).toBe(
 			SyncAttentionKind.Error
 		);
-		expect(resolveSyncAttention({ ...everything, keyRetired: false, lastError: null })?.kind).toBe(
+		expect(resolveSyncAttention({ ...everything, keyRetired: false, issue: null })?.kind).toBe(
 			SyncAttentionKind.StorageFull
 		);
 		// Every active state is reported, so a dismissed one can be told from a cleared one.

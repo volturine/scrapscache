@@ -6,7 +6,7 @@ import { applyNoteEdit } from '#lib/model/index.js';
 import { editContext } from '#lib/editContext.js';
 import { loadCurrentAttachment } from '#lib/historyClient.js';
 import { stripPhotoMarkers } from '#lib/photoMarker.js';
-import { attachmentToImage } from '#lib/syncRecords.js';
+import { attachmentToImage, recordKey } from '#lib/syncRecords.js';
 import { sha256 } from '#lib/syncHash.js';
 import { cloneNote } from '#lib/utils.js';
 import type { SyncAccount } from '#lib/relayClient.js';
@@ -109,7 +109,7 @@ export async function settleAttachments(input: {
 					persist.add(note.id);
 				}
 				if (!relay.relayHolds(image.id, hash)) {
-					owed.push(`note:${note.id}`, `attachment:${image.id}`);
+					owed.push(recordKey('note', note.id), recordKey('attachment', image.id));
 					if (!image.dataUrl) image = await withStoredBytes(note, image);
 				}
 				if (image !== listed) decisions.set(key, image);
@@ -128,12 +128,12 @@ export async function settleAttachments(input: {
 				continue;
 			}
 			// The note changes, so the relay's copy of it has to follow.
-			owed.push(`note:${note.id}`);
+			owed.push(recordKey('note', note.id));
 			const { editedAt: _edit, thumbUrl: _preview, ...kept } = listed;
 			if (onRelay) decisions.set(key, { ...kept, ...attachmentToImage(onRelay) });
 			else if (held === undefined) decisions.set(key, null);
 			else {
-				owed.push(`attachment:${listed.id}`);
+				owed.push(recordKey('attachment', listed.id));
 				decisions.set(key, await withStoredBytes(note, { ...kept, contentHash: held }));
 			}
 		}

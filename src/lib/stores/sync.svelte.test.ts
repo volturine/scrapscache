@@ -13,6 +13,7 @@ import { sha256 } from '#lib/syncHash.js';
 import * as idb from '#lib/db/idb.js';
 import { MAX_CLIENT_SYNC_MUTATIONS_PER_REQUEST } from '#lib/syncLimits.js';
 import { buildSyncRecords } from '#lib/syncRecords.js';
+import { createKanbanBoard } from '#lib/kanban.js';
 import {
 	SYNC_DELTA_PATH,
 	SYNC_PROTOCOL_HEADER,
@@ -50,7 +51,13 @@ type RelayData = {
 
 type RequestResult =
 	| { success: true; data: RelayData }
-	| { success: false; error: string; status?: number; unreachable?: boolean };
+	| {
+			success: false;
+			error: string;
+			status?: number;
+			unreachable?: boolean;
+			signInRefused?: boolean;
+	  };
 
 const emptyData = (overrides: Partial<RelayData> = {}): RelayData => ({
 	cursor: 0,
@@ -1205,6 +1212,72 @@ describe('client sync state machine', () => {
 
 		expect(names()).toBe(1);
 		expect(await idb.getSyncOutboxKeys(TEST_WORKSPACE)).toEqual([]);
+	});
+
+	it('sends a board that was put back after its delete, and keeps it', async () => {
+		const board = { ...createKanbanBoard('Put back'), id: 'board-1', updatedAt: 20 };
+		const { store, account, requests } = createHarness((request) => ({
+			success: true,
+			data: emptyData({ cursor: request.envelopes.length ? 2 : 1 })
+		}));
+		// The delete was synced before; undoing it queued the board again.
+		await seedControl(account.accountId, {
+			cursor: 1,
+			baseline: { 'board-tombstone:board-1': 'known' },
+			recordIds: { 'board-tombstone:board-1': 'tombstone-envelope' },
+			outbox: ['board:board-1']
+		});
+
+		const result = await syncOpen(
+			store,
+			syncSnapshot({ boards: [board], boardTombstones: { 'board-1': 10 } }),
+			passthrough
+		);
+
+		expect(result.success, result.error).toBe(true);
+		const sent = requests
+			.flatMap((request) => request.envelopes)
+			.map(
+				(item) =>
+					decryptSyncPayload(account.syncKey, item.ciphertext, item.slot) as {
+						kind: string;
+						value?: { id?: string };
+					}
+			);
+		expect(sent.filter((payload) => payload.kind === 'board').map((p) => p.value?.id)).toEqual([
+			'board-1'
+		]);
+		expect(result.snapshot?.boards.map(({ id }) => id)).toEqual(['board-1']);
+		expect(requests.flatMap((request) => request.deleteSlots)).toEqual([]);
+	});
+
+	it('records what kind of thing a sync has to say, apart from its wording', async () => {
+		const kindAfter = async (answer: RequestResult) => {
+			const { store } = createHarness(() => answer);
+			await syncOpen(store, syncSnapshot({ notes: [note()] }), passthrough);
+			return store.issue;
+		};
+
+		expect(
+			await kindAfter({ success: false, error: 'Sync network error', unreachable: true })
+		).toEqual({
+			kind: 'unreachable',
+			message: 'Sync network error'
+		});
+		expect(
+			(
+				await kindAfter({
+					success: false,
+					error: 'Sync authentication failed',
+					signInRefused: true
+				})
+			)?.kind
+		).toBe('sign-in');
+		// The same words without the relay having refused the sign-in are a sync that stopped.
+		expect((await kindAfter({ success: false, error: 'Sync authentication failed' }))?.kind).toBe(
+			'stopped'
+		);
+		expect(await kindAfter({ success: true, data: emptyData({ cursor: 1 }) })).toBeNull();
 	});
 
 	it('keeps every upload round within the hosted relay mutation limit', async () => {

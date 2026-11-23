@@ -143,7 +143,7 @@ describe('a label change left in the journal', () => {
 	it('does not go over a later rename the database already holds', async () => {
 		const label = { id: 'renamed-elsewhere', name: 'Before', createdAt: 1, updatedAt: 10 };
 		await idb.saveLabel(TEST_WORKSPACE, { ...label, name: 'Later, by a sync', updatedAt: 50 });
-		pendingLabels.add(TEST_WORKSPACE, { [label.id]: label });
+		pendingLabels.add(TEST_WORKSPACE, { [label.id]: { kind: 'put', value: label } });
 
 		await notesStore.reloadForProfile();
 
@@ -162,7 +162,7 @@ describe('a label change left in the journal', () => {
 			updatedAt: 10
 		};
 		await syncTombstones.deleteLabelWithTombstone(TEST_WORKSPACE, label.id, 50);
-		pendingLabels.add(TEST_WORKSPACE, { [label.id]: label });
+		pendingLabels.add(TEST_WORKSPACE, { [label.id]: { kind: 'put', value: label } });
 
 		await notesStore.reloadForProfile();
 		await notesStore.waitForPendingProfileWrites();
@@ -176,11 +176,11 @@ describe('a label change left in the journal', () => {
 	it('leaves a newer change another window journaled while it is saved again', async () => {
 		const older = { id: 'two-windows', name: 'Older', createdAt: 1, updatedAt: 10 };
 		const newer = { ...older, name: 'Newer, from the other window', updatedAt: 20 };
-		pendingLabels.add(TEST_WORKSPACE, { [older.id]: older });
+		pendingLabels.add(TEST_WORKSPACE, { [older.id]: { kind: 'put', value: older } });
 		const save = idb.saveLabel;
 		vi.spyOn(idb, 'saveLabel').mockImplementationOnce(async (...args) => {
 			// The other window changes the label again while this start is saving.
-			pendingLabels.add(TEST_WORKSPACE, { [older.id]: newer });
+			pendingLabels.add(TEST_WORKSPACE, { [older.id]: { kind: 'put', value: newer } });
 			return save(...args);
 		});
 
@@ -191,7 +191,9 @@ describe('a label change left in the journal', () => {
 		await notesStore.waitForPendingProfileWrites();
 
 		// Its save has not landed yet, so its entry is still there for a start to replay.
-		expect(pendingLabels.read(TEST_WORKSPACE)).toEqual({ [older.id]: newer });
+		expect(pendingLabels.read(TEST_WORKSPACE)).toEqual({
+			[older.id]: { kind: 'put', value: newer }
+		});
 	});
 });
 

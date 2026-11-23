@@ -11,6 +11,9 @@
 /** Unsaved changes of one kind, by record id. */
 export type Pending<T> = Record<string, T>;
 
+/** What a change did to a record: put it, as it is now, or deleted it, at that time. */
+export type PendingChange<T> = { kind: 'put'; value: T } | { kind: 'delete'; at: number };
+
 const journals: Array<PendingJournal<unknown>> = [];
 
 export class PendingJournal<T> {

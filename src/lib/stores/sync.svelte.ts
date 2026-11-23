@@ -29,6 +29,7 @@ import {
 	NOTHING_KNOWN,
 	RelaySync,
 	type SyncHost,
+	type SyncIssue,
 	type SyncUsage,
 	type WorkspaceSyncState
 } from '#lib/relaySync.js';
@@ -92,11 +93,19 @@ export class SyncStore implements SyncHost {
 	set lastSync(value: number) {
 		this.state(this.activeId).lastSync = value;
 	}
+	/** What the open workspace's last sync has to say, and what kind of thing it is. */
+	get issue(): SyncIssue | null {
+		return this.stateOf(this.activeId).issue;
+	}
+	set issue(value: SyncIssue | null) {
+		this.state(this.activeId).issue = value;
+	}
+	/** The words of `issue`. Set, they are those of a sync that stopped. */
 	get lastError(): string | null {
-		return this.stateOf(this.activeId).lastError;
+		return this.issue?.message ?? null;
 	}
 	set lastError(value: string | null) {
-		this.state(this.activeId).lastError = value;
+		this.issue = value === null ? null : { kind: 'stopped', message: value };
 	}
 	get keyRetired(): boolean {
 		return this.stateOf(this.activeId).keyRetired;
@@ -129,8 +138,7 @@ export class SyncStore implements SyncHost {
 	 * user: what was saved here waits, and the scheduler tries again.
 	 */
 	get relayUnreachable(): boolean {
-		const { lastError, unreachableError } = this.stateOf(this.activeId);
-		return lastError !== null && lastError === unreachableError;
+		return this.issue?.kind === 'unreachable';
 	}
 	/** Every workspace on this device. Synced ones carry a sync key. */
 	profiles = $state<StoredProfile[]>([]);
@@ -396,8 +404,8 @@ export class SyncStore implements SyncHost {
 	/** Photos this device could not read were left out of a sync that otherwise settled. */
 	attachmentsUnreadable(pid: string, some: boolean): void {
 		const state = this.state(pid);
-		if (some) state.lastError = UNREADABLE_ATTACHMENTS;
-		else if (state.lastError === UNREADABLE_ATTACHMENTS) state.lastError = null;
+		if (some) state.issue = { kind: 'warning', message: UNREADABLE_ATTACHMENTS };
+		else if (state.issue?.message === UNREADABLE_ATTACHMENTS) state.issue = null;
 	}
 
 	async committedRevision(): Promise<number | null> {

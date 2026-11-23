@@ -398,7 +398,8 @@ export class ProfileCoordinator {
 				? { outcome: 'linked' }
 				: {
 						outcome: 'linked',
-						error: syncStore.stateOf(received.id).lastError ?? 'Could not sync the received profile'
+						error:
+							syncStore.stateOf(received.id).issue?.message ?? 'Could not sync the received profile'
 					};
 		} catch (err) {
 			return {

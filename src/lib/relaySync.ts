@@ -53,6 +53,8 @@ import {
 	buildSyncRecords,
 	hydrateNoteImages,
 	isSyncRecordPayload,
+	recordId,
+	recordKey,
 	syncRecordKey,
 	syncSnapshot,
 	type SyncRecord,
@@ -130,12 +132,23 @@ export type PulledRelayState = {
 const laterDelete = (held: Tombstones, id: string, deletedAt: unknown): Tombstones =>
 	newestTombstones(held, sanitizeTombstones({ [id]: deletedAt }));
 
+/**
+ * What a workspace's last sync has to say, in words, and what kind of thing it is:
+ * the interface decides by the kind, never by the wording.
+ */
+export type SyncIssue = {
+	kind:
+		| /** The relay was not reached. Nothing is wrong here, and it is tried again by itself. */ 'unreachable'
+		| /** The sync went through and has something to say. */ 'warning'
+		| /** The relay would not sign this key in. */ 'sign-in'
+		| /** The sync stopped for any other reason. */ 'stopped';
+	message: string;
+};
+
 /** What is known of one workspace's sync. */
 export type WorkspaceSyncState = {
 	lastSync: number;
-	lastError: string | null;
-	/** The error of the last sync that failed only because the relay was not reached. */
-	unreachableError: string | null;
+	issue: SyncIssue | null;
 	/** The key's cloud data was deleted, so the relay will never accept it again.
 	 * The workspace can only keep syncing on a new key. */
 	keyRetired: boolean;
@@ -146,8 +159,7 @@ export type WorkspaceSyncState = {
 
 export const NOTHING_KNOWN: Readonly<WorkspaceSyncState> = Object.freeze({
 	lastSync: 0,
-	lastError: null,
-	unreachableError: null,
+	issue: null,
 	keyRetired: false,
 	progress: null,
 	usage: null,
@@ -194,7 +206,7 @@ export class RelaySync {
 	 * returned function ends the session continues that version instead of adding one.
 	 */
 	beginEditSession(noteId: string): () => void {
-		const key = `note:${noteId}`;
+		const key = recordKey('note', noteId);
 		const session = { uploadedId: null };
 		this.editSessions.set(key, session);
 		return () => {
@@ -437,7 +449,7 @@ export class RelaySync {
 					const listing = noteRecords.filter((note) => listsAttachment(note, id, hash));
 					const listedOnRelay = Object.entries(relay.listed)
 						.filter(([, ids]) => ids.includes(id))
-						.map(([noteId]) => `note:${noteId}`);
+						.map(([noteId]) => recordKey('note', noteId));
 					const rewritten = noteRecords.filter((note) => listedOnRelay.includes(note.key));
 					const needed = [...new Set([...listing.slice(0, 1), ...rewritten])];
 					const together = new Set([...carriers, ...needed]).size + sendingAttachments.length + 1;
@@ -610,8 +622,10 @@ export class RelaySync {
 					if (outgoing.length > 0 || deleteSlots.length > 0) stalledWrites = 0;
 					for (const key of deletableKeys) {
 						delete recordIds[key];
-						if (key.startsWith('attachment:')) delete relay.versions[key.slice(11)];
-						if (key.startsWith('note:')) delete relay.listed[key.slice(5)];
+						const attachmentId = recordId(key, 'attachment');
+						if (attachmentId !== null) delete relay.versions[attachmentId];
+						const noteId = recordId(key, 'note');
+						if (noteId !== null) delete relay.listed[noteId];
 					}
 					for (const record of outgoing) sawOnRelay(record.payload);
 					for (const [key, id] of sentRecordIds) {
@@ -794,7 +808,8 @@ export class RelaySync {
 
 				merged.notes = withoutTombstoned(merged.notes, merged.tombstones);
 				merged.labels = withoutTombstoned(merged.labels, merged.labelTombstones);
-				merged.boards = withoutTombstoned(merged.boards, merged.boardTombstones);
+				// A board put back after its delete is newer than the delete, and stays.
+				merged.boards = mergeKanbanBoards([], merged.boards, merged.boardTombstones);
 				merged.libraryItems = mergeCanvasLibrary([], merged.libraryItems, merged.libraryTombstones);
 				if (
 					downloadsDrained &&
@@ -880,14 +895,15 @@ export class RelaySync {
 						}
 					}
 					for (const key of outboxKeys) {
+						const attachmentId = recordId(key, 'attachment');
 						if (!currentKeys.has(key)) {
 							acknowledgedOutbox.add(key);
 						} else if (
 							// An attachment the relay holds in every version listed here has
 							// nothing left to send, whether or not its bytes were loaded.
-							key.startsWith('attachment:') &&
-							(listedHere.get(key.slice(11)) ?? []).every(
-								(hash) => heldNow.get(key.slice(11)) === hash
+							attachmentId !== null &&
+							(listedHere.get(attachmentId) ?? []).every(
+								(hash) => heldNow.get(attachmentId) === hash
 							)
 						) {
 							acknowledgedOutbox.add(key);
@@ -969,13 +985,17 @@ export class RelaySync {
 						error: 'Sync incomplete: account storage quota prevented some uploads',
 						refused: true
 					},
-					record()
+					record(),
+					'warning'
 				);
 			const syncedAt = Date.now();
 			const state = record();
-			state.lastError =
+			state.issue =
 				poisonCount > 0
-					? `Skipped ${poisonCount} unreadable sync record${poisonCount === 1 ? '' : 's'}`
+					? {
+							kind: 'warning',
+							message: `Skipped ${poisonCount} unreadable sync record${poisonCount === 1 ? '' : 's'}`
+						}
 					: null;
 			state.lastSync = syncedAt;
 			this.host.settled(pid, syncedAt);
@@ -999,10 +1019,18 @@ export class RelaySync {
 	}
 
 	/** A failed sync's answer, recorded for its workspace. */
-	private fail(result: SyncResult, state: WorkspaceSyncState): SyncResult {
+	private fail(
+		result: SyncResult,
+		state: WorkspaceSyncState,
+		/** For a sync that went through and left something out. */
+		kind?: SyncIssue['kind']
+	): SyncResult {
 		const error = result.error || 'Sync failed';
-		state.unreachableError = result.unreachable ? error : null;
-		state.lastError = error;
+		state.issue = {
+			kind:
+				kind ?? (result.unreachable ? 'unreachable' : result.signInRefused ? 'sign-in' : 'stopped'),
+			message: error
+		};
 		// The relay's own "no" stands until something changes. A sign-in that expired,
 		// a request it gave up on and a request to slow down are not that.
 		const refused =

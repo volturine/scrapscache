@@ -112,6 +112,9 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
   (`src/lib/pendingJournal.ts`). A start replays what is left through the ordinary
   merging save, so a change outlives the app being stopped before its save
   finished, deletes included. A save that fails is tried again, later each time.
+  Windows share the journal and `localStorage` has no transactions across them,
+  so each change is an entry under a key of its own, written once and taken out
+  by that key: no window writes over what another journaled.
   The journal comes first when `localStorage` is short of room: the fast-start
   copy of the notes, which only makes a start quicker, is dropped for it.
 - **Attachments** — full bytes loaded when needed; grid/list may keep thumbnails

@@ -36,12 +36,17 @@ function note(id: string): Note {
 }
 
 const MIRROR = `${NOTES_MIRROR_KEY}:${TEST_WORKSPACE}`;
-const PENDING = `${PENDING_NOTES_KEY}:${TEST_WORKSPACE}`;
+/** Every journaled change is an entry of its own, under a key that starts with this. */
+const PENDING = `${PENDING_NOTES_KEY}:${TEST_WORKSPACE}:`;
 
 function writesTo(setItem: { mock: { calls: unknown[][] } }, key: string): string[] {
 	return setItem.mock.calls
-		.filter(([written]) => written === key)
+		.filter(([written]) => (key === PENDING ? String(written).startsWith(key) : written === key))
 		.map(([, value]) => String(value));
+}
+
+function journalKeys(): string[] {
+	return Object.keys(localStorage).filter((key) => key.startsWith(PENDING));
 }
 
 beforeEach(async () => {
@@ -70,7 +75,7 @@ describe('saving a note', () => {
 		const journaled = writesTo(setItem, PENDING);
 		expect(journaled).toHaveLength(20);
 		// Each journal write carries the one note, not the workspace.
-		for (const value of journaled) expect(Object.keys(JSON.parse(value))).toEqual(['n7']);
+		for (const value of journaled) expect(JSON.parse(value).id).toBe('n7');
 
 		await vi.runAllTimersAsync();
 
@@ -78,7 +83,7 @@ describe('saving a note', () => {
 		expect(JSON.parse(localStorage.getItem(MIRROR) ?? '[]')).toHaveLength(500);
 		// Every write landed, so nothing is left pending.
 		expect(readPendingNotes(TEST_WORKSPACE)).toEqual({});
-		expect(localStorage.getItem(PENDING)).toBeNull();
+		expect(journalKeys()).toEqual([]);
 	});
 
 	it('waits for typing to pause before mirroring every note', async () => {
@@ -120,8 +125,8 @@ describe('saving a note', () => {
 
 		expect(writesTo(setItem, MIRROR)).toEqual([]);
 		const journaled = writesTo(setItem, PENDING);
-		expect(journaled).toHaveLength(1);
-		expect(Object.keys(JSON.parse(journaled[0]))).toHaveLength(100);
+		// One entry per note the label was on, and none for the other four hundred.
+		expect(journaled).toHaveLength(100);
 	});
 
 	it('brings back an edit whose IndexedDB write never landed', async () => {

@@ -22,6 +22,11 @@ import { emptyWorkspace, TEST_WORKSPACE } from '../../tests/workspace';
 /** A save the app is stopped before the end of. */
 const neverLands = () => new Promise<never>(() => undefined);
 
+/** The entries a journal still holds for a workspace: `journal` is its name and the workspace. */
+function journalKeys(journal: string): string[] {
+	return Object.keys(localStorage).filter((key) => key.startsWith(`${journal}:`));
+}
+
 /** Only what was written for a restart is left: the copies for a quicker start are not. */
 function dropFastStartCopies(): void {
 	for (const key of Object.keys(localStorage)) {
@@ -219,9 +224,7 @@ describe('a board', () => {
 		await restarted.waitForPendingWrites();
 		expect(await storedBoards()).toContain(board.id);
 		expect(await getSyncOutboxKeys(pid())).toContain(`board:${board.id}`);
-		await vi.waitFor(() =>
-			expect(localStorage.getItem(`scrapscache-boards-pending:${pid()}`)).toBeNull()
-		);
+		await vi.waitFor(() => expect(journalKeys(`scrapscache-boards-pending:${pid()}`)).toEqual([]));
 	});
 
 	it('stays deleted when the app stopped before its delete landed', async () => {
@@ -316,9 +319,7 @@ describe('a board', () => {
 		expect(saved?.name).toBe('Renamed before a stop');
 		expect(saved?.noteFilter).toEqual({ action: 'remove', labelIds: ['later-label'] });
 		expect(await getSyncOutboxKeys(pid())).toContain(`board:${board.id}`);
-		await vi.waitFor(() =>
-			expect(localStorage.getItem(`scrapscache-boards-pending:${pid()}`)).toBeNull()
-		);
+		await vi.waitFor(() => expect(journalKeys(`scrapscache-boards-pending:${pid()}`)).toEqual([]));
 	});
 
 	it("never saves a failed save's retry into a workspace whose boards the store does not hold", async () => {
@@ -397,7 +398,7 @@ describe('a canvas library item', () => {
 			'star'
 		]);
 		expect(await getSyncOutboxKeys('library-stopped')).toContain('library-item:star');
-		expect(localStorage.getItem('scrapscache-library-pending:library-stopped')).toBeNull();
+		expect(journalKeys('scrapscache-library-pending:library-stopped')).toEqual([]);
 	});
 
 	it('stays removed when the app stopped before its removal landed', async () => {

@@ -26,9 +26,13 @@
 				<div class={d.body}>
 					<p class={d.error} role="alert">{message}</p>
 					<div class={d.footer}>
-						<button type="button" onclick={onClose} class={button({ variant: 'quiet', size: 'md' })}
-							>Close</button
+						<button
+							type="button"
+							onclick={onClose}
+							class={button({ variant: 'quiet', size: 'md' })}
 						>
+							Close
+						</button>
 					</div>
 				</div>
 			</Dialog.Content>

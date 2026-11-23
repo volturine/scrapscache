@@ -23,8 +23,10 @@
 						<button
 							type="button"
 							onclick={onClose}
-							class={button({ variant: 'primary', size: 'md' })}>OK</button
+							class={button({ variant: 'primary', size: 'md' })}
 						>
+							OK
+						</button>
 					</div>
 				</div>
 			</Dialog.Content>

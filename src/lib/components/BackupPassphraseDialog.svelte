@@ -119,8 +119,10 @@
 								type="button"
 								onclick={onClose}
 								disabled={busy}
-								class={button({ variant: 'quiet', size: 'md' })}>Cancel</button
+								class={button({ variant: 'quiet', size: 'md' })}
 							>
+								Cancel
+							</button>
 							<button
 								type="submit"
 								disabled={busy}

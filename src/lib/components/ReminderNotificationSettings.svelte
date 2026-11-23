@@ -83,9 +83,9 @@
 		<Bell class={styles.deviceIcon} aria-hidden="true" />
 		<span class={styles.deviceText}>
 			<span id={labelId} class={styles.deviceLabel}>Reminder alerts</span>
-			<span id={statusId} class={permission === 'denied' ? styles.statusWarning : styles.status}
-				>{status}</span
-			>
+			<span id={statusId} class={permission === 'denied' ? styles.statusWarning : styles.status}>
+				{status}
+			</span>
 		</span>
 	</Menu.Item>
 {/if}

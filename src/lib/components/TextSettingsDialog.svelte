@@ -45,9 +45,9 @@
 	>
 		<div class={styles.row}>
 			<Slider.Label class={styles.rowLabel}>{label}</Slider.Label>
-			<Slider.ValueText class={styles.value}
-				>{value} px{value === range.default ? ' · Default' : ''}</Slider.ValueText
-			>
+			<Slider.ValueText class={styles.value}>
+				{value} px{value === range.default ? ' · Default' : ''}
+			</Slider.ValueText>
 		</div>
 		<div class={styles.slider}>
 			<span class={styles.smallA} aria-hidden="true">A</span>

@@ -69,20 +69,25 @@
 					<button
 						type="button"
 						onclick={emptyTrash}
-						class={button({ variant: 'danger', size: 'xs' })}>Yes</button
+						class={button({ variant: 'danger', size: 'xs' })}
 					>
+						Yes
+					</button>
 					<button
 						type="button"
 						onclick={() => (confirmEmpty = false)}
-						class={button({ variant: 'quiet', size: 'xs' })}>No</button
+						class={button({ variant: 'quiet', size: 'xs' })}
 					>
+						No
+					</button>
 				{:else}
 					<button
 						type="button"
 						onclick={() => (confirmEmpty = true)}
 						class={button({ variant: 'quiet', size: 'xs' })}
-						><Trash2 class={iconSizeSm} aria-hidden="true" />Empty trash</button
 					>
+						<Trash2 class={iconSizeSm} aria-hidden="true" />Empty trash
+					</button>
 				{/if}
 			{/if}
 		</SectionHeader>

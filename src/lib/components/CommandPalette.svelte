@@ -311,8 +311,9 @@
 
 {#snippet marked(segments: MatchSegment[])}
 	{#each segments as segment, index (index)}
-		{#if segment.match}<mark class={searchStyles.mark}>{segment.text}</mark
-			>{:else}{segment.text}{/if}
+		{#if segment.match}<mark class={searchStyles.mark}>
+				{segment.text}
+			</mark>{:else}{segment.text}{/if}
 	{/each}
 {/snippet}
 

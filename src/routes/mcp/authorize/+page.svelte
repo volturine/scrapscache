@@ -324,8 +324,9 @@
 					{/if}
 
 					<fieldset class={styles.workspaces} aria-labelledby="mcp-workspace-label">
-						<span id="mcp-workspace-label" class={styles.legend}>Workspace for this connection</span
-						>
+						<span id="mcp-workspace-label" class={styles.legend}>
+							Workspace for this connection
+						</span>
 						<p id="mcp-workspace-hint" class={styles.fine}>
 							Choose one synced workspace. To connect another workspace, create a separate MCP
 							connection.

@@ -29,9 +29,9 @@
 <button bind:this={element} type="button" class={styles.root} {disabled} {onclick}>
 	<span class={styles.icon} aria-hidden="true">{@render icon()}</span>
 	<span class={styles.body}>
-		<span class={styles.title}
-			>{title}{#if badge}<span class={styles.badge}>{badge}</span>{/if}</span
-		>
+		<span class={styles.title}>
+			{title}{#if badge}<span class={styles.badge}>{badge}</span>{/if}
+		</span>
 		<span class={styles.description}>{caption}</span>
 	</span>
 	<ChevronRight size={18} class={styles.arrow} aria-hidden="true" />

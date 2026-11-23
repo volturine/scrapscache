@@ -3526,8 +3526,10 @@
 						'markdown-token-photo-missing'
 				]}
 				data-markdown-token={token.kind === 'marker' ? token.marker : token.styles.join(' ')}
-				data-photo={token.kind === 'text' ? token.photo : undefined}>{token.text}</span
+				data-photo={token.kind === 'text' ? token.photo : undefined}
 			>
+				{token.text}
+			</span>
 		{/if}
 	{/each}
 {/snippet}
@@ -3656,8 +3658,10 @@
 						uiStore.rawMarkdown && 'markdown-raw',
 						css({ minH: '1lh' }),
 						noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line
-					]}>{line.text || CARET_HOLDER}</span
+					]}
 				>
+					{line.text || CARET_HOLDER}
+				</span>
 			{:else}
 				{@const inlineTokens = parseInlineMarkdown(line.text)}
 				{#if inlineTokens.length === 1 && inlineTokens[0].kind === 'text' && inlineTokens[0].styles.length === 0}
@@ -3670,8 +3674,10 @@
 							uiStore.rawMarkdown && 'markdown-raw',
 							css({ minH: '1lh' }),
 							noteBody({ mode: 'editor', checked: line.checked, indented: line.indent > 0 }).line
-						]}>{line.text}</span
+						]}
 					>
+						{line.text}
+					</span>
 				{:else}
 					<span
 						data-line-text

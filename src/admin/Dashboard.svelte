@@ -217,8 +217,10 @@
 								snapshot = null;
 								settings = null;
 								void loadAll();
-							}}>Sign out</button
+							}}
 						>
+							Sign out
+						</button>
 					{/if}
 				</div>
 			{/if}
@@ -357,9 +359,9 @@
 									? ''
 									: String(settings.overrides.allowIndexing)}
 							>
-								<option value=""
-									>Default: {settings.defaults.allowIndexing ? 'allowed' : 'blocked'}</option
-								>
+								<option value="">
+									Default: {settings.defaults.allowIndexing ? 'allowed' : 'blocked'}
+								</option>
 								<option value="true">Allowed</option>
 								<option value="false">Blocked</option>
 							</select>
@@ -432,9 +434,9 @@
 								{#if loading}
 									{#each Array(PAGE_SIZE), i (i)}
 										<tr class={styles.skeletonRow}>
-											<td class={cx(styles.tableCell, styles.accountId)}
-												><span class={styles.skeletonBar}></span></td
-											>
+											<td class={cx(styles.tableCell, styles.accountId)}>
+												<span class={styles.skeletonBar}></span>
+											</td>
 											<td class={styles.tableCell}><span class={styles.skeletonBar}></span></td>
 											<td class={styles.tableCell}><span class={styles.skeletonBar}></span></td>
 											<td class={styles.tableCell}><span class={styles.skeletonBar}></span></td>
@@ -455,16 +457,20 @@
 						onclick={() => {
 							offset = Math.max(0, offset - PAGE_SIZE);
 							void reloadAccounts();
-						}}>Previous</button
+						}}
 					>
+						Previous
+					</button>
 					<button
 						class={secondaryButton}
 						disabled={offset + PAGE_SIZE >= accountTotal}
 						onclick={() => {
 							offset += PAGE_SIZE;
 							void reloadAccounts();
-						}}>Next</button
+						}}
 					>
+						Next
+					</button>
 					<span class={styles.loading}>* overridden</span>
 				</div>
 			</section>

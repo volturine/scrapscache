@@ -53,7 +53,7 @@
 	},
 	"assets": {
 		"binding": "ASSETS",
-		"directory": ".svelte-kit/cloudflare"
+		"directory": ".svelte-kit/cloudflare/client"
 	},
 	"d1_databases": [
 		{

@@ -281,13 +281,17 @@
 					<button
 						type="button"
 						class={button({ variant: 'danger', size: 'xs' })}
-						onclick={deleteForever}>Delete</button
+						onclick={deleteForever}
 					>
+						Delete
+					</button>
 					<button
 						type="button"
 						class={button({ variant: 'ghost', size: 'xs' })}
-						onclick={() => (confirmingDelete = false)}>Keep</button
+						onclick={() => (confirmingDelete = false)}
 					>
+						Keep
+					</button>
 				</span>
 			{:else}
 				<Tooltip content="Delete forever">

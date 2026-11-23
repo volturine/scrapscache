@@ -100,9 +100,9 @@
 		<Menu.Positioner class={styles.positioner}>
 			<Menu.Content class={cx(popover, styles.popover)}>
 				<Menu.ItemGroup class={styles.section} aria-labelledby={ids.appearance}>
-					<Menu.ItemGroupLabel id={ids.appearance} class={styles.sectionLabel}
-						>Appearance</Menu.ItemGroupLabel
-					>
+					<Menu.ItemGroupLabel id={ids.appearance} class={styles.sectionLabel}>
+						Appearance
+					</Menu.ItemGroupLabel>
 					<div class={styles.controlRow}>
 						<span id={ids.theme} class={styles.controlLabel}>Theme</span>
 						<Menu.RadioItemGroup
@@ -166,9 +166,9 @@
 							</span>
 							<span class={styles.deviceText}>
 								<span id={ids.icon} class={styles.deviceLabel}>App icon</span>
-								<span id={ids.iconStatus} class={styles.status}
-									>{describeChoice(appIconStore.choice)}</span
-								>
+								<span id={ids.iconStatus} class={styles.status}>
+									{describeChoice(appIconStore.choice)}
+								</span>
 							</span>
 							<ChevronRight class={styles.deviceChevron} aria-hidden="true" />
 						</Menu.Item>
@@ -190,9 +190,9 @@
 				</Menu.ItemGroup>
 
 				<Menu.ItemGroup class={styles.section} aria-labelledby={ids.data}>
-					<Menu.ItemGroupLabel id={ids.data} class={styles.sectionLabel}
-						>Data on this device</Menu.ItemGroupLabel
-					>
+					<Menu.ItemGroupLabel id={ids.data} class={styles.sectionLabel}>
+						Data on this device
+					</Menu.ItemGroupLabel>
 					<Menu.Item value="export" onSelect={onExport} class={menuItemClass}>
 						<Download class={styles.deviceIcon} aria-hidden="true" />
 						Back up notes…
@@ -216,8 +216,9 @@
 				</Menu.ItemGroup>
 
 				<Menu.ItemGroup class={styles.section} aria-labelledby={ids.about}>
-					<Menu.ItemGroupLabel id={ids.about} class={styles.sectionLabel}>About</Menu.ItemGroupLabel
-					>
+					<Menu.ItemGroupLabel id={ids.about} class={styles.sectionLabel}>
+						About
+					</Menu.ItemGroupLabel>
 					<div class={styles.links}>
 						<Menu.Item value="issue">
 							{#snippet asChild(props)}

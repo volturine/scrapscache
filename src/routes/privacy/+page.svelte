@@ -173,9 +173,10 @@
 				</h2>
 				<p class={styles.sectionCopy}>
 					Questions about privacy or your data: write to
-					<a href="mailto:support@scrapscache.com" class={styles.inlineLink}
-						>support@scrapscache.com</a
-					>. More help is on the <a href={resolve('support')} class={styles.inlineLink}>Support</a> page.
+					<a href="mailto:support@scrapscache.com" class={styles.inlineLink}>
+						support@scrapscache.com
+					</a>. More help is on the
+					<a href={resolve('support')} class={styles.inlineLink}>Support</a> page.
 				</p>
 			</section>
 		</div>

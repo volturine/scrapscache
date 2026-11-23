@@ -203,12 +203,12 @@
 	</DatePicker.Root>
 
 	<div class={legend.row} aria-hidden="true">
-		<span class={legend.item}
-			><span class={dot({ overdue: true, legend: true })}></span>Overdue</span
-		>
-		<span class={legend.item}
-			><span class={dot({ overdue: false, legend: true })}></span>Coming</span
-		>
+		<span class={legend.item}>
+			<span class={dot({ overdue: true, legend: true })}></span>Overdue
+		</span>
+		<span class={legend.item}>
+			<span class={dot({ overdue: false, legend: true })}></span>Coming
+		</span>
 	</div>
 
 	<div

@@ -86,8 +86,9 @@
      marked in every token it touches. -->
 {#snippet marked(segments: MatchSegment[])}
 	{#each segments as segment, index (index)}
-		{#if segment.match}<mark class={searchStyles.mark}>{segment.text}</mark
-			>{:else}{segment.text}{/if}
+		{#if segment.match}<mark class={searchStyles.mark}>
+				{segment.text}
+			</mark>{:else}{segment.text}{/if}
 	{/each}
 {/snippet}
 
@@ -105,8 +106,9 @@
 							'markdown-token-photo-missing'
 					]}
 					data-markdown-token={token.kind === 'marker' ? token.marker : token.styles.join(' ')}
-					>{@render marked(segments)}</span
 				>
+					{@render marked(segments)}
+				</span>
 			{/each}
 		{:else}
 			&nbsp;

@@ -57,8 +57,11 @@
 						href="https://github.com/volturine/scrapscache/issues/new/choose"
 						target="_blank"
 						rel="noreferrer"
-						class={styles.inlineLink}>GitHub</a
-					>, or from the app: open the Settings menu (⋮ More on a phone) and choose Report an issue.
+						class={styles.inlineLink}
+					>
+						GitHub
+					</a>, or from the app: open the Settings menu (⋮ More on a phone) and choose Report an
+					issue.
 				</p>
 			</section>
 

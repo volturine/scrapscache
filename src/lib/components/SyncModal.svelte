@@ -596,9 +596,9 @@
 	{#if turnstile?.kind === 'unknown'}
 		<p class={syncDanger} role="alert">
 			Could not reach the server to see what it needs.
-			<button type="button" class={syncBackLink} onclick={() => void askTurnstile()}
-				>Try again</button
-			>
+			<button type="button" class={syncBackLink} onclick={() => void askTurnstile()}>
+				Try again
+			</button>
 		</p>
 	{:else if turnstile?.kind === 'unsupported'}
 		<p class={syncDanger} role="alert">
@@ -699,20 +699,21 @@
 												class={cx(styles.manageRow, styles.manageRowCaution)}
 												disabled={busy}
 												onclick={() => confirm('force', profile.id)}
-												><RefreshCw
+											>
+												<RefreshCw
 													size={16}
 													class={operation === 'force-sync' && confirmTarget === profile.id
 														? styles.spinner
 														: ''}
 													aria-hidden="true"
-												/><span
-													>{operation === 'force-sync' && confirmTarget === profile.id
+												/><span>
+													{operation === 'force-sync' && confirmTarget === profile.id
 														? 'Replacing…'
-														: 'Replace the cloud copy'}<small
-														>Upload this device’s notes. Notes only in the cloud are removed.</small
-													></span
-												></button
-											>
+														: 'Replace the cloud copy'}<small>
+														Upload this device’s notes. Notes only in the cloud are removed.
+													</small>
+												</span>
+											</button>
 										{:else}
 											<button
 												type="button"
@@ -741,10 +742,10 @@
 
 												<span>
 													Remove from the cloud
-													<small
-														>Deletes the cloud copy and stops syncing on all devices. Notes stay
-														here.</small
-													>
+													<small>
+														Deletes the cloud copy and stops syncing on all devices. Notes stay
+														here.
+													</small>
 												</span>
 											</button>
 										{/if}
@@ -783,8 +784,10 @@
 									mode = 'new';
 									error = '';
 									info = '';
-								}}>+ New workspace</button
+								}}
 							>
+								+ New workspace
+							</button>
 						</div>
 						{#if syncStore.account}
 							<div
@@ -812,21 +815,18 @@
 											styles.growButton,
 											styles.pressableButton
 										)}
-										><RefreshCw
-											size={16}
-											class={syncing ? styles.spinner : ''}
-											aria-hidden="true"
-										/>
-										<span class={styles.buttonLabel}
-											>{operation === 'sync'
+									>
+										<RefreshCw size={16} class={syncing ? styles.spinner : ''} aria-hidden="true" />
+										<span class={styles.buttonLabel}>
+											{operation === 'sync'
 												? 'Syncing…'
 												: syncStore.keyRetired
 													? 'Create new sync key'
 													: authenticationFailed
 														? 'Replace the cloud copy'
-														: 'Sync now'}</span
-										></button
-									>
+														: 'Sync now'}
+										</span>
+									</button>
 									{#if !authenticationFailed}
 										<button
 											type="button"
@@ -839,8 +839,9 @@
 												styles.pressableButton
 											)}
 											title="Connect another device"
-											><span class={styles.buttonLabelWrap}>Connect another device</span></button
 										>
+											<span class={styles.buttonLabelWrap}>Connect another device</span>
+										</button>
 									{/if}
 								</div>
 								{#if syncStore.progress}
@@ -854,13 +855,14 @@
 									<Progress.Root
 										value={progress.totalBytes ? percent : null}
 										class={css({ mt: 'sm', w: 'full' })}
-										><Progress.Track class={meter.track}
-											><Progress.Range
+									>
+										<Progress.Track class={meter.track}>
+											<Progress.Range
 												class={meter.bar}
 												style={`width: ${progress.totalBytes ? percent : 100}%`}
-											/></Progress.Track
-										></Progress.Root
-									>
+											/>
+										</Progress.Track>
+									</Progress.Root>
 								{/if}
 							</div>
 						{/if}
@@ -915,8 +917,10 @@
 									confirmation = null;
 									confirmTarget = null;
 									error = '';
-								}}>Cancel</button
+								}}
 							>
+								Cancel
+							</button>
 							<button
 								type="button"
 								class={cx(
@@ -943,7 +947,8 @@
 											: confirmation === 'remove'
 												? void removeWorkspace()
 												: void deleteCloudData()}
-								>{busy
+							>
+								{busy
 									? 'Working…'
 									: confirmation === 'force'
 										? 'Replace cloud copy'
@@ -951,8 +956,8 @@
 											? 'Create new key'
 											: confirmation === 'remove'
 												? 'Delete from this device'
-												: 'Remove from cloud'}</button
-							>
+												: 'Remove from cloud'}
+							</button>
 						</div>
 					</div>
 				{:else if mode === 'register'}
@@ -987,8 +992,9 @@
 								onclick={() => void create()}
 								disabled={busy || checkBlocked || (Boolean(turnstileOrigin) && !registerToken)}
 								class={cx(button({ variant: 'primary', size: 'md' }), styles.fullButton)}
-								>{operation === 'create' ? 'Starting sync…' : 'Start sync'}</button
 							>
+								{operation === 'create' ? 'Starting sync…' : 'Start sync'}
+							</button>
 						</div>
 						<div class={hstack({ gap: 'md', alignItems: 'center' })} aria-hidden="true">
 							<span class={styles.dividerLine}></span>
@@ -1002,8 +1008,10 @@
 							onclick={() => {
 								mode = 'menu';
 								promoteSource = null;
-							}}>← Back to workspaces</button
+							}}
 						>
+							← Back to workspaces
+						</button>
 					</div>
 				{:else if mode === 'new'}
 					<div class={vstack({ gap: 'lg', alignItems: 'stretch' })}>
@@ -1035,8 +1043,10 @@
 							type="button"
 							onclick={() => (mode = 'menu')}
 							disabled={busy}
-							class={syncBackLink}>← Back to workspaces</button
+							class={syncBackLink}
 						>
+							← Back to workspaces
+						</button>
 					</div>
 				{:else if mode === 'link'}
 					<div class={vstack({ gap: 'md', alignItems: 'stretch' })}>
@@ -1059,8 +1069,9 @@
 							)}
 						>
 							<ScanQrCode size={16} aria-hidden="true" />
-							<span class={styles.buttonLabel}>{scanningQr ? 'Stop scanning' : 'Scan QR code'}</span
-							>
+							<span class={styles.buttonLabel}>
+								{scanningQr ? 'Stop scanning' : 'Scan QR code'}
+							</span>
 						</button>
 						<input
 							type="text"
@@ -1078,16 +1089,19 @@
 							onclick={() => void beginLink()}
 							disabled={busy}
 							class={cx(button({ variant: 'primary', size: 'md' }), styles.fullButton)}
-							>{operation === 'connect' ? 'Starting…' : 'Start connection'}</button
-						><button
+						>
+							{operation === 'connect' ? 'Starting…' : 'Start connection'}
+						</button><button
 							type="button"
 							onclick={() => {
 								scanningQr = false;
 								mode = 'new';
 							}}
 							disabled={busy}
-							class={syncBackLink}>← Back</button
+							class={syncBackLink}
 						>
+							← Back
+						</button>
 					</div>
 				{:else if mode === 'pairing'}
 					<p role="status">Connected. Syncing workspace…</p>
@@ -1126,9 +1140,9 @@
 											</span>
 										{/each}
 									</span>
-									<span class={styles.pairingCopyHint} aria-live="polite"
-										>{copied === 'code' ? 'Copied' : 'Copy code'}</span
-									>
+									<span class={styles.pairingCopyHint} aria-live="polite">
+										{copied === 'code' ? 'Copied' : 'Copy code'}
+									</span>
 								</Clipboard.Trigger>
 							</Clipboard.Root>
 							<Clipboard.Root
@@ -1183,8 +1197,10 @@
 									cursor: 'pointer',
 									textAlign: 'center'
 								})
-							)}>Cancel</button
+							)}
 						>
+							Cancel
+						</button>
 					</div>
 				{/if}
 			</Dialog.Content>

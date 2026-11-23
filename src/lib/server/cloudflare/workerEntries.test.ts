@@ -25,6 +25,36 @@ describe('Worker entry modules', () => {
 		expect(named).toEqual(["{ AccountCoordinator } from './accountCoordinator';"]);
 	});
 
+	it('keeps the app Worker entry and Wrangler configs aligned with adapter-cloudflare output', () => {
+		const parseJsonc = (path: string) =>
+			JSON.parse(
+				readFileSync(path, 'utf8')
+					.split('\n')
+					.filter((line) => !line.trim().startsWith('//'))
+					.join('\n')
+			) as {
+				main?: string;
+				compatibility_date?: string;
+				compatibility_flags?: string[];
+				assets?: { binding?: string; directory?: string };
+			};
+
+		const appSource = readFileSync('cf/app.ts', 'utf8');
+		const rootConfig = parseJsonc('wrangler.jsonc');
+		const adapterConfig = parseJsonc('cf/wrangler.svelte.jsonc');
+
+		expect(appSource).toContain("from '../.svelte-kit/cloudflare/worker/index.js'");
+		expect(rootConfig.main).toBe('cf/app.ts');
+		expect(rootConfig.assets).toEqual({
+			binding: 'ASSETS',
+			directory: '.svelte-kit/cloudflare/client'
+		});
+		expect(adapterConfig.main).toBeUndefined();
+		expect(adapterConfig.compatibility_date).toBe(rootConfig.compatibility_date);
+		expect(adapterConfig.compatibility_flags).toEqual(rootConfig.compatibility_flags);
+		expect(adapterConfig.assets?.binding).toBe(rootConfig.assets?.binding);
+	});
+
 	it('sends the maintenance tick as JSON, which SvelteKit does not treat as a form', async () => {
 		const { default: cron } = (await import('../../../../cf/cron')) as {
 			default: { scheduled(controller: unknown, env: unknown, context: unknown): void };

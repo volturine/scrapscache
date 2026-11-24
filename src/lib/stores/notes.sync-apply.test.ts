@@ -8,8 +8,6 @@ vi.mock('#lib/imageThumb.js', async (importOriginal) => {
 import { createSyncIdentity, encryptSyncPayload } from '#lib/syncPairing.js';
 import { syncControlKeys } from '#lib/syncEngine.js';
 import {
-	clearAllLabels,
-	clearAllNotes,
 	clearSyncOutbox,
 	closeDeviceDatabase,
 	resolveDbName,
@@ -26,11 +24,18 @@ import { openDB } from 'idb';
 import { loadBoardsFromDevice } from '#lib/syncTombstones.js';
 import * as syncTombstones from '#lib/syncTombstones.js';
 import { writeNotesMirror } from '#lib/noteStorage.js';
-import { notesStore, SYNC_LOCK } from './notes.svelte';
-import { syncStore } from './sync.svelte';
-import { syncSnapshot } from '#lib/syncRecords.js';
+import { notesStore } from './notes.svelte';
+import { SYNC_LOCK, syncScheduler } from './syncScheduler';
+import { relaySync, syncStore } from './sync.svelte';
+import { relay as appRelay } from '#lib/relayClient.js';
+import { syncSnapshot, type SyncSnapshot } from '#lib/syncRecords.js';
+import { mergeTwoNotes } from '#lib/model/index.js';
 import type { Note } from '#lib/types.js';
-import { TEST_WORKSPACE } from '../../tests/workspace';
+import { linkTestWorkspace, unlinkTestWorkspace } from '../../tests/syncing';
+import { emptyWorkspace, TEST_WORKSPACE } from '../../tests/workspace';
+import { createKanbanBoard } from '#lib/kanban.js';
+import { kanbanStore } from './kanban.svelte';
+import { workspaceRewrites } from '#lib/stores/workspaceRewrites.svelte.js';
 
 function remoteNote(id = 'note-1'): Note {
 	return {
@@ -63,13 +68,14 @@ function remoteNote(id = 'note-1'): Note {
 }
 
 describe('notes store sync apply', () => {
-	it('force push persists local winners before upload and never adopts remote-only notes', async () => {
-		syncStore.account = createSyncIdentity();
+	it('force push stamps this device’s copy past the cloud’s in one step, and an ordinary sync sends it', async () => {
+		const account = linkTestWorkspace();
+		const keys = syncControlKeys(account.accountId);
 		const local = { ...remoteNote('shared'), title: 'This device wins' };
-		notesStore.notes = [local];
+		// What the window shows plays no part: the copy is taken from the database.
+		notesStore.notes = [];
 		await putNote(TEST_WORKSPACE, local);
-		vi.spyOn(syncStore, 'reauthenticateForRecovery').mockResolvedValue();
-		const clearControl = vi.spyOn(syncStore, 'clearAccountControlPlane');
+		vi.spyOn(appRelay, 'reauthenticate').mockResolvedValue();
 		const remote = syncSnapshot({
 			notes: [
 				{
@@ -81,46 +87,126 @@ describe('notes store sync apply', () => {
 				remoteNote('cloud-only')
 			]
 		});
-		const sync = vi
-			.spyOn(syncStore, 'sync')
-			.mockImplementation(async (local, _indicate, pullOnly, apply) => {
-				if (pullOnly) {
-					await apply!(remote, TEST_WORKSPACE, {
-						readEnvelopes: remote.notes.length,
-						relayHolds: () => true,
-						relayHas: () => undefined,
-						owes: async () => undefined
-					});
-					return { success: true, snapshot: remote };
-				}
-				const { notes, tombstones } = local;
-				expect(notes.map((note) => note.title)).toEqual(['This device wins']);
-				expect(notes[0].fieldTimes!.title).toBeGreaterThan(6000);
-				expect(tombstones['cloud-only']).toBeGreaterThan(6000);
-				expect((await getAllNotesMetadata(TEST_WORKSPACE))[0].title).toBe('This device wins');
-				// The pull's cursor and ids are kept, and every record is queued, so the
-				// upload sends what differs from the cloud without downloading it again.
-				expect(clearControl).toHaveBeenCalledTimes(1);
-				expect(await getSyncOutboxKeys(TEST_WORKSPACE)).toEqual(
-					expect.arrayContaining(['note:shared', 'note-tombstone:cloud-only'])
-				);
-				return { success: true, snapshot: local };
+		const read = vi.spyOn(relaySync, 'read').mockImplementation(async () => {
+			// Reading the cloud's copy changes nothing on this device.
+			expect(await getSyncState(TEST_WORKSPACE, keys.cursor)).toBeUndefined();
+			return {
+				success: true,
+				snapshot: remote,
+				control: { [keys.cursor]: 2, [keys.baseline]: { 'note:shared': 'cloud-fingerprint' } }
+			};
+		});
+		// The upload sends what the database holds by then.
+		const sync = vi.spyOn(relaySync, 'sync').mockImplementation(async (_profile, local) => {
+			const { notes, tombstones } = local;
+			expect(notes.map((note) => note.title)).toEqual(['This device wins']);
+			expect(notes[0].fieldTimes!.title).toBeGreaterThan(6000);
+			expect(tombstones['cloud-only']).toBeGreaterThan(6000);
+			// The sync state of the copy that was read landed with the notes, and every
+			// record is queued: the upload sends what differs without downloading again.
+			expect(await getSyncState(TEST_WORKSPACE, keys.cursor)).toBe(2);
+			expect(await getSyncState(TEST_WORKSPACE, keys.baseline)).toEqual({
+				'note:shared': 'cloud-fingerprint'
 			});
-		expect(await notesStore.forcePushWorkspace()).toBe(true);
-		expect(sync).toHaveBeenCalledTimes(2);
+			expect(await getSyncOutboxKeys(TEST_WORKSPACE)).toEqual(
+				expect.arrayContaining(['note:shared', 'note-tombstone:cloud-only'])
+			);
+			return { success: true, snapshot: local };
+		});
+		expect(await workspaceRewrites.forcePush(TEST_WORKSPACE)).toEqual({ success: true });
+		expect(read).toHaveBeenCalledOnce();
+		expect(sync).toHaveBeenCalled();
+		// The window was loaded again from what landed.
+		expect(notesStore.notes.map((note) => note.title)).toEqual(['This device wins']);
+	});
+
+	it('force push brings back a note the cloud deleted for good under a new id, with its photo', async () => {
+		linkTestWorkspace();
+		const dataUrl = 'data:image/png;base64,QUJD';
+		const kept = {
+			...remoteNote('deleted-in-cloud'),
+			title: 'Still wanted',
+			images: [{ id: 'shot', mime: 'image/png', dataUrl, createdAt: 1 }]
+		};
+		await putNote(TEST_WORKSPACE, kept);
+		vi.spyOn(appRelay, 'reauthenticate').mockResolvedValue();
+		vi.spyOn(relaySync, 'read').mockResolvedValue({
+			success: true,
+			snapshot: syncSnapshot({ tombstones: { 'deleted-in-cloud': 9_000 } }),
+			control: {}
+		});
+		vi.spyOn(relaySync, 'sync').mockImplementation(async (_profile, local) => ({
+			success: true,
+			snapshot: local
+		}));
+
+		expect(await workspaceRewrites.forcePush(TEST_WORKSPACE)).toEqual({ success: true });
+
+		// A delete is final for its id: the note returns under another, and its bytes with it.
+		expect(notesStore.notes.map((note) => note.title)).toEqual(['Still wanted']);
+		const [returned] = notesStore.notes;
+		expect(returned.id).not.toBe('deleted-in-cloud');
+		expect(notesStore.deletedNoteIds).toHaveProperty('deleted-in-cloud');
+		const stored = (await getAllNotesMetadata(TEST_WORKSPACE)).find(
+			(note) => note.id === returned.id
+		);
+		const hydrated = await hydrateNoteAttachments(TEST_WORKSPACE, stored!);
+		expect(hydrated.images?.map((image) => image.dataUrl)).toEqual([dataUrl]);
+		expect(hydrated.images?.[0].id).not.toBe('shot');
+		// Nothing is left behind under the old id.
+		expect((await getAllNotesMetadata(TEST_WORKSPACE)).map((note) => note.id)).toEqual([
+			returned.id
+		]);
+	});
+
+	// The copy that lands was made from what the database held a moment before. An
+	// edit saved in between, by this window or another, must not be gone over.
+	it('force push plans again when something is saved between its read and its landing', async () => {
+		linkTestWorkspace();
+		const local = { ...remoteNote('edited-meanwhile'), title: 'Before' };
+		await putNote(TEST_WORKSPACE, local);
+		vi.spyOn(appRelay, 'reauthenticate').mockResolvedValue();
+		vi.spyOn(relaySync, 'read').mockResolvedValue({
+			success: true,
+			snapshot: syncSnapshot(),
+			control: {}
+		});
+		vi.spyOn(relaySync, 'sync').mockImplementation(async (_profile, local) => ({
+			success: true,
+			snapshot: local
+		}));
+		const rewrite = idb.rewriteWorkspace;
+		const landing = vi.spyOn(idb, 'rewriteWorkspace').mockImplementationOnce(async (...args) => {
+			// Another window saves the note after the plan read it.
+			await idb.saveNote(
+				TEST_WORKSPACE,
+				{ ...local, title: 'Edited meanwhile', fieldTimes: { ...local.fieldTimes, title: 9 } },
+				['note:edited-meanwhile']
+			);
+			return rewrite(...args);
+		});
+
+		expect(await workspaceRewrites.forcePush(TEST_WORKSPACE)).toEqual({ success: true });
+
+		expect(landing).toHaveBeenCalledTimes(2);
+		expect((await getAllNotesMetadata(TEST_WORKSPACE)).map((note) => note.title)).toEqual([
+			'Edited meanwhile'
+		]);
 	});
 
 	it('leaves local data unchanged when recovery authentication fails', async () => {
-		syncStore.account = createSyncIdentity();
+		vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		linkTestWorkspace();
 		const local = remoteNote('unchanged');
 		notesStore.notes = [local];
 		await putNote(TEST_WORKSPACE, local);
-		vi.spyOn(syncStore, 'reauthenticateForRecovery').mockRejectedValue(
-			new Error('Server unavailable')
-		);
-		const sync = vi.spyOn(syncStore, 'sync');
-		expect(await notesStore.forcePushWorkspace()).toBe(false);
-		expect(sync).not.toHaveBeenCalled();
+		vi.spyOn(appRelay, 'reauthenticate').mockRejectedValue(new Error('Server unavailable'));
+		const read = vi.spyOn(relaySync, 'read');
+		expect(await workspaceRewrites.forcePush(TEST_WORKSPACE)).toEqual({
+			success: false,
+			error: 'Server unavailable'
+		});
+		expect(read).not.toHaveBeenCalled();
 		expect((await getAllNotesMetadata(TEST_WORKSPACE))[0].updatedAt).toBe(1);
 		expect(notesStore.notes[0].title).toBe(local.title);
 	});
@@ -131,28 +217,31 @@ describe('notes store sync apply', () => {
 		vi.useRealTimers();
 		localStorage.clear();
 		notesStore.notes = [];
+		notesStore.loaded = true;
 		notesStore.labels = [];
 		notesStore.deletedNoteIds = {};
 		notesStore.deletedLabelIds = {};
 		notesStore.lastPersistError = null;
-		syncStore.account = null;
+		unlinkTestWorkspace();
 		vi.restoreAllMocks();
 	});
 
 	afterEach(() => {
-		syncStore.account = null;
+		unlinkTestWorkspace();
 		notesStore.notes = [];
+		notesStore.loaded = true;
 		notesStore.labels = [];
 	});
 
 	it('persists pulled notes and boards to IndexedDB before committing the cursor', async () => {
 		const account = createSyncIdentity();
-		syncStore.account = account;
+		linkTestWorkspace(account.syncKey);
 		const keys = syncControlKeys(account.accountId);
 		const pulled = remoteNote();
+		const pulledBoard = { ...createKanbanBoard('Pulled board'), id: 'pulled-board' };
 
 		vi.spyOn(
-			syncStore as unknown as {
+			appRelay as unknown as {
 				sendSyncRequest(
 					path: string,
 					payload: string
@@ -179,6 +268,16 @@ describe('notes store sync apply', () => {
 									},
 									'a'.repeat(64)
 								)
+							},
+							{
+								seq: 2,
+								id: 'remote-board-id',
+								slot: 'b'.repeat(64),
+								ciphertext: encryptSyncPayload(
+									account.syncKey,
+									{ kind: 'board', value: pulledBoard },
+									'b'.repeat(64)
+								)
 							}
 						],
 						conflicts: [],
@@ -201,14 +300,16 @@ describe('notes store sync apply', () => {
 			};
 		});
 
-		expect(await notesStore.syncWithCloudManual()).toBe(true);
+		expect(await syncScheduler.request(syncStore.activeId)).toBe(true);
 		expect(notesStore.lastPersistError).toBeNull();
 		expect(
 			(await getAllNotesMetadata(TEST_WORKSPACE)).map(({ id, title }) => ({ id, title }))
 		).toEqual([{ id: 'note-1', title: 'pulled from relay' }]);
 		expect(await getSyncState(TEST_WORKSPACE, keys.cursor)).toBe(1);
-		const boards = await loadBoardsFromDevice<unknown>(TEST_WORKSPACE, null);
-		expect(Array.isArray(boards) && boards.length > 0).toBe(true);
+		const boards = await loadBoardsFromDevice<Array<{ id: string }>>(TEST_WORKSPACE, []);
+		expect(boards.map((board) => board.id)).toContain('pulled-board');
+		// The window shows it too.
+		expect(kanbanStore.boards.map((board) => board.id)).toContain('pulled-board');
 	});
 
 	it('replays a mirrored note that never reached IndexedDB', async () => {
@@ -220,6 +321,7 @@ describe('notes store sync apply', () => {
 		await putNote(TEST_WORKSPACE, kept);
 		writeNotesMirror([kept, lost], TEST_WORKSPACE);
 		notesStore.notes = [];
+		notesStore.loaded = true;
 		notesStore.labels = [];
 		notesStore.loaded = false;
 		notesStore.deletedNoteIds = {};
@@ -236,14 +338,14 @@ describe('notes store sync apply', () => {
 
 	it('does not re-enter the web lock during a relay-reset bootstrap', async () => {
 		const account = createSyncIdentity();
-		syncStore.account = account;
+		linkTestWorkspace(account.syncKey);
 		let depth = 0;
 		let maxDepth = 0;
 		const locks = {
 			request: async (name: string, ...rest: unknown[]) => {
 				const callback = rest.at(-1) as () => Promise<boolean>;
 				// Only the sync lock is under test; the others are theirs to take.
-				if (name !== SYNC_LOCK) return callback();
+				if (name !== `${SYNC_LOCK}:${TEST_WORKSPACE}`) return callback();
 				depth += 1;
 				maxDepth = Math.max(maxDepth, depth);
 				try {
@@ -255,7 +357,7 @@ describe('notes store sync apply', () => {
 		};
 		Object.defineProperty(navigator, 'locks', { configurable: true, value: locks });
 		vi.spyOn(
-			syncStore as unknown as {
+			appRelay as unknown as {
 				sendSyncRequest(
 					path: string,
 					payload: string
@@ -294,7 +396,7 @@ describe('notes store sync apply', () => {
 		await setSyncState(TEST_WORKSPACE, keys.baseline, { 'note:note-1': 'stale' });
 
 		try {
-			expect(await notesStore.syncWithCloudManual()).toBe(true);
+			expect(await syncScheduler.request(syncStore.activeId)).toBe(true);
 			expect(maxDepth).toBe(1);
 		} finally {
 			Object.defineProperty(navigator, 'locks', { configurable: true, value: undefined });
@@ -323,7 +425,7 @@ describe('notes store sync apply', () => {
 		doomed.trashed = true;
 		doomed.trashedAt = Date.now();
 		notesStore.notes = [doomed];
-		vi.spyOn(syncTombstones, 'writeTombstones').mockRejectedValueOnce(
+		vi.spyOn(syncTombstones, 'addTombstones').mockRejectedValueOnce(
 			new Error('tombstone write failed')
 		);
 		const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -360,6 +462,7 @@ describe('notes store sync apply', () => {
 		];
 		writeNotesMirror([lost], TEST_WORKSPACE);
 		notesStore.notes = [];
+		notesStore.loaded = true;
 		notesStore.loaded = false;
 
 		await notesStore.init();
@@ -372,7 +475,7 @@ describe('notes store sync apply', () => {
 
 	it('restores photo bytes from the relay after IndexedDB is wiped', async () => {
 		const account = createSyncIdentity();
-		syncStore.account = account;
+		linkTestWorkspace(account.syncKey);
 		const image = {
 			id: 'pic',
 			mime: 'image/png',
@@ -387,15 +490,14 @@ describe('notes store sync apply', () => {
 			}
 		];
 		const keys = syncControlKeys(account.accountId);
-		await clearAllNotes(TEST_WORKSPACE);
-		await clearAllLabels(TEST_WORKSPACE);
+		await emptyWorkspace(TEST_WORKSPACE);
 		await clearSyncOutbox(TEST_WORKSPACE, await getSyncOutboxKeys(TEST_WORKSPACE));
 		await deleteSyncState(TEST_WORKSPACE, keys.cursor);
 		await deleteSyncState(TEST_WORKSPACE, keys.baseline);
 		await deleteSyncState(TEST_WORKSPACE, keys.recordIds);
 
 		vi.spyOn(
-			syncStore as unknown as {
+			appRelay as unknown as {
 				sendSyncRequest(
 					path: string,
 					payload: string
@@ -473,437 +575,180 @@ describe('notes store sync apply', () => {
 			};
 		});
 
-		expect(await notesStore.syncWithCloudManual()).toBe(true);
+		expect(await syncScheduler.request(syncStore.activeId)).toBe(true);
 		const stored = (await getAllNotesMetadata(TEST_WORKSPACE)).find((item) => item.id === 'note-1');
 		expect(stored).toBeDefined();
 		const hydrated = await hydrateNoteAttachments(TEST_WORKSPACE, stored!);
 		expect(hydrated.images?.[0]?.dataUrl).toBe(image.dataUrl);
 	});
-
-	it('replace-with-cloud pulls the account from the start instead of wiping at a caught-up cursor', async () => {
-		const account = createSyncIdentity();
-		syncStore.account = account;
-		const local = remoteNote('local-only');
-		local.title = 'should be replaced';
-		await putNote(TEST_WORKSPACE, local);
-		notesStore.notes = [local];
-		const keys = syncControlKeys(account.accountId);
-		await setSyncState(TEST_WORKSPACE, keys.cursor, 9);
-		await setSyncState(TEST_WORKSPACE, keys.baseline, { 'note:local-only': 'fp' });
-		const cloud = remoteNote('cloud-1');
-		cloud.title = 'from account';
-
-		vi.spyOn(
-			syncStore as unknown as {
-				sendSyncRequest(
-					path: string,
-					payload: string
-				): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }>;
-			},
-			'sendSyncRequest'
-		).mockImplementation(async (_path, payload) => {
-			const request = JSON.parse(payload) as { cursor: number };
-			if (request.cursor > 0) {
-				return {
-					success: true,
-					data: {
-						cursor: request.cursor,
-						envelopes: [],
-						conflicts: [],
-						hasMore: false,
-						reset: false,
-						writesAccepted: true,
-						usage: {
-							ciphertextBytes: 20,
-							storageBytes: 532,
-							envelopeCount: 1,
-							maxBytes: 1000
-						}
-					}
-				};
-			}
-			return {
-				success: true,
-				data: {
-					cursor: 1,
-					envelopes: [
-						{
-							seq: 1,
-							id: 'cloud-id',
-							slot: 'a'.repeat(64),
-							ciphertext: encryptSyncPayload(
-								account.syncKey,
-								{
-									kind: 'note',
-									value: cloud
-								},
-								'a'.repeat(64)
-							)
-						}
-					],
-					conflicts: [],
-					hasMore: false,
-					reset: false,
-					writesAccepted: true,
-					usage: {
-						ciphertextBytes: 20,
-						storageBytes: 532,
-						envelopeCount: 1,
-						maxBytes: 1000
-					}
-				}
-			};
-		});
-
-		expect(await notesStore.replaceWithCloudManual()).toBe(true);
-		expect(notesStore.notes.map((item) => item.id)).toEqual(['cloud-1']);
-		expect((await getAllNotesMetadata(TEST_WORKSPACE)).map(({ id }) => id)).toEqual(['cloud-1']);
-	});
-
-	/** A relay holding exactly these records, answering a pull from the start in one page. */
-	function relayWith(
-		account: ReturnType<typeof createSyncIdentity>,
-		records: { slot: string; payload: unknown; syncKey?: string }[]
-	) {
-		vi.spyOn(
-			syncStore as unknown as {
-				sendSyncRequest(
-					path: string,
-					payload: string
-				): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }>;
-			},
-			'sendSyncRequest'
-		).mockImplementation(async (_path, payload) => {
-			const request = JSON.parse(payload) as { cursor: number };
-			return {
-				success: true,
-				data: {
-					cursor: records.length,
-					envelopes:
-						request.cursor > 0
-							? []
-							: records.map((record, index) => ({
-									seq: index + 1,
-									id: `id-${index}`,
-									slot: record.slot,
-									ciphertext: encryptSyncPayload(
-										record.syncKey ?? account.syncKey,
-										record.payload,
-										record.slot
-									)
-								})),
-					conflicts: [],
-					hasMore: false,
-					reset: false,
-					writesAccepted: true,
-					usage: {
-						ciphertextBytes: 20 * records.length,
-						storageBytes: 532 * records.length,
-						envelopeCount: records.length,
-						maxBytes: 1000_000
-					}
-				}
-			};
-		});
-	}
-
-	it('replace-with-cloud accepts a workspace that has no notes yet', async () => {
-		// Every synced workspace uploads its name, so a new one is never without envelopes.
-		const account = createSyncIdentity();
-		syncStore.account = account;
-		const local = remoteNote('local-only');
-		await putNote(TEST_WORKSPACE, local);
-		notesStore.notes = [local];
-		relayWith(account, [
-			{ slot: 'b'.repeat(64), payload: { kind: 'profile-meta', value: { name: 'Sunny Marten' } } }
-		]);
-
-		expect(await notesStore.replaceWithCloudManual()).toBe(true);
-		expect(syncStore.lastError).toBeNull();
-		expect(notesStore.notes).toEqual([]);
-	});
-
-	it('replace-with-cloud accepts a workspace whose notes were all deleted', async () => {
-		const account = createSyncIdentity();
-		syncStore.account = account;
-		notesStore.notes = [];
-		relayWith(account, [
-			{ slot: 'c'.repeat(64), payload: { kind: 'note-tombstone', id: 'gone', deletedAt: 5 } }
-		]);
-
-		expect(await notesStore.replaceWithCloudManual()).toBe(true);
-		expect(syncStore.lastError).toBeNull();
-		expect(notesStore.notes).toEqual([]);
-	});
-
-	it('replace-with-cloud keeps local notes when nothing the account holds could be read', async () => {
-		const account = createSyncIdentity();
-		syncStore.account = account;
-		const local = remoteNote('local-only');
-		await putNote(TEST_WORKSPACE, local);
-		notesStore.notes = [local];
-		const stranger = createSyncIdentity();
-		relayWith(account, [
-			{
-				slot: 'd'.repeat(64),
-				payload: { kind: 'note', value: remoteNote('foreign') },
-				syncKey: stranger.syncKey
-			}
-		]);
-
-		expect(await notesStore.replaceWithCloudManual()).toBe(false);
-		expect(notesStore.notes.map(({ id }) => id)).toEqual(['local-only']);
-		expect((await getAllNotesMetadata(TEST_WORKSPACE)).map(({ id }) => id)).toEqual(['local-only']);
-	});
-
-	it('serializes replacement with normal sync before local notes can upload', async () => {
-		const account = createSyncIdentity();
-		syncStore.account = account;
-		const local = remoteNote('local-only');
-		notesStore.notes = [local];
-		let lockRequests = 0;
-		let tail: Promise<unknown> = Promise.resolve();
-		const locks = {
-			request: async (name: string, ...rest: unknown[]) => {
-				const callback = rest.at(-1) as () => Promise<boolean>;
-				// Only the sync lock is under test; the others are theirs to take.
-				if (name !== SYNC_LOCK) return callback();
-				lockRequests += 1;
-				const run = tail.then(callback);
-				tail = run.catch(() => undefined);
-				return run;
-			}
-		};
-		Object.defineProperty(navigator, 'locks', { configurable: true, value: locks });
-		vi.spyOn(syncStore, 'clearAccountControlPlane').mockImplementation(async () => undefined);
-		vi.spyOn(
-			syncStore as unknown as {
-				sendSyncRequest(
-					path: string,
-					payload: string
-				): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }>;
-			},
-			'sendSyncRequest'
-		).mockResolvedValue({
-			success: true,
-			data: {
-				cursor: 1,
-				envelopes: [],
-				conflicts: [],
-				hasMore: false,
-				reset: false,
-				writesAccepted: true,
-				usage: {
-					ciphertextBytes: 0,
-					storageBytes: 0,
-					envelopeCount: 0,
-					maxBytes: 1000
-				}
-			}
-		});
-
-		try {
-			const replacement = notesStore.replaceWithCloudManual();
-			const normalSync = notesStore.syncWithCloudManual();
-			const [replaced, synced] = await Promise.all([replacement, normalSync]);
-			expect(replaced).toBe(true);
-			expect(synced).toBe(true);
-		} finally {
-			Object.defineProperty(navigator, 'locks', { configurable: true, value: undefined });
-		}
-
-		expect(lockRequests).toBe(2);
-		expect(notesStore.notes).toEqual([]);
-	});
-
-	it('pairing merge keeps both notes when this device and the account share an id', async () => {
-		const account = createSyncIdentity();
-		syncStore.account = account;
-		const local = remoteNote('shared');
-		local.title = 'mine';
-		local.updatedAt = 20;
-		await putNote(TEST_WORKSPACE, local);
-		notesStore.notes = [local];
-		const cloud = remoteNote('shared');
-		cloud.title = 'theirs';
-		cloud.updatedAt = 10;
-
-		vi.spyOn(
-			syncStore as unknown as {
-				sendSyncRequest(
-					path: string,
-					payload: string
-				): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }>;
-			},
-			'sendSyncRequest'
-		).mockImplementation(async (_path, payload) => {
-			const request = JSON.parse(payload) as { cursor: number };
-			if (request.cursor > 0) {
-				return {
-					success: true,
-					data: {
-						cursor: request.cursor,
-						envelopes: [],
-						conflicts: [],
-						hasMore: false,
-						reset: false,
-						writesAccepted: true
-					}
-				};
-			}
-			return {
-				success: true,
-				data: {
-					cursor: 1,
-					envelopes: [
-						{
-							seq: 1,
-							id: 'cloud-id',
-							slot: 'b'.repeat(64),
-							ciphertext: encryptSyncPayload(
-								account.syncKey,
-								{
-									kind: 'note',
-									value: cloud
-								},
-								'b'.repeat(64)
-							)
-						}
-					],
-					conflicts: [],
-					hasMore: false,
-					reset: false,
-					writesAccepted: true
-				}
-			};
-		});
-
-		expect(await notesStore.mergeWithCloudManual()).toBe(true);
-		const titles = notesStore.notes.map((item) => item.title).sort();
-		expect(titles).toEqual(['mine', 'theirs']);
-		const ids = notesStore.notes.map((item) => item.id);
-		expect(ids).toContain('shared');
-		expect(ids.some((id) => id !== 'shared')).toBe(true);
-		expect(notesStore.notes.find((item) => item.id === 'shared')?.title).toBe('theirs');
-		expect(notesStore.notes.find((item) => item.id !== 'shared')?.title).toBe('mine');
-	});
-
-	it('runs the pairing merge through the same web lock as automatic sync without overlap or re-entry', async () => {
-		const account = createSyncIdentity();
-		syncStore.account = account;
-		let depth = 0;
-		let maxDepth = 0;
-		let active = 0;
-		let overlaps = 0;
-		const events: string[] = [];
-		let tail: Promise<unknown> = Promise.resolve();
-		const locks = {
-			request: async (name: string, ...rest: unknown[]) => {
-				const callback = rest.at(-1) as () => Promise<boolean>;
-				// Only the sync lock is under test; the others are theirs to take.
-				if (name !== SYNC_LOCK) return callback();
-				const run = tail.then(async () => {
-					depth += 1;
-					active += 1;
-					maxDepth = Math.max(maxDepth, depth);
-					if (active > 1) overlaps += 1;
-					events.push('enter');
-					try {
-						return await callback();
-					} finally {
-						events.push('exit');
-						active -= 1;
-						depth -= 1;
-					}
-				});
-				tail = run.catch(() => undefined);
-				return run;
-			}
-		};
-		Object.defineProperty(navigator, 'locks', { configurable: true, value: locks });
-		let firstAutoRound: (() => void) | null = null;
-		const started = new Promise<void>((resolve) => {
-			firstAutoRound = resolve;
-		});
-		vi.spyOn(
-			syncStore as unknown as {
-				sendSyncRequest(
-					path: string,
-					payload: string
-				): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }>;
-			},
-			'sendSyncRequest'
-		).mockImplementation(async () => {
-			firstAutoRound?.();
-			firstAutoRound = null;
-			return {
-				success: true,
-				data: {
-					cursor: 1,
-					envelopes: [],
-					conflicts: [],
-					hasMore: false,
-					reset: false,
-					writesAccepted: true
-				}
-			};
-		});
-		vi.spyOn(syncStore, 'clearAccountControlPlane').mockImplementation(async () => undefined);
-
-		try {
-			const auto = notesStore.flushSync(true);
-			await started;
-
-			const merged = notesStore.mergeWithCloudManual();
-			expect(await auto).toBe(true);
-			expect(await merged).toBe(true);
-		} finally {
-			Object.defineProperty(navigator, 'locks', { configurable: true, value: undefined });
-		}
-
-		expect(overlaps).toBe(0);
-		expect(maxDepth).toBe(1);
-		expect(events.filter((event) => event === 'enter').length).toBeGreaterThanOrEqual(3);
-	});
 });
 
-describe('applying a pulled snapshot during local edits', () => {
+// A sync saves into the database while a window that has not been shown the result
+// yet goes on editing its older copy. Every save merges with what is stored, so
+// neither goes over the other, and showing the result writes nothing.
+describe('edits made while a sync saves', () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
+		unlinkTestWorkspace();
 		notesStore.notes = [];
+		notesStore.labels = [];
+		notesStore.loaded = true;
 	});
 
-	it('does not roll the device copy back behind an edit made while the flight awaited', async () => {
-		await clearAllNotes(TEST_WORKSPACE);
-		const local = remoteNote('racing');
-		notesStore.notes = [local];
-		await putNote(TEST_WORKSPACE, local);
-		let release!: () => void;
-		const gate = new Promise<void>((resolve) => (release = resolve));
-		const write = syncTombstones.writeTombstones;
-		vi.spyOn(syncTombstones, 'writeTombstones').mockImplementation(async (...args) => {
-			await gate;
-			return write(...args);
-		});
-
-		const pulled = {
-			...remoteNote('racing'),
-			title: 'renamed elsewhere',
-			fieldTimes: { title: 5 }
-		};
-		const applying = (
+	const show = (snapshot: SyncSnapshot) =>
+		(
 			notesStore as unknown as {
-				applyPulledSnapshot(snapshot: unknown, pid: string): Promise<unknown>;
+				show(
+					pid: string,
+					synced: { snapshot: SyncSnapshot; decisions: Map<string, unknown> }
+				): Promise<void>;
 			}
-		).applyPulledSnapshot(syncSnapshot({ notes: [pulled] }), TEST_WORKSPACE);
-		notesStore.updateNote('racing', { pinned: true });
-		release();
-		await applying;
-		await idb.waitForDeviceWrites();
+		).show(TEST_WORKSPACE, { snapshot, decisions: new Map() });
 
-		const [stored] = (await getAllNotesMetadata(TEST_WORKSPACE)).filter(
-			(note) => note.id === 'racing'
+	it('keeps what a sync saved when an edit of the older copy is saved after it', async () => {
+		linkTestWorkspace();
+		notesStore.loaded = true;
+		await emptyWorkspace(TEST_WORKSPACE);
+		const before = remoteNote('racing');
+		notesStore.notes = [before];
+		await putNote(TEST_WORKSPACE, before);
+		// A sync saves a title another device wrote. The window has not been shown it.
+		const pulled = { ...before, title: 'renamed elsewhere', updatedAt: 5 };
+		pulled.fieldTimes = { ...before.fieldTimes, title: 5 };
+		const saved = await idb.mergeNote(TEST_WORKSPACE, pulled, (stored) =>
+			mergeTwoNotes(stored!, pulled)
 		);
-		expect(stored).toMatchObject({ title: 'renamed elsewhere', pinned: true });
+
+		notesStore.updateNote('racing', { pinned: true });
+		await idb.waitForDeviceWrites(TEST_WORKSPACE);
+
+		const stored = () =>
+			getAllNotesMetadata(TEST_WORKSPACE).then((notes) =>
+				notes.find((note) => note.id === 'racing')
+			);
+		expect(await stored()).toMatchObject({ title: 'renamed elsewhere', pinned: true });
+		// The edit is queued to upload with what it was merged into.
+		expect(await getSyncOutboxKeys(TEST_WORKSPACE)).toContain('note:racing');
+
+		const put = vi.spyOn(idb, 'putNote');
+		const save = vi.spyOn(idb, 'saveNote');
+		await show(syncSnapshot({ notes: [saved!] }));
+		await idb.waitForDeviceWrites(TEST_WORKSPACE);
+
+		expect(notesStore.notes[0]).toMatchObject({ title: 'renamed elsewhere', pinned: true });
+		expect(put).not.toHaveBeenCalled();
+		expect(save).not.toHaveBeenCalled();
+		expect(await stored()).toMatchObject({ title: 'renamed elsewhere', pinned: true });
+	});
+
+	it('tries a label save that failed again, and its delete too', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		try {
+			vi.spyOn(idb, 'saveLabel').mockRejectedValueOnce(new Error('Storage full'));
+			const label = notesStore.createLabel('Kept after a failed save')!;
+			await vi.waitFor(() => expect(notesStore.lastPersistError).toMatch(/Could not save label/));
+			expect(await idb.getAllLabels(TEST_WORKSPACE)).toEqual([]);
+
+			await vi.advanceTimersByTimeAsync(1_000);
+			await vi.waitFor(async () =>
+				expect((await idb.getAllLabels(TEST_WORKSPACE)).map(({ id }) => id)).toEqual([label.id])
+			);
+			expect(await getSyncOutboxKeys(TEST_WORKSPACE)).toContain(`label:${label.id}`);
+
+			vi.spyOn(syncTombstones, 'deleteLabelWithTombstone').mockRejectedValueOnce(
+				new Error('Storage full')
+			);
+			notesStore.removeLabel(label.id);
+			await vi.waitFor(() => expect(notesStore.lastPersistError).toMatch(/Could not delete label/));
+			await vi.advanceTimersByTimeAsync(1_000);
+			await vi.waitFor(async () => expect(await idb.getAllLabels(TEST_WORKSPACE)).toEqual([]));
+			expect(await getSyncOutboxKeys(TEST_WORKSPACE)).toContain(`label-tombstone:${label.id}`);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('tries again what was asked for a label last, whichever save failed last', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		try {
+			const label = notesStore.createLabel('Asked twice')!;
+			await vi.waitFor(async () =>
+				expect((await idb.getAllLabels(TEST_WORKSPACE)).map(({ id }) => id)).toEqual([label.id])
+			);
+			let failRename: (reason: Error) => void = () => undefined;
+			vi.spyOn(idb, 'saveLabel').mockImplementationOnce(
+				() => new Promise((_resolve, reject) => (failRename = reject))
+			);
+			vi.spyOn(syncTombstones, 'deleteLabelWithTombstone').mockRejectedValueOnce(
+				new Error('Storage full')
+			);
+
+			// The rename is still being saved when the delete is asked for, and fails after it.
+			notesStore.renameLabel(label.id, 'Renamed first');
+			notesStore.removeLabel(label.id);
+			await vi.waitFor(() => expect(notesStore.lastPersistError).toMatch(/Could not delete label/));
+			failRename(new Error('Storage full'));
+			await vi.waitFor(() => expect(notesStore.lastPersistError).toMatch(/Could not save label/));
+
+			await vi.advanceTimersByTimeAsync(1_500);
+			await vi.waitFor(async () => expect(await idb.getAllLabels(TEST_WORKSPACE)).toEqual([]));
+			expect(await getSyncOutboxKeys(TEST_WORKSPACE)).toContain(`label-tombstone:${label.id}`);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('still tries a failed label delete again when an earlier rename lands meanwhile', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		try {
+			const label = notesStore.createLabel('Renamed, then deleted')!;
+			await vi.waitFor(async () =>
+				expect((await idb.getAllLabels(TEST_WORKSPACE)).map(({ id }) => id)).toEqual([label.id])
+			);
+			const save = idb.saveLabel;
+			let landRename: () => void = () => undefined;
+			vi.spyOn(idb, 'saveLabel').mockImplementationOnce(async (...args) => {
+				await new Promise<void>((resolve) => (landRename = resolve));
+				return save(...args);
+			});
+			vi.spyOn(syncTombstones, 'deleteLabelWithTombstone').mockRejectedValueOnce(
+				new Error('Storage full')
+			);
+
+			notesStore.renameLabel(label.id, 'Renamed first');
+			notesStore.removeLabel(label.id);
+			await vi.waitFor(() => expect(notesStore.lastPersistError).toMatch(/Could not delete label/));
+			// The rename lands while the delete waits to be tried again.
+			landRename();
+			await vi.waitFor(async () =>
+				expect(await getSyncOutboxKeys(TEST_WORKSPACE)).toContain(`label:${label.id}`)
+			);
+
+			await vi.advanceTimersByTimeAsync(1_500);
+			await vi.waitFor(async () =>
+				expect(await getSyncOutboxKeys(TEST_WORKSPACE)).toContain(`label-tombstone:${label.id}`)
+			);
+			expect(await idb.getAllLabels(TEST_WORKSPACE)).toEqual([]);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('keeps the later rename of a label, whichever of the two is saved last', async () => {
+		const label = { id: 'renamed', name: 'Before', createdAt: 1, updatedAt: 1 };
+		await idb.saveLabel(TEST_WORKSPACE, label);
+		// A sync saved a rename from another device; this window saves an earlier one after it.
+		await idb.saveLabel(TEST_WORKSPACE, { ...label, name: 'Later, from the cloud', updatedAt: 50 });
+		await idb.saveLabel(TEST_WORKSPACE, { ...label, name: 'Earlier, from here', updatedAt: 20 }, [
+			'label:renamed'
+		]);
+
+		expect((await idb.getAllLabels(TEST_WORKSPACE)).map(({ name }) => name)).toEqual([
+			'Later, from the cloud'
+		]);
+		expect(await getSyncOutboxKeys(TEST_WORKSPACE)).toContain('label:renamed');
 	});
 });

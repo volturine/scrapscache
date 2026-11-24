@@ -6,7 +6,8 @@
 	import { cx } from 'styled-system/css';
 	import { iconSizeMd, iconSizeSm, mcpAuthorizeStyles as styles } from '$panda/styles';
 	import { button } from 'styled-system/recipes';
-	import { syncStore, type McpWorkspaceStatus } from '#lib/stores/sync.svelte.js';
+	import { syncStore } from '#lib/stores/sync.svelte.js';
+	import { mcpWorkspaceStatuses, type McpWorkspaceStatus } from '#lib/mcpWorkspaces.js';
 	import { encryptHandshakePayload } from '#lib/mcpHandshake.js';
 	import { isLocalWorkspace, mcpWorkspaceGrant } from '#lib/profiles.js';
 
@@ -85,7 +86,8 @@
 
 		let cancelled = false;
 		void syncStore
-			.getMcpWorkspaceStatuses()
+			.ensureProfilesLoaded()
+			.then(() => mcpWorkspaceStatuses(syncStore.profiles))
 			.then((statuses) => {
 				if (cancelled) return;
 				mcpStatuses = statuses;

@@ -10,18 +10,11 @@ afterEach(() => {
 function setup() {
 	let profiles = [
 		{ id: 'open', syncKey: 'open-key' },
-		{ id: 'queued', syncKey: 'queued-key' },
-		{ id: 'idle', syncKey: 'idle-key' },
+		{ id: 'other', syncKey: 'other-key' },
 		{ id: 'private', syncKey: '' }
 	];
 	const history = new ReminderHistoryStore();
-	vi.spyOn(history, 'hasPending').mockImplementation(async (pid) => pid === 'queued');
-	const client = new ReminderHistoryClient(
-		history,
-		() => profiles,
-		() => 'open',
-		vi.fn()
-	);
+	const client = new ReminderHistoryClient(history, () => profiles, vi.fn());
 	const exchange = vi.spyOn(client, 'exchange').mockResolvedValue(undefined);
 	return {
 		client,
@@ -36,13 +29,13 @@ const calls = (exchange: ReturnType<typeof setup>['exchange']) =>
 	exchange.mock.calls.map(([pid]) => pid).sort();
 
 describe('receipt exchanges without a connection', () => {
-	it('catches up the open workspace and sends only queued ones, with no timer afterwards', async () => {
+	it('catches up every synced workspace, whichever one is open, with no timer afterwards', async () => {
 		const { client, exchange } = setup();
 		const stop = client.attach();
 		try {
-			await vi.waitFor(() => expect(calls(exchange)).toEqual(['open', 'queued']));
+			await vi.waitFor(() => expect(calls(exchange)).toEqual(['open', 'other']));
 			await vi.advanceTimersByTimeAsync(60 * 60_000);
-			expect(calls(exchange)).toEqual(['open', 'queued']);
+			expect(calls(exchange)).toEqual(['open', 'other']);
 		} finally {
 			stop();
 		}
@@ -68,8 +61,8 @@ describe('receipt exchanges without a connection', () => {
 		const stop = client.attach();
 		try {
 			await vi.waitFor(() => expect(exchange).toHaveBeenCalledTimes(2));
-			history.onPending?.('idle');
-			expect(exchange).toHaveBeenLastCalledWith('idle');
+			history.onPending?.('other');
+			expect(exchange).toHaveBeenLastCalledWith('other');
 		} finally {
 			stop();
 		}
@@ -81,7 +74,8 @@ describe('receipt exchanges without a connection', () => {
 		const stop = client.attach();
 		try {
 			await vi.waitFor(() => expect(exchange).toHaveBeenCalledTimes(2));
-			await vi.advanceTimersByTimeAsync(2000);
+			// The first wait is about two seconds, a fifth either way.
+			await vi.advanceTimersByTimeAsync(2400);
 			// Only the outage came back; the full account waits for the next change.
 			expect(exchange).toHaveBeenCalledTimes(3);
 			await vi.advanceTimersByTimeAsync(10 * 60_000);

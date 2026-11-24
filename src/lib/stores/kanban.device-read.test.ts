@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createKanbanBoard } from '#lib/kanban.js';
-import { workspaceKey } from '#lib/db/idb.js';
+import { workspaceKey } from '#lib/localMirror.js';
 import * as syncTombstones from '#lib/syncTombstones.js';
 import { KanbanStore } from './kanban.svelte';
 

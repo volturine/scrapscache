@@ -10,6 +10,7 @@
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { flushSync, onMount, tick, untrack } from 'svelte';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import { EditSession } from '#lib/stores/editSession.js';
 	import { actionUndo } from '#lib/stores/actionUndo.svelte.js';
 	import { noteAttachments, splitPastedHeading } from '#lib/checklistBody.js';
 	import { readCopiedNotePaste, writeNoteToClipboard } from '#lib/noteClipboard.js';
@@ -103,7 +104,7 @@
 	let draftDirty = false;
 	// Everything this note uploads while it is open continues one history version.
 	// svelte-ignore state_referenced_locally
-	let endEditSession = noteId ? syncStore.beginEditSession(noteId) : () => {};
+	const editSession = new EditSession(noteId || null);
 	/** Closing hands the session to its final sync, whose upload still belongs to it. */
 	let closing = false;
 	// Only fields edited here are saved. Stamping an untouched field would make
@@ -282,7 +283,7 @@
 				// Another note taking this place (a reminder, a link) unmounts this
 				// editor with its save timer pending: the store takes the draft now.
 				commitEdits();
-				endEditSession();
+				editSession.drop();
 			}
 			if (timer) clearTimeout(timer);
 		};
@@ -812,7 +813,7 @@
 			await flushDraft();
 			if (note && !preserveEmpty) await notesStore.discardIfEmpty(note.id);
 			onClose();
-			void notesStore.syncPendingChanges().finally(endEditSession);
+			editSession.close();
 		})();
 		return closeFlight;
 	}
@@ -824,10 +825,9 @@
 		await flushDraft();
 		// What was written before the restore stays a version of its own: it uploads
 		// with this session, and the restore starts the next one.
-		await notesStore.syncPendingChanges();
+		await editSession.send();
 		if (syncStore.account?.accountId !== accountId || !note) return;
-		endEditSession();
-		endEditSession = syncStore.beginEditSession(id);
+		editSession.cut(id);
 		const restored = prepareImportedNotes([version], BackupImportMode.Keep, editContext)[0];
 		const availableLabels = new Set(notesStore.labels.map((label) => label.id));
 		notesStore.updateNote(id, {
@@ -848,7 +848,7 @@
 		});
 		// adoptStoreNote carries the restored fields into the draft.
 		exitHistoryPreview();
-		void notesStore.syncPendingChanges();
+		void editSession.send();
 	}
 
 	async function copyNote() {
@@ -1353,7 +1353,7 @@
 						onApply={(r, repeat) => {
 							commit({ reminder: r, repeat: repeat ?? undefined });
 							reminderStore.sync(notesStore.notes);
-							void notesStore.flushSync();
+							notesStore.reminderChanged();
 						}}
 						onClose={() => {
 							reminderOpen = false;

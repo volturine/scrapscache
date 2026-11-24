@@ -9,6 +9,7 @@ import { PushNotifications } from '@capacitor/push-notifications';
 import { reminderDeviceId } from '#lib/reminderWake.js';
 import type { UpcomingReminder } from '#lib/stores/reminders.svelte.js';
 import { serverOrigin } from '#lib/serverOrigin.svelte.js';
+import { relay } from '#lib/relayClient.js';
 import { syncStore } from '#lib/stores/sync.svelte.js';
 import { identityFromSyncKey } from '#lib/syncPairing.js';
 import { PENDING_LIMIT } from './localNotifications.js';
@@ -173,7 +174,7 @@ async function register(
 				keepRegistrations(registrations().filter((entry) => !same(entry, here)));
 				return;
 			}
-			const response = await syncStore
+			const response = await relay
 				.authorizedFetch(
 					WAKES_PATH,
 					{

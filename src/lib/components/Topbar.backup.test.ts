@@ -17,6 +17,7 @@ vi.mock('#lib/backupCrypto.js', () => cryptoMocks);
 import { BackupImportMode } from '#lib/backup.js';
 import { notesStore } from '#lib/stores/notes.svelte.js';
 import Topbar from './Topbar.svelte';
+import { workspaceRewrites } from '#lib/stores/workspaceRewrites.svelte.js';
 
 const decryptedBackup = {
 	version: 5,
@@ -52,7 +53,9 @@ describe('Topbar backup import', () => {
 
 	it('keeps the encrypted backup flow alive through unlock and import mode selection', async () => {
 		cryptoMocks.decryptBackup.mockResolvedValue(decryptedBackup);
-		const importBackup = vi.spyOn(notesStore, 'importBackup').mockResolvedValue({ success: true });
+		const importBackup = vi
+			.spyOn(workspaceRewrites, 'importBackup')
+			.mockResolvedValue({ success: true });
 		render(Topbar);
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Settings' }));

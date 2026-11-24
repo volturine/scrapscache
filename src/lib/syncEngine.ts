@@ -2,7 +2,9 @@
 // attachments from a page that has not yet applied their parent notes.
 import type { Note } from '#lib/types.js';
 import { isTombstoned } from '#lib/model/index.js';
+import { boardOutlives } from '#lib/kanban.js';
 import type { SyncNote, SyncRecord, SyncSnapshot } from '#lib/syncRecords.js';
+import { recordId, recordKey } from '#lib/syncRecords.js';
 import { sha256 } from '#lib/syncHash.js';
 
 /**
@@ -57,28 +59,38 @@ export async function noteRecordForRelay(
 	return { key: record.key, payload, fingerprint: await sha256(payload) };
 }
 
+/** The records a note is uploaded as: itself, and each attachment it lists. */
+export function noteRecordKeys(note: Note): string[] {
+	return [
+		recordKey('note', note.id),
+		...(note.images ?? []).map((image) => recordKey('attachment', image.id))
+	];
+}
+
 export function currentRecordKeys(snapshot: SyncSnapshot): Set<string> {
 	const keys = new Set<string>();
 	for (const note of snapshot.notes) {
 		if (isTombstoned(note.id, snapshot.tombstones)) continue;
-		keys.add(`note:${note.id}`);
-		for (const image of note.images ?? []) keys.add(`attachment:${image.id}`);
+		keys.add(recordKey('note', note.id));
+		for (const image of note.images ?? []) keys.add(recordKey('attachment', image.id));
 	}
 	for (const label of snapshot.labels) {
-		if (!isTombstoned(label.id, snapshot.labelTombstones)) keys.add(`label:${label.id}`);
+		if (!isTombstoned(label.id, snapshot.labelTombstones)) keys.add(recordKey('label', label.id));
 	}
 	for (const board of snapshot.boards) {
-		if (!isTombstoned(board.id, snapshot.boardTombstones)) keys.add(`board:${board.id}`);
+		if (boardOutlives(board, snapshot.boardTombstones)) keys.add(recordKey('board', board.id));
 	}
 	for (const entry of snapshot.libraryItems) {
 		if (entry.updatedAt > (Number(snapshot.libraryTombstones[entry.id]) || 0))
-			keys.add(`library-item:${entry.id}`);
+			keys.add(recordKey('library-item', entry.id));
 	}
-	for (const id of Object.keys(snapshot.tombstones)) keys.add(`note-tombstone:${id}`);
-	for (const id of Object.keys(snapshot.labelTombstones)) keys.add(`label-tombstone:${id}`);
-	for (const id of Object.keys(snapshot.boardTombstones)) keys.add(`board-tombstone:${id}`);
+	for (const id of Object.keys(snapshot.tombstones)) keys.add(recordKey('note-tombstone', id));
+	for (const id of Object.keys(snapshot.labelTombstones))
+		keys.add(recordKey('label-tombstone', id));
+	for (const id of Object.keys(snapshot.boardTombstones))
+		keys.add(recordKey('board-tombstone', id));
 	for (const id of Object.keys(snapshot.libraryTombstones))
-		keys.add(`library-item-tombstone:${id}`);
+		keys.add(recordKey('library-item-tombstone', id));
 	return keys;
 }
 
@@ -100,29 +112,32 @@ export function planDeletableKeys(input: {
 	const deletable: string[] = [];
 	for (const key of Object.keys(input.recordIds)) {
 		if (current.has(key)) continue;
-		if (key.startsWith('note:')) {
-			if (isTombstoned(key.slice('note:'.length), snapshot.tombstones)) deletable.push(key);
+		const noteId = recordId(key, 'note');
+		if (noteId !== null) {
+			if (isTombstoned(noteId, snapshot.tombstones)) deletable.push(key);
 			continue;
 		}
-		if (key.startsWith('label:')) {
-			if (isTombstoned(key.slice('label:'.length), snapshot.labelTombstones)) deletable.push(key);
+		const labelId = recordId(key, 'label');
+		if (labelId !== null) {
+			if (isTombstoned(labelId, snapshot.labelTombstones)) deletable.push(key);
 			continue;
 		}
-		if (key.startsWith('board:')) {
-			if (isTombstoned(key.slice('board:'.length), snapshot.boardTombstones)) deletable.push(key);
+		const boardId = recordId(key, 'board');
+		if (boardId !== null) {
+			if (isTombstoned(boardId, snapshot.boardTombstones)) deletable.push(key);
 			continue;
 		}
-		if (key.startsWith('library-item:')) {
-			if (isTombstoned(key.slice('library-item:'.length), snapshot.libraryTombstones))
-				deletable.push(key);
+		const libraryItemId = recordId(key, 'library-item');
+		if (libraryItemId !== null) {
+			if (isTombstoned(libraryItemId, snapshot.libraryTombstones)) deletable.push(key);
 			continue;
 		}
-		if (key.startsWith('attachment:')) {
+		if (recordId(key, 'attachment') !== null) {
 			if (!input.catchUpComplete) continue;
 			// A replacement note can land before its new photo. Keep the old slot
 			// until every photo this device still lists is on the relay.
 			const waitingForUpload = [...current].some(
-				(item) => item.startsWith('attachment:') && !input.recordIds[item]
+				(item) => recordId(item, 'attachment') !== null && !input.recordIds[item]
 			);
 			if (waitingForUpload) continue;
 			deletable.push(key);
@@ -174,22 +189,23 @@ export function reconcileBaseline(input: {
 		}
 		// An attachment can download before the note that shows it. Until catch-up ends
 		// it is the cloud's copy; forgetting that re-uploaded it unchanged.
-		if (key.startsWith('attachment:') && !input.catchUpComplete) baseline[key] = remoteFingerprint;
+		if (recordId(key, 'attachment') !== null && !input.catchUpComplete)
+			baseline[key] = remoteFingerprint;
 		else delete baseline[key];
 		ackKeys.push(key);
 	}
 
 	for (const [key, fingerprint] of Object.entries(input.previous)) {
-		if (!key.startsWith('attachment:')) continue;
-		const attachmentId = key.slice('attachment:'.length);
+		const attachmentId = recordId(key, 'attachment');
+		if (attachmentId === null) continue;
 		if (input.referencedAttachments.has(attachmentId) && !(key in baseline)) {
 			baseline[key] = fingerprint;
 		}
 	}
 
 	for (const key of Object.keys(baseline)) {
-		if (key.startsWith('attachment:')) {
-			const attachmentId = key.slice('attachment:'.length);
+		const attachmentId = recordId(key, 'attachment');
+		if (attachmentId !== null) {
 			if (input.catchUpComplete && !input.referencedAttachments.has(attachmentId))
 				delete baseline[key];
 			continue;

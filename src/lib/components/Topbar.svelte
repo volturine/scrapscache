@@ -12,6 +12,8 @@
 	import { portalToColumnActions } from '#lib/appViewport.js';
 	import { sideColumn } from '#lib/sideColumn.svelte.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import { workspaceRewrites } from '#lib/stores/workspaceRewrites.svelte.js';
+	import { syncScheduler } from '#lib/stores/syncScheduler.js';
 	import { saveFile } from '#lib/saveFile.js';
 	import { syncStore } from '#lib/stores/sync.svelte.js';
 	import { profileCoordinator } from '#lib/stores/profiles.svelte.js';
@@ -61,7 +63,10 @@
 	let choosingImportMode = $state(false);
 	let showingImportGuide = $state(false);
 	let keepImportReady = $state(false);
-	let syncStatus = $derived(resolveSyncStatus(syncStore.lastError, syncStore.usage));
+	// A server that could not be reached needs nothing from the user: the cloud stays calm.
+	let syncStatus = $derived(
+		resolveSyncStatus(syncStore.relayUnreachable ? null : syncStore.lastError, syncStore.usage)
+	);
 	let syncControlLabel = $derived(SYNC_CONTROL_LABEL[syncStatus]);
 
 	let searchField: HTMLInputElement | undefined;
@@ -199,21 +204,35 @@
 		showingImportGuide = false;
 		keepImportReady = false;
 		choosingImportMode = false;
-		importingBackup = true;
 		backupImportError = '';
+		// The import runs on with every dialog closed and holds nothing up: it lands
+		// in the workspace it was started for, even if another one is open by then.
+		const workspace = syncStore.activeProfile;
+		let problem = '';
 		try {
 			const result = pendingKeepFiles
-				? await notesStore.importKeepTakeout(pendingKeepFiles, mode)
-				: await notesStore.importBackup(pendingImportData, mode);
-			if (!result.success) throw new Error(result.error || 'Could not import that file.');
+				? await workspaceRewrites.importKeepTakeout(pendingKeepFiles, mode)
+				: await workspaceRewrites.importBackup(pendingImportData, mode);
+			if (!result.success) problem = result.error || 'Could not import that file.';
+		} catch (error) {
+			problem = error instanceof Error ? error.message : 'Backup operation failed.';
+		}
+		if (!problem) {
 			pendingImportData = null;
 			pendingKeepFiles = null;
-		} catch (error) {
-			backupImportError = error instanceof Error ? error.message : 'Backup operation failed.';
-			choosingImportMode = true;
-		} finally {
-			importingBackup = false;
+			return;
 		}
+		if (syncStore.activeId === workspace?.id) {
+			backupImportError = problem;
+			choosingImportMode = true;
+			return;
+		}
+		// Trying again from here would import into the workspace now open, so the
+		// file is let go and the import has to be started again where it belongs.
+		pendingImportData = null;
+		pendingKeepFiles = null;
+		backupImportError = `The import into ${workspace?.name ?? 'the other workspace'} did not finish. ${problem}`;
+		showingImportGuide = true;
 	}
 
 	async function importBackupFile(file: File) {
@@ -364,7 +383,8 @@
 				class={[
 					iconMd,
 					styles.syncIcon,
-					(notesStore.syncing || importingBackup) && 'scrapscache-sync-icon-active'
+					(syncScheduler.busy || importingBackup || workspaceRewrites.importing) &&
+						'scrapscache-sync-icon-active'
 				]}
 				data-scrapscache-sync-spinner
 			>
@@ -423,7 +443,7 @@
 				onImport={startBackupImport}
 				onTextSettings={openTextSettings}
 				onAppIcon={openAppIcon}
-				importing={importingBackup}
+				importing={importingBackup || workspaceRewrites.importing}
 				importError={backupImportError}
 			/>
 		</div>
@@ -438,7 +458,7 @@
 			onImport={startBackupImport}
 			onTextSettings={openTextSettings}
 			onAppIcon={openAppIcon}
-			importing={importingBackup}
+			importing={importingBackup || workspaceRewrites.importing}
 			importError={backupImportError}
 		/>
 	{:else}
@@ -460,7 +480,7 @@
 			onImport={startBackupImport}
 			onTextSettings={openTextSettings}
 			onAppIcon={openAppIcon}
-			importing={importingBackup}
+			importing={importingBackup || workspaceRewrites.importing}
 			importError={backupImportError}
 		/>
 	{/if}

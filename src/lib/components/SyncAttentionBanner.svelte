@@ -3,22 +3,26 @@
 	import { CloudOff, TriangleAlert } from '@lucide/svelte';
 	import { onMount } from 'svelte';
 	import { syncAttentions, type SyncAttentionTone } from '#lib/syncAttention.js';
-	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import { syncScheduler } from '#lib/stores/syncScheduler.js';
 	import { syncStore } from '#lib/stores/sync.svelte.js';
 	import { uiStore } from '#lib/stores/ui.svelte.js';
 	import { button } from 'styled-system/recipes';
 
 	let online = $state(typeof navigator === 'undefined' || navigator.onLine !== false);
 	let now = $state(Date.now());
-	/** The banners the user put away. One is forgotten once its state has cleared. */
+	/**
+	 * The banners the user put away, each for the workspace it was shown for. One is
+	 * forgotten once its state has cleared there.
+	 */
 	let dismissed = $state<ReadonlySet<string>>(new Set());
+	const here = (key: string) => `${syncStore.activeId}\n${key}`;
 	const titleId = $props.id();
 
 	const active = $derived(
 		syncAttentions({
 			synced: syncStore.isLoggedIn,
 			keyRetired: syncStore.keyRetired,
-			lastError: syncStore.lastError,
+			issue: syncStore.issue,
 			usage: syncStore.usage,
 			online,
 			lastSync: syncStore.lastSync,
@@ -27,17 +31,18 @@
 	);
 	// The most pressing state that was not put away, so a dismissed warning stays away
 	// while a later error comes and goes above it.
-	const shown = $derived(active.find((candidate) => !dismissed.has(candidate.key)) ?? null);
+	const shown = $derived(active.find((candidate) => !dismissed.has(here(candidate.key))) ?? null);
 
 	$effect(() => {
 		// Once a state clears, a return of it is news again.
-		const keys = new Set(active.map((candidate) => candidate.key));
-		if ([...dismissed].some((key) => !keys.has(key)))
-			dismissed = new Set([...dismissed].filter((key) => keys.has(key)));
+		const keys = new Set(active.map((candidate) => here(candidate.key)));
+		const cleared = (key: string) => key.startsWith(here('')) && !keys.has(key);
+		if ([...dismissed].some(cleared))
+			dismissed = new Set([...dismissed].filter((key) => !cleared(key)));
 	});
 
 	function dismiss(key: string) {
-		dismissed = new Set([...dismissed, key]);
+		dismissed = new Set([...dismissed, here(key)]);
 	}
 
 	onMount(() => {
@@ -58,7 +63,8 @@
 
 	function act() {
 		if (!shown) return;
-		if (shown.action === 'retry') void notesStore.syncWithCloudManual().catch(() => undefined);
+		if (shown.action === 'retry')
+			void syncScheduler.request(syncStore.activeId).catch(() => undefined);
 		else if (shown.action === 'open-settings') uiStore.syncOpen = true;
 	}
 

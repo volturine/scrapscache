@@ -4,32 +4,19 @@ import { activeFilterCount, matchesFilters, NO_FILTERS, type SearchFilters } fro
 import {
 	getAllNotesMetadata,
 	getStoredAttachmentVersions,
-	holdAttachmentWrites,
 	hydrateNoteAttachments,
-	putNote,
+	mergeNote,
 	deleteNote,
 	getAllLabels,
-	putLabel,
-	deleteLabel,
 	bulkPutNotes,
-	bulkPutLabels,
-	clearAllNotes,
-	clearAllLabels,
-	replaceAllDeviceData,
-	getSyncOutboxKeys,
-	clearSyncOutbox,
-	markSyncOutbox,
 	pruneOrphanImageBlobs,
-	isProfileReleased,
-	waitForDeviceWrites
+	isProfileReleased
 } from '#lib/db/idb.js';
 import {
 	applyNoteEdit,
 	mergeLabelLists,
 	mergeNoteLists,
-	mergeTwoNotes,
 	reminderShownAt,
-	retargetLocalNotes,
 	stampNewNote,
 	uid,
 	withoutTombstoned,
@@ -38,15 +25,21 @@ import {
 } from '#lib/model/index.js';
 import { editContext, syncClock } from '#lib/editContext.js';
 import { mergeHydratedImages } from '#lib/noteAttachmentHydration.js';
+import {
+	attachmentDecisionKey,
+	withAttachmentDecisions,
+	type AttachmentDecisions
+} from '#lib/attachmentSettling.js';
 import { AttachmentHydrationQueue } from '#lib/attachmentHydrationQueue.js';
-import { syncStore, type PulledRelayState } from '#lib/stores/sync.svelte.js';
-import { kanbanStore } from '#lib/stores/kanban.svelte.js';
+import { syncStore } from '#lib/stores/sync.svelte.js';
+import { relay } from '#lib/relayClient.js';
+import { clearBoardsMirror, kanbanStore } from '#lib/stores/kanban.svelte.js';
 import { actionUndo } from '#lib/stores/actionUndo.svelte.js';
 import { composerStore } from '#lib/stores/composer.svelte.js';
 import { canvasLibraryStore } from '#lib/stores/canvasLibrary.js';
 import { reminderHistoryStore } from '#lib/stores/reminderHistory.js';
-import { attachmentToImage, syncSnapshot, type SyncSnapshot } from '#lib/syncRecords.js';
-import { sha256 } from '#lib/syncHash.js';
+import type { SyncSnapshot } from '#lib/syncRecords.js';
+import { recordKey } from '#lib/syncRecords.js';
 import { uiStore } from '#lib/stores/ui.svelte.js';
 import { trashPurgeAt, cloneNote } from '#lib/utils.js';
 import { appClock } from '#lib/appClock.svelte.js';
@@ -54,104 +47,35 @@ import { noteAttachments, toggleLineAt } from '#lib/checklistBody.js';
 import { bodyHasPhotoMarker, parsePhotoMarker, stripPhotoMarkers } from '#lib/photoMarker.js';
 import { joinWrappedHttpUrls } from '#lib/linkPreview.js';
 import {
-	journalPendingNotes,
-	noteForLocalStorage,
+	noteNeedsDurableWrite,
 	readLabelsMirror,
+	pendingLabels,
+	pendingNoteDeletes,
 	readNotesMirror,
 	readPendingNotes,
-	settlePendingNotes,
-	writeLabelsMirror,
-	writeNotesMirror,
-	type PendingNotes
+	settlePendingNotes
 } from '#lib/noteStorage.js';
-import {
-	hydrateTombstones,
-	deleteLabelWithTombstone,
-	resetTombstoneCaches,
-	readLabelTombstones,
-	readTombstones,
-	writeLabelTombstones,
-	writeTombstones
-} from '#lib/syncTombstones.js';
+import { addTombstones, newestTombstones, readStoredTombstones } from '#lib/syncTombstones.js';
 import {
 	ensureAttachmentPreview,
-	fileToNoteImage,
-	prepareAttachmentForMemory
+	prepareAttachmentForMemory,
+	stripFullPreviewBytes
 } from '#lib/noteImages.js';
 import { isCanvasAttachment } from '#lib/canvasAttachment.js';
-import { replacementFitsStorage } from '#lib/storageCapacity.js';
 import { formatStorageError } from '#lib/imageBlob.js';
-import {
-	BackupImportMode,
-	importedReminderHistory,
-	prepareImportedNotes,
-	type ScrapsCacheBackup
-} from '#lib/backup.js';
-import { stableStringify } from '#lib/model/index.js';
-import { loadLazyModule } from '#lib/staleModuleReload.js';
-import { buildForcePushSnapshot } from '#lib/syncForcePush.js';
-import { currentRecordKeys } from '#lib/syncEngine.js';
-
-/** Minimum gap between opportunistic auto syncs; manual syncs are never throttled. */
-const AUTO_SYNC_MIN_INTERVAL_MS = 30_000;
-
-/** Web lock serializing sync flights and profile dataset swaps. */
-export const SYNC_LOCK = 'scrapscache-sync';
-
-const IMPORT_TARGET_GONE =
-	'The workspace this import was meant for is no longer open here. Nothing was imported.';
-
-/**
- * Load the code an import needs. Nothing has been written yet, so a chunk that
- * failed to load is an answer for the person, not a persistence error.
- */
-async function loadImportModule<T>(
-	load: () => Promise<T>
-): Promise<{ success: true; module: T } | { success: false; error: string }> {
-	try {
-		return { success: true, module: await loadLazyModule(load) };
-	} catch (cause) {
-		return {
-			success: false,
-			error: cause instanceof Error ? cause.message : 'Could not load the import.'
-		};
-	}
-}
+import { type ScrapsCacheBackup } from '#lib/backup.js';
+import { noteRecordKeys } from '#lib/syncEngine.js';
+import { syncScheduler } from '#lib/stores/syncScheduler.js';
+import { NoteSaving } from '#lib/stores/noteSaving.js';
+import { clearPendingJournals } from '#lib/pendingJournal.js';
+import { localWritesLanded } from '#lib/localWrites.js';
+import { withWorkspaceLock } from '#lib/webLock.js';
+import { readWorkspace } from '#lib/workspaceSync.js';
 
 /** What deleting a label with its notes changes on each note. */
 type NoteTrashState = Pick<Note, 'id' | 'trashed' | 'trashedAt' | 'pinned' | 'archived'>;
 
-function durableNoteSignature(note: Note): string {
-	return stableStringify({
-		...note,
-		images: (note.images ?? []).map(({ dataUrl: _dataUrl, thumbUrl: _thumbUrl, ...image }) => image)
-	});
-}
-
-/** How long edits must pause before the fast-boot mirror catches up. */
-const MIRROR_DELAY_MS = 2_000;
-
-export function noteNeedsDurableWrite(current: Note | undefined, candidate: Note): boolean {
-	if (!current || durableNoteSignature(current) !== durableNoteSignature(candidate)) return true;
-	const currentImages = new Map((current.images ?? []).map((image) => [image.id, image]));
-	return (candidate.images ?? []).some((image) => {
-		const previous = currentImages.get(image.id);
-		return (
-			image.dataUrl.length > 0 && (!previous || (!previous.dataUrl.length && !previous.thumbUrl))
-		);
-	});
-}
-
-/**
- * What settling decided for attachment versions a note listed, keyed by note id,
- * attachment id and version: the attachment as the note lists it from now on, or
- * null when the note stops listing it.
- */
-type AttachmentDecisions = Map<string, NoteImage | null>;
-
-function attachmentDecisionKey(noteId: string, image: NoteImage): string {
-	return JSON.stringify([noteId, image.id, image.contentHash ?? '']);
-}
+export { noteNeedsDurableWrite };
 
 /** True when closing the editor should throw the note away. */
 export function noteIsBlank(note: Note): boolean {
@@ -166,34 +90,31 @@ export function noteIsBlank(note: Note): boolean {
 	);
 }
 
-function noteSyncKeys(note: Note): string[] {
-	return [`note:${note.id}`, ...(note.images ?? []).map((image) => `attachment:${image.id}`)];
-}
-
 export class NotesStore {
 	/** The namespace this window currently reads and writes. */
 	private get pid(): string {
 		return syncStore.activePid;
 	}
 
-	/** True while a sync flight (auto or manual) is running. */
-	get syncing(): boolean {
-		return this.syncFlight !== null;
-	}
 	notes = $state<Note[]>([]);
 	labels = $state<Label[]>([]);
 	loaded = $state(false);
 	lastPersistError = $state<string | null>(null);
-	/** True for a whole backup or Keep import; workspace handovers wait for it. */
-	importing = $state(false);
-	deletedNoteIds = $state<Record<string, number>>(readTombstones());
-	deletedLabelIds = $state<Record<string, number>>(readLabelTombstones());
+	deletedNoteIds = $state<Record<string, number>>({});
+	deletedLabelIds = $state<Record<string, number>>({});
+	/** How what this window changes reaches the database: see `noteSaving.ts`. */
+	readonly saving = new NoteSaving({
+		pid: () => this.pid,
+		notes: () => this.notes,
+		labels: () => this.labels,
+		mayMirror: () => this.mayMirror(),
+		failed: (context, err) => this.recordPersistenceError(context, err),
+		saved: () => (this.lastPersistError = null)
+	});
 	private attachmentLoads = new Map<string, Promise<void>>();
 	private attachmentWork = new Set<Promise<void>>();
-	private attachmentPass: Promise<void> | null = null;
-	private lastAutoSyncAt = 0;
-	/** Notes whose photos are on this device but could not be read; retried on the next sync. */
-	private attachmentHydrationFailures = new Set<string>();
+	/** Settles once the load under way has ended. A sync's result waits for it. */
+	private boot: Promise<void> = Promise.resolve();
 	private visibleAttachmentQueue = new AttachmentHydrationQueue((noteId) =>
 		this.ensureNoteAttachments(noteId)
 	);
@@ -205,31 +126,16 @@ export class NotesStore {
 	constructor() {
 		this.notes = readNotesMirror(this.pid);
 		this.labels = readLabelsMirror(this.pid);
-		syncStore.onLocalDataChange = () => {
-			this.dirty = true;
-			this.scheduleSyncPush();
-		};
+		syncScheduler.whenSynced((pid, saved) => this.show(pid, saved));
+		syncScheduler.whenRewritten((pid) => this.showRewritten(pid));
 		if (this.notes.length > 0) this.loaded = true;
 		if (typeof window !== 'undefined') {
-			if ('BroadcastChannel' in window) {
-				this.syncBroadcastChannel = new BroadcastChannel('scrapscache-sync-channel');
-				this.syncBroadcastChannel.onmessage = (event) => {
-					if (event.data?.type === 'local-sync-complete') this.otherWindowSynced(event.data?.pid);
-				};
-			}
 			window.addEventListener('visibilitychange', () => {
-				if (document.visibilityState === 'hidden') this.mirrorToLS();
-				else if (this.staleWhileHidden === this.pid) void this.rehydrateFromIDB();
+				if (document.visibilityState === 'hidden') this.saving.mirrorToLS();
+				else if (this.rewrittenWhileHidden === this.pid) void this.showRewritten(this.pid);
+				else if (this.staleWhileHidden === this.pid) void this.show(this.pid);
 			});
-			window.addEventListener('pagehide', () => this.mirrorToLS());
-			window.addEventListener('online', () => {
-				if (!syncStore.isLoggedIn) return;
-				if (this.dirty) {
-					this.scheduleSyncPush(0);
-				} else {
-					void this.triggerSync();
-				}
-			});
+			window.addEventListener('pagehide', () => this.saving.mirrorToLS());
 		}
 	}
 
@@ -255,12 +161,26 @@ export class NotesStore {
 
 	// --- Lifecycle -------------------------------------------------------
 	async init() {
+		let booted: () => void = () => undefined;
+		this.boot = new Promise((resolve) => (booted = resolve));
+		try {
+			await this.load();
+		} finally {
+			booted();
+		}
+	}
+
+	private async load() {
 		this.staleWhileHidden = null;
+		this.rewrittenWhileHidden = null;
 		await syncStore.ensureProfilesLoaded();
 
 		// One read of the journal: these are the entries this boot replays, so only
 		// these may be settled. Another window may journal more while this awaits.
 		const pending = readPendingNotes(this.pid);
+		const loadedFor = this.pid;
+		const unsavedLabels = pendingLabels.read(loadedFor);
+		const unsavedNoteDeletes = pendingNoteDeletes.read(loadedFor);
 		const mirrorNotes = readNotesMirror(this.pid, pending);
 		const mirrorLabels = readLabelsMirror(this.pid);
 		let dbNotes: Note[] = [];
@@ -277,24 +197,43 @@ export class NotesStore {
 		}
 
 		const notes = mergeNoteLists(mirrorNotes, dbNotes).sort((a, b) => b.updatedAt - a.updatedAt);
-		const labels = mergeLabelLists(mirrorLabels, dbLabels).sort((a, b) =>
-			a.name.localeCompare(b.name)
+		// A label change whose save never landed is laid over what is stored: the label
+		// as it was changed, or the time it was deleted.
+		const labels = mergeLabelLists(
+			mergeLabelLists(mirrorLabels, dbLabels),
+			Object.values(unsavedLabels).flatMap((change) =>
+				change.kind === 'put' ? [change.value] : []
+			)
+		).sort((a, b) => a.name.localeCompare(b.name));
+		const unsavedLabelDeletes = Object.fromEntries(
+			Object.entries(unsavedLabels).flatMap(([id, change]) =>
+				change.kind === 'delete' ? [[id, change.at]] : []
+			)
 		);
 		const seededFlag =
 			typeof localStorage !== 'undefined' ? localStorage.getItem('scrapscache-seeded') : null;
 
-		const tombstones = await hydrateTombstones(this.pid).catch(() => ({
+		const tombstones = await readStoredTombstones(this.pid).catch(() => ({
 			notes: this.deletedNoteIds,
 			labels: this.deletedLabelIds,
 			boards: {}
 		}));
-		this.deletedNoteIds = tombstones.notes;
-		this.deletedLabelIds = tombstones.labels;
+		// A delete for good that never landed stands for a note still in the trash as
+		// it was then: one restored or changed since is kept.
+		const owedNoteDeletes = Object.fromEntries(
+			Object.entries(unsavedNoteDeletes).filter(([id, deletedAt]) => {
+				const note = notes.find((candidate) => candidate.id === id);
+				return note?.trashed === true && note.updatedAt <= deletedAt;
+			})
+		);
+		this.deletedNoteIds = newestTombstones(tombstones.notes, owedNoteDeletes);
+		this.deletedLabelIds = newestTombstones(tombstones.labels, unsavedLabelDeletes);
 		// The boards hydrate from their mirror even when the device store cannot be
 		// read; the rest of the boot must still run, or reminders, the first sync
 		// and note links never start.
 		try {
-			await kanbanStore.hydrateFromDevice(this.pid, tombstones.boards);
+			const loading = this.pid;
+			await kanbanStore.hydrateFromDevice(loading, tombstones.boards, () => loading === this.pid);
 		} catch (err) {
 			this.recordPersistenceError('Could not read the boards from IndexedDB', err);
 		}
@@ -316,7 +255,7 @@ export class NotesStore {
 			localStorage?.setItem('scrapscache-seeded', '1');
 			this.notes = this.seedNotes();
 			this.labels = [];
-			this.mirrorToLS();
+			this.saving.mirrorToLS();
 			try {
 				await bulkPutNotes(this.pid, this.notes);
 			} catch (err) {
@@ -325,12 +264,41 @@ export class NotesStore {
 		} else {
 			this.notes = withoutTombstoned(notes, this.deletedNoteIds);
 			this.labels = withoutTombstoned(labels, this.deletedLabelIds);
-			this.mirrorToLS();
+			this.saving.mirrorToLS();
 			if (!deviceReadFailed) {
 				try {
-					await this.recoverMirrorIntoIndexedDB(dbNotes, dbLabels);
+					// The labels the journal names are saved by its replay below, once.
+					await this.saving.recoverMirrorIntoIndexedDB(
+						dbNotes,
+						dbLabels,
+						new Set(Object.keys(unsavedLabels))
+					);
 					// Every edit journaled before this boot read the journal is in IndexedDB now.
 					settlePendingNotes(pending, this.pid);
+					// Each label change left unsaved is saved as it would have been, unless the
+					// window has moved on: its journal then waits for this workspace's next load.
+					if (loadedFor === this.pid) {
+						for (const [id, change] of Object.entries(unsavedLabels)) {
+							// Deleted since the change was journaled: the delete stands.
+							if (change.kind === 'put' && this.deletedLabelIds[id])
+								pendingLabels.settle(loadedFor, { [id]: change });
+							else this.saving.writeLabel(loadedFor, id, change, true);
+						}
+						if (Object.keys(owedNoteDeletes).length) {
+							const stored = await addTombstones(
+								loadedFor,
+								owedNoteDeletes,
+								Object.keys(owedNoteDeletes).map((id) => recordKey('note-tombstone', id))
+							);
+							reminderHistoryStore.forgetNotes(loadedFor, stored);
+							await Promise.all(
+								Object.keys(owedNoteDeletes).map((id) => deleteNote(loadedFor, id))
+							);
+						}
+						// What the journal held when this load read it is deleted now, or was
+						// a delete of something restored since.
+						pendingNoteDeletes.settle(loadedFor, unsavedNoteDeletes);
+					}
 				} catch (err) {
 					this.recordPersistenceError('Could not restore IndexedDB from mirror', err);
 				}
@@ -348,45 +316,9 @@ export class NotesStore {
 		await this.dropAbandonedDraft();
 		this.purgeOldTrash();
 		this.loaded = true;
-	}
-
-	/**
-	 * Another window saved what it synced. The browser may freeze a hidden window in
-	 * the middle of re-reading it, and its open transactions then hold every other
-	 * window's writes to this workspace until it thaws. A hidden window has nothing to
-	 * show, so it catches up once it is shown again, or before it syncs.
-	 */
-	private otherWindowSynced(pid: unknown): void {
-		if (pid !== this.pid) return;
-		if (document.visibilityState === 'hidden') this.staleWhileHidden = this.pid;
-		else void this.rehydrateFromIDB();
-	}
-
-	private async rehydrateFromIDB() {
-		this.staleWhileHidden = null;
-		try {
-			const [dbNotes, dbLabels] = await Promise.all([
-				getAllNotesMetadata(this.pid),
-				getAllLabels(this.pid)
-			]);
-			const mirrorNotes = readNotesMirror(this.pid);
-			const mirrorLabels = readLabelsMirror(this.pid);
-			this.notes = withoutTombstoned(
-				mergeNoteLists(mirrorNotes, dbNotes),
-				this.deletedNoteIds
-			).sort((a, b) => b.updatedAt - a.updatedAt);
-			this.labels = withoutTombstoned(
-				mergeLabelLists(mirrorLabels, dbLabels),
-				this.deletedLabelIds
-			).sort((a, b) => a.name.localeCompare(b.name));
-			this.mirrorToLS();
-			await Promise.all([
-				canvasLibraryStore.hydrate(this.pid),
-				reminderHistoryStore.hydrate(this.pid)
-			]);
-		} catch (err) {
-			this.recordPersistenceError('Could not rehydrate from IndexedDB', err);
-		}
+		// Every workspace catches up, not only this one: one left behind may still owe
+		// the relay something, and other devices may have changed any of them.
+		void syncScheduler.catchUpAll();
 	}
 
 	/** Fill a note's attachment placeholders without blocking the initial note render. */
@@ -399,10 +331,6 @@ export class NotesStore {
 		const source = cloneNote(existing);
 		const load = hydrateNoteAttachments(this.pid, source)
 			.then(async (hydrated) => {
-				// The read worked. A photo it found no bytes for is not on this device:
-				// another device listed it and its bytes arrive with a later pull, so
-				// there is nothing of it here to upload and nothing here that failed.
-				this.attachmentHydrationFailures.delete(noteId);
 				const index = this.notes.findIndex((note) => note.id === noteId);
 				if (index === -1) return;
 				const current = this.notes[index];
@@ -416,160 +344,12 @@ export class NotesStore {
 				}
 			})
 			.catch((err) => {
-				this.attachmentHydrationFailures.add(noteId);
 				this.recordPersistenceError(`Could not load attachments for note ${noteId}`, err);
 			});
 		this.attachmentLoads.set(noteId, load);
 		return load.finally(() => {
 			if (this.attachmentLoads.get(noteId) === load) this.attachmentLoads.delete(noteId);
 		});
-	}
-
-	/** Explicit full hydration for sync, bounded to two complete notes at a time. */
-	private hydrateAllAttachments(): Promise<void> {
-		if (this.attachmentPass) return this.attachmentPass;
-		const ids = this.notes
-			.filter((note) => (note.images ?? []).some((image) => !image.dataUrl))
-			.map((note) => note.id);
-		if (ids.length === 0) return Promise.resolve();
-
-		let next = 0;
-		const worker = async () => {
-			while (next < ids.length) {
-				const noteId = ids[next++];
-				await this.ensureNoteAttachments(noteId);
-			}
-		};
-		this.attachmentPass = Promise.all(Array.from({ length: Math.min(2, ids.length) }, worker))
-			.then(() => undefined)
-			.finally(() => {
-				this.attachmentPass = null;
-			});
-		return this.attachmentPass;
-	}
-
-	/** Only hydrate a few notes per sync so photo-heavy accounts transfer in fractions. */
-	private async hydrateAttachmentsForSync(): Promise<void> {
-		this.pruneAttachmentHydrationFailures();
-		const dirtyKeys = new Set(await getSyncOutboxKeys(this.pid).catch(() => []));
-		const ids = this.notes
-			.filter(
-				(note) =>
-					(this.attachmentHydrationFailures.has(note.id) ||
-						dirtyKeys.has(`note:${note.id}`) ||
-						(note.images ?? []).some((image) => dirtyKeys.has(`attachment:${image.id}`))) &&
-					(note.images ?? []).some((image) => !image.dataUrl)
-			)
-			.map((note) => note.id);
-		for (const noteId of ids) await this.ensureNoteAttachments(noteId);
-	}
-
-	private pruneAttachmentHydrationFailures(): void {
-		const retryable = new Set(
-			this.notes
-				.filter((note) => (note.images ?? []).some((image) => !image.dataUrl))
-				.map((note) => note.id)
-		);
-		for (const noteId of this.attachmentHydrationFailures) {
-			if (!retryable.has(noteId)) this.attachmentHydrationFailures.delete(noteId);
-		}
-	}
-
-	/**
-	 * After a download has drained, every attachment a note lists is settled from two
-	 * recorded facts: the version of it this device holds, and the version the relay
-	 * holds. Nothing is assumed about an attachment that is absent.
-	 *
-	 * - Held here and on the relay: nothing to do.
-	 * - Held here only: this device owes the upload. Its bytes are loaded so they
-	 *   travel in the request that makes the note list it.
-	 * - Not held here: the relay is asked for the attachment by name. Its bytes are
-	 *   stored if it holds the version listed. If it holds another version, the one
-	 *   listed was never uploaded and the note lists the relay's instead. If it
-	 *   holds none, the note lists the version this device does hold, which it then
-	 *   owes; holding none either, the attachment was never there and the note
-	 *   stops listing it.
-	 *
-	 * A request that fails stops the sync: the next one asks again.
-	 */
-	private async settleAttachments(
-		notes: Note[],
-		pid: string,
-		relay: PulledRelayState
-	): Promise<{ notes: Note[]; decisions: AttachmentDecisions; persist: Set<string> }> {
-		const decisions: AttachmentDecisions = new Map();
-		const persist = new Set<string>();
-		const account = syncStore.account;
-		if (!account) return { notes, decisions, persist };
-		const stored = await getStoredAttachmentVersions(pid);
-		const owed: string[] = [];
-		/** An attachment with the bytes stored for it, to travel with its note. */
-		const withStoredBytes = async (note: Note, image: NoteImage): Promise<NoteImage> => {
-			const dataUrl = await hydrateNoteAttachments(pid, {
-				...cloneNote(note),
-				images: [image]
-			}).then(
-				(read) => read.images?.[0]?.dataUrl ?? '',
-				() => ''
-			);
-			if (dataUrl) return { ...image, dataUrl };
-			this.attachmentHydrationFailures.add(note.id);
-			return image;
-		};
-		for (const note of notes) {
-			for (const listed of note.images ?? []) {
-				const key = attachmentDecisionKey(note.id, listed);
-				const held = stored.get(`${note.id}::${listed.id}`);
-				const hash = listed.contentHash ?? (listed.dataUrl ? await sha256(listed.dataUrl) : held);
-				if (!hash) {
-					decisions.set(key, null);
-					continue;
-				}
-				if (listed.dataUrl || held === hash) {
-					let image = listed.contentHash ? listed : { ...listed, contentHash: hash };
-					if (image.dataUrl && held !== hash) {
-						// These bytes are not stored yet; a preview of the bytes before goes.
-						if (held !== undefined) image = { ...image, thumbUrl: undefined };
-						persist.add(note.id);
-					}
-					if (!relay.relayHolds(image.id, hash)) {
-						owed.push(`note:${note.id}`, `attachment:${image.id}`);
-						if (!image.dataUrl) image = await withStoredBytes(note, image);
-					}
-					if (image !== listed) decisions.set(key, image);
-					continue;
-				}
-				// Loaded on demand: the history client itself fetches through the sync store.
-				const { loadCurrentAttachment } = await import('#lib/historyClient.js');
-				const onRelay = await loadCurrentAttachment(account, listed.id);
-				relay.relayHas(listed.id, onRelay?.hash ?? null);
-				persist.add(note.id);
-				if (onRelay?.hash === hash) {
-					decisions.set(key, {
-						...listed,
-						contentHash: hash,
-						dataUrl: onRelay.dataUrl,
-						thumbUrl: undefined
-					});
-					continue;
-				}
-				// The note changes, so the relay's copy of it has to follow.
-				owed.push(`note:${note.id}`);
-				const { editedAt: _edit, thumbUrl: _preview, ...kept } = listed;
-				if (onRelay) decisions.set(key, { ...kept, ...attachmentToImage(onRelay) });
-				else if (held === undefined) decisions.set(key, null);
-				else {
-					owed.push(`attachment:${listed.id}`);
-					decisions.set(key, await withStoredBytes(note, { ...kept, contentHash: held }));
-				}
-			}
-		}
-		if (owed.length) await relay.owes([...new Set(owed)]);
-		return {
-			notes: notes.map((note) => this.withAttachmentDecisions(note, decisions)),
-			decisions,
-			persist
-		};
 	}
 
 	/**
@@ -595,33 +375,18 @@ export class NotesStore {
 		}
 		if (decisions.size === 0 || pid !== this.pid) return;
 		for (const [index, note] of this.notes.entries()) {
-			const settled = this.withAttachmentDecisions(note, decisions);
+			const settled = withAttachmentDecisions(note, decisions);
 			if (settled === note) continue;
 			this.notes[index] = settled;
-			await putNote(pid, settled, noteSyncKeys(settled));
+			// Decided for the copy stored by then, which another window may have saved since.
+			await mergeNote(
+				pid,
+				settled,
+				(stored) => (stored ? withAttachmentDecisions(stored, decisions) : null),
+				noteRecordKeys(settled)
+			);
 		}
-		this.scheduleMirror();
-	}
-
-	/** A note with what settling decided for its attachments; the same note when nothing was. */
-	private withAttachmentDecisions(note: Note, decisions: AttachmentDecisions): Note {
-		if (decisions.size === 0 || !note.images?.length) return note;
-		const dropped: string[] = [];
-		let changed = false;
-		const images = note.images.flatMap((image) => {
-			const key = attachmentDecisionKey(note.id, image);
-			if (!decisions.has(key)) return [image];
-			changed = true;
-			const decided = decisions.get(key);
-			if (decided) return [decided];
-			dropped.push(image.id);
-			return [];
-		});
-		if (!changed) return note;
-		const settled = { ...note, images };
-		// A marker for an attachment that was never there would read as a missing photo.
-		const body = stripPhotoMarkers(note.body ?? '', dropped);
-		return body === (note.body ?? '') ? settled : applyNoteEdit(settled, { body }, editContext);
+		this.saving.scheduleMirror();
 	}
 
 	/** Queue attachment bytes only when a note card enters the viewport. */
@@ -649,23 +414,7 @@ export class NotesStore {
 		const idx = this.notes.findIndex((x) => x.id === id);
 		if (idx === -1) return;
 		this.notes[idx] = applyNoteEdit(this.notes[idx], patch, editContext);
-		const note = this.notes[idx];
-		const pid = this.pid;
-		const bytesLanded = this.holdWhileBytesLand(pid, note);
-		this.journal([note]);
-		this.scheduleMirror();
-		try {
-			await putNote(pid, note, noteSyncKeys(note));
-			settlePendingNotes({ [note.id]: noteForLocalStorage(note) }, pid);
-			this.lastPersistError = null;
-			this.dirty = true;
-			this.scheduleSyncPush();
-			bytesLanded();
-		} catch (err) {
-			this.recordPersistenceError(`Could not save note ${id}`, err);
-			this.scheduleNoteRetry(id, bytesLanded);
-			throw err;
-		}
+		await this.saving.saveNow(this.notes[idx]);
 	}
 
 	async discardIfEmpty(id: string): Promise<void> {
@@ -728,7 +477,7 @@ export class NotesStore {
 		};
 		const note = stampNewNote(created, editContext.writer);
 		this.notes = [note, ...this.notes];
-		this.persist(note.id);
+		this.saving.persist(note.id);
 		return note;
 	}
 
@@ -740,7 +489,7 @@ export class NotesStore {
 		const next = applyNoteEdit(current, patch, editContext);
 		if (next === current) return;
 		this.notes[idx] = next;
-		this.persist(id);
+		this.saving.persist(id);
 	}
 
 	togglePin(id: string): void {
@@ -771,6 +520,15 @@ export class NotesStore {
 
 	setReminder(id: string, reminder: number | null, repeat: ReminderRepeat | null = null): void {
 		this.updateNote(id, { reminder, repeat: repeat ?? undefined });
+		this.reminderChanged();
+	}
+
+	/**
+	 * A reminder was set, moved or cleared. Another device has to know before it is
+	 * due, so it is sent now, not after the pause that typing gets.
+	 */
+	reminderChanged(): void {
+		void syncScheduler.request(this.pid);
 	}
 
 	/** Toggle `[ ]` / `[x]` line in unified body text. */
@@ -882,6 +640,7 @@ export class NotesStore {
 		for (const note of this.present(ids)) {
 			this.updateNote(note.id, { reminder, repeat: repeat ?? undefined });
 		}
+		this.reminderChanged();
 	}
 
 	/** Put the label on every note, or take it off every note. */
@@ -925,20 +684,19 @@ export class NotesStore {
 
 	async deleteNoteForever(id: string): Promise<void> {
 		actionUndo.dropNotes([id]);
-		const deletedAt = Date.now();
-		const next = { ...this.deletedNoteIds, [id]: deletedAt };
-		await writeTombstones(this.pid, next);
-		this.deletedNoteIds = next;
-		reminderHistoryStore.forgetNotes(this.pid, next);
-		this.notes = this.notes.filter((n) => n.id !== id);
-		// The tombstone is on disk, so a mirror that still lists the note cannot bring it back.
-		this.scheduleMirror();
-		await deleteNote(this.pid, id).catch((err) =>
+		const pid = this.pid;
+		const stored = await this.saving.saveNoteDeletes(pid, { [id]: Date.now() });
+		reminderHistoryStore.forgetNotes(pid, stored);
+		if (pid === this.pid) {
+			this.deletedNoteIds = newestTombstones(this.deletedNoteIds, stored);
+			this.notes = this.notes.filter((n) => n.id !== id);
+			// The tombstone is on disk, so a mirror that still lists the note cannot bring it back.
+			this.saving.scheduleMirror();
+		}
+		await deleteNote(pid, id).catch((err) =>
 			this.recordPersistenceError(`Could not delete note ${id}`, err)
 		);
-		await syncStore.queueOutbox([`note-tombstone:${id}`]);
-		this.dirty = true;
-		this.scheduleSyncPush();
+		syncScheduler.changed(pid);
 	}
 
 	emptyTrash(): void {
@@ -963,11 +721,8 @@ export class NotesStore {
 			writer: editContext.writer
 		};
 		this.labels = [...this.labels, label].sort((a, b) => a.name.localeCompare(b.name));
-		this.mirrorLabels();
-		putLabel(this.pid, label, [`label:${label.id}`]).catch((err) =>
-			this.recordPersistenceError('Could not save label', err)
-		);
-		this.markLabelsDirty([`label:${label.id}`]);
+		this.saving.mirrorLabels();
+		this.persistLabel(label.id);
 		return label;
 	}
 
@@ -985,11 +740,8 @@ export class NotesStore {
 		};
 		this.labels[idx] = renamed;
 		this.labels.sort((a, b) => a.name.localeCompare(b.name));
-		this.mirrorLabels();
-		putLabel(this.pid, renamed, [`label:${renamed.id}`]).catch((err) =>
-			this.recordPersistenceError('Could not rename label', err)
-		);
-		this.markLabelsDirty([`label:${renamed.id}`]);
+		this.saving.mirrorLabels();
+		this.persistLabel(renamed.id);
 	}
 
 	removeLabel(id: string, options: { deleteNotes?: boolean } = {}): void {
@@ -1020,8 +772,8 @@ export class NotesStore {
 				);
 			});
 			this.labels = this.labels.filter((item) => item.id !== id);
-			this.mirrorLabels();
-			this.persistNotes(affected.map((note) => note.id));
+			this.saving.mirrorLabels();
+			this.saving.persistNotes(affected.map((note) => note.id));
 			this.markLabelsDeleted([id], deletedAt);
 		} else {
 			this.labels = this.labels.filter((item) => item.id !== id);
@@ -1035,8 +787,8 @@ export class NotesStore {
 					editContext
 				);
 			});
-			this.mirrorLabels();
-			this.persistNotes(affectedNoteIds);
+			this.saving.mirrorLabels();
+			this.saving.persistNotes(affectedNoteIds);
 			this.markLabelsDeleted([id], deletedAt);
 		}
 		this.rememberRemovedLabel(label, snapshots, options);
@@ -1070,17 +822,22 @@ export class NotesStore {
 	 */
 	async exportBackup(): Promise<ScrapsCacheBackup> {
 		const pid = this.pid;
+		// Everything but the attachment bytes is taken at once: loading those takes a
+		// while, and the window may be on another workspace before it is done.
+		const notes = this.notes.map(cloneNote);
+		const rest = this.backupWithoutNotes();
 		const fullNotes: Note[] = [];
-		for (const note of this.notes) {
+		for (const note of notes) {
 			const needsFull = (note.images ?? []).some((image) => !image.dataUrl);
-			fullNotes.push(
-				needsFull ? await hydrateNoteAttachments(pid, cloneNote(note)) : cloneNote(note)
-			);
+			fullNotes.push(needsFull ? await hydrateNoteAttachments(pid, note) : note);
 		}
+		return { ...rest, notes: fullNotes };
+	}
+
+	private backupWithoutNotes(): Omit<ScrapsCacheBackup, 'notes'> {
 		return {
 			version: 5,
 			exportedAt: Date.now(),
-			notes: fullNotes,
 			labels: this.labels.map((label) => ({ ...label })),
 			boards: kanbanStore.boardsForSync(),
 			activeBoardId: kanbanStore.activeBoardId,
@@ -1099,280 +856,6 @@ export class NotesStore {
 		};
 	}
 
-	private async compactPersistedNoteImages(note: Note): Promise<void> {
-		note.images = await Promise.all((note.images ?? []).map(prepareAttachmentForMemory));
-	}
-
-	async importBackup(
-		data: unknown,
-		mode: BackupImportMode
-	): Promise<{ success: boolean; error?: string }> {
-		if (this.importing) return { success: false, error: 'An import is already running.' };
-		// The workspace on screen when the import was chosen: it lands there or nowhere.
-		const pid = this.pid;
-		// Claimed first so a workspace switch is refused outright rather than
-		// queueing behind an import that may run for minutes.
-		this.importing = true;
-		try {
-			// Validation loads only when a backup is imported; a bad file is refused
-			// before the lock is waited for.
-			const loaded = await loadImportModule(() => import('#lib/backupNormalize.js'));
-			if (!loaded.success) return loaded;
-			const backup = loaded.module.normalizeBackup(data);
-			if (!backup)
-				return { success: false, error: 'That file is not a valid Scraps Cache full backup.' };
-			actionUndo.clear();
-			// Under the sync lock: a flight that landed partway through an import
-			// would write the notes it pulled over the imported ones and push the
-			// mixture to the relay as the newest version.
-			return await this.withSyncLock(async () => {
-				// Another window may have removed this workspace while the lock was
-				// awaited, and moved this window elsewhere. Landing in whatever is open
-				// now would overwrite a workspace nobody chose and push it to its cloud.
-				if (this.pid !== pid || isProfileReleased(pid))
-					return { success: false, error: IMPORT_TARGET_GONE };
-				const now = syncClock.now();
-				const importedNotes = prepareImportedNotes(backup.notes, mode, editContext);
-				const importedIds = new Map(
-					backup.notes.map((note, index) => [note.id, importedNotes[index].id])
-				);
-				const replacedNoteIds =
-					mode === BackupImportMode.Replace ? this.notes.map((note) => note.id) : [];
-				if (navigator.storage?.estimate) {
-					const estimate = await navigator.storage.estimate();
-					if (!replacementFitsStorage(importedNotes, estimate)) {
-						return {
-							success: false,
-							error: 'Storage full on this device — free space or remove old notes/attachments.'
-						};
-					}
-				}
-				// Recorded before the notes land, so reminders a device already handled stay handled.
-				reminderHistoryStore.restore(
-					pid,
-					importedReminderHistory(backup.notes, importedNotes, backup.reminderHistory)
-				);
-				canvasLibraryStore.restore(pid, backup.canvasLibrary, mode);
-				if (mode === BackupImportMode.Keep) {
-					const labelsByName = new Map(
-						this.labels.map((label) => [label.name.trim().toLowerCase(), label])
-					);
-					const labelIds = new Map<string, string>();
-					const importedLabels: Label[] = [];
-					for (const label of backup.labels) {
-						const existing = labelsByName.get(label.name.trim().toLowerCase());
-						if (existing) {
-							labelIds.set(label.id, existing.id);
-							continue;
-						}
-						const imported = { ...label, id: uid(), createdAt: now, updatedAt: now };
-						labelIds.set(label.id, imported.id);
-						labelsByName.set(imported.name.trim().toLowerCase(), imported);
-						importedLabels.push(imported);
-					}
-					for (const note of importedNotes) {
-						note.labels = note.labels.flatMap((id) => {
-							const mapped = labelIds.get(id);
-							return mapped ? [mapped] : [];
-						});
-						await putNote(pid, note, noteSyncKeys(note));
-						await this.compactPersistedNoteImages(note);
-					}
-					await bulkPutLabels(pid, importedLabels);
-					this.notes = [...this.notes, ...importedNotes].sort((a, b) => b.updatedAt - a.updatedAt);
-					this.labels = [...this.labels, ...importedLabels].sort((a, b) =>
-						a.name.localeCompare(b.name)
-					);
-					await syncStore.queueOutbox(importedLabels.map((label) => `label:${label.id}`));
-				} else {
-					await replaceAllDeviceData(pid, importedNotes, backup.labels, (note) =>
-						this.compactPersistedNoteImages(note)
-					);
-					this.notes = importedNotes.sort((a, b) => b.updatedAt - a.updatedAt);
-					this.labels = [...backup.labels].sort((a, b) => a.name.localeCompare(b.name));
-					// The notes return under new ids, so every copy under an old id goes.
-					this.deletedNoteIds = { ...backup.tombstones };
-					for (const id of [...replacedNoteIds, ...importedIds.keys()]) {
-						this.deletedNoteIds[id] = now;
-					}
-					this.deletedLabelIds = { ...backup.labelTombstones };
-					await writeTombstones(pid, this.deletedNoteIds);
-					await writeLabelTombstones(pid, this.deletedLabelIds);
-					kanbanStore.replaceWithCloud(
-						backup.boards.map((board) => ({
-							...board,
-							columns: board.columns.map((column) => ({
-								...column,
-								order: column.order.flatMap((id) => {
-									const imported = importedIds.get(id);
-									return imported ? [imported] : [];
-								})
-							}))
-						})),
-						backup.boardTombstones
-					);
-					if (
-						backup.activeBoardId &&
-						kanbanStore.boards.some((board) => board.id === backup.activeBoardId)
-					) {
-						kanbanStore.selectBoard(backup.activeBoardId);
-					}
-					uiStore.restoreState(backup.ui);
-				}
-
-				this.mirrorToLS();
-				if (mode === BackupImportMode.Replace) {
-					const outbox = [
-						...this.notes.flatMap((note) => noteSyncKeys(note)),
-						...this.labels.map((label) => `label:${label.id}`),
-						...kanbanStore.boards.map((board) => `board:${board.id}`),
-						...Object.keys(this.deletedNoteIds).map((id) => `note-tombstone:${id}`),
-						...Object.keys(this.deletedLabelIds).map((id) => `label-tombstone:${id}`),
-						...Object.keys(kanbanStore.boardTombstones).map((id) => `board-tombstone:${id}`)
-					];
-					if (syncStore.account) {
-						await syncStore.clearAccountControlPlane(syncStore.account.accountId);
-					}
-					await syncStore.queueOutbox(outbox);
-				}
-				this.dirty = true;
-				this.scheduleSyncPush();
-				return { success: true };
-			});
-		} catch (err) {
-			this.recordPersistenceError('Could not import full backup', err);
-			// The replacement may have partially committed; reload memory from the
-			// device store so the UI matches what a restart would show.
-			await this.hardResync();
-			return { success: false, error: this.lastPersistError ?? 'Could not import full backup.' };
-		} finally {
-			this.importing = false;
-		}
-	}
-
-	async importKeepTakeout(
-		files: Record<string, Uint8Array>,
-		mode: BackupImportMode
-	): Promise<{ success: boolean; error?: string }> {
-		if (this.importing) return { success: false, error: 'An import is already running.' };
-		// The workspace on screen when the import was chosen: it lands there or nowhere.
-		const pid = this.pid;
-		// Claimed first so a workspace switch is refused outright rather than
-		// queueing behind an import that may run for minutes.
-		this.importing = true;
-		try {
-			// The Keep reader loads only when a Takeout is imported; an empty one is
-			// refused before the lock is waited for.
-			const loaded = await loadImportModule(() => import('#lib/keepImport.js'));
-			if (!loaded.success) return loaded;
-			const { materializeKeepTakeout, readKeepTakeout } = loaded.module;
-			if (readKeepTakeout(files).notes.length === 0)
-				return { success: false, error: 'That zip does not contain Google Keep notes.' };
-			actionUndo.clear();
-			// Under the sync lock: a flight that landed partway through an import
-			// would write the notes it pulled over the imported ones and push the
-			// mixture to the relay as the newest version.
-			return await this.withSyncLock(async () => {
-				// Another window may have removed this workspace while the lock was
-				// awaited, and moved this window elsewhere. Landing in whatever is open
-				// now would overwrite a workspace nobody chose and push it to its cloud.
-				if (this.pid !== pid || isProfileReleased(pid))
-					return { success: false, error: IMPORT_TARGET_GONE };
-				const now = Date.now();
-				const materialized = await materializeKeepTakeout(files, (file) =>
-					fileToNoteImage(file, 'compressed')
-				);
-				const importedNotes = materialized.notes;
-				const replacedNoteIds =
-					mode === BackupImportMode.Replace ? this.notes.map((note) => note.id) : [];
-				const replacedLabelIds =
-					mode === BackupImportMode.Replace ? this.labels.map((label) => label.id) : [];
-				if (navigator.storage?.estimate) {
-					const estimate = await navigator.storage.estimate();
-					if (!replacementFitsStorage(importedNotes, estimate)) {
-						return {
-							success: false,
-							error: 'Storage full on this device — free space or remove old notes/attachments.'
-						};
-					}
-				}
-				if (mode === BackupImportMode.Keep) {
-					const labelsByName = new Map(
-						this.labels.map((label) => [label.name.trim().toLowerCase(), label])
-					);
-					const labelIds = new Map<string, string>();
-					const importedLabels: Label[] = [];
-					for (const label of materialized.labels) {
-						const existing = labelsByName.get(label.name.trim().toLowerCase());
-						if (existing) {
-							labelIds.set(label.id, existing.id);
-							continue;
-						}
-						const imported = { ...label, id: uid(), createdAt: now, updatedAt: now };
-						labelIds.set(label.id, imported.id);
-						labelsByName.set(imported.name.trim().toLowerCase(), imported);
-						importedLabels.push(imported);
-					}
-					for (const note of importedNotes) {
-						note.labels = note.labels.flatMap((id) => {
-							const mapped = labelIds.get(id);
-							return mapped ? [mapped] : [];
-						});
-						await putNote(pid, note, noteSyncKeys(note));
-						await this.compactPersistedNoteImages(note);
-					}
-					await bulkPutLabels(pid, importedLabels);
-					this.notes = [...this.notes, ...importedNotes].sort((a, b) => b.updatedAt - a.updatedAt);
-					this.labels = [...this.labels, ...importedLabels].sort((a, b) =>
-						a.name.localeCompare(b.name)
-					);
-					await syncStore.queueOutbox(importedLabels.map((label) => `label:${label.id}`));
-				} else {
-					await replaceAllDeviceData(pid, importedNotes, materialized.labels, (note) =>
-						this.compactPersistedNoteImages(note)
-					);
-					this.notes = importedNotes.sort((a, b) => b.updatedAt - a.updatedAt);
-					this.labels = [...materialized.labels].sort((a, b) => a.name.localeCompare(b.name));
-					const importedIds = new Set(importedNotes.map((note) => note.id));
-					const importedLabelIds = new Set(materialized.labels.map((label) => label.id));
-					this.deletedNoteIds = { ...this.deletedNoteIds };
-					for (const id of replacedNoteIds) {
-						if (!importedIds.has(id)) this.deletedNoteIds[id] = now;
-					}
-					this.deletedLabelIds = { ...this.deletedLabelIds };
-					for (const id of replacedLabelIds) {
-						if (!importedLabelIds.has(id)) this.deletedLabelIds[id] = now;
-					}
-					await writeTombstones(pid, this.deletedNoteIds);
-					await writeLabelTombstones(pid, this.deletedLabelIds);
-				}
-
-				this.mirrorToLS();
-				if (mode === BackupImportMode.Replace) {
-					const outbox = [
-						...this.notes.flatMap((note) => noteSyncKeys(note)),
-						...this.labels.map((label) => `label:${label.id}`),
-						...Object.keys(this.deletedNoteIds).map((id) => `note-tombstone:${id}`),
-						...Object.keys(this.deletedLabelIds).map((id) => `label-tombstone:${id}`)
-					];
-					await syncStore.queueOutbox(outbox);
-				}
-				this.dirty = true;
-				this.scheduleSyncPush();
-				return { success: true };
-			});
-		} catch (err) {
-			this.recordPersistenceError('Could not import Google Keep notes', err);
-			await this.hardResync();
-			return {
-				success: false,
-				error: this.lastPersistError ?? 'Could not import Google Keep notes.'
-			};
-		} finally {
-			this.importing = false;
-		}
-	}
-
 	// Reload all three layers. Mirror is only a fast-boot cache; IDB always participates so
 	// image blobs are rehydrated even when a mirror exists.
 	/**
@@ -1382,22 +865,11 @@ export class NotesStore {
 	 */
 	async reloadForProfile(): Promise<void> {
 		actionUndo.clear();
-		if (this.syncPushTimer) clearTimeout(this.syncPushTimer);
-		this.syncPushTimer = null;
-		this.cancelScheduledMirror();
-		for (const timer of this.noteRetryTimers.values()) clearTimeout(timer);
-		this.noteRetryTimers.clear();
-		for (const held of this.noteRetryHolds.values()) held.forEach((landed) => landed());
-		this.noteRetryHolds.clear();
-		this.noteRetryAttempts.clear();
+		this.saving.cancelScheduledMirror();
+		this.saving.forgetNotes();
 		this.attachmentLoads.clear();
-		this.attachmentHydrationFailures.clear();
 		this.visibleAttachmentQueue.clear();
-		this.syncFollowupRequested = false;
-		this.dirty = false;
 		this.lastPersistError = null;
-		syncStore.lastError = null;
-		resetTombstoneCaches();
 		this.loaded = false;
 		this.notes = [];
 		this.labels = [];
@@ -1425,35 +897,10 @@ export class NotesStore {
 		while (this.attachmentWork.size > 0) {
 			await Promise.allSettled([...this.attachmentWork]);
 		}
-		if (this.attachmentPass) await this.attachmentPass;
 		while (this.attachmentLoads.size > 0) {
 			await Promise.allSettled([...this.attachmentLoads.values()]);
 		}
-		await syncStore.waitForOutboxWrites();
-		await kanbanStore.waitForPendingWrites();
-		await canvasLibraryStore.waitForPendingWrites();
-		await reminderHistoryStore.waitForPendingWrites();
-		await waitForDeviceWrites(this.pid);
-	}
-
-	async hardResync() {
-		const mirrorNotes = readNotesMirror(this.pid);
-		const mirrorLabels = readLabelsMirror(this.pid);
-		try {
-			const [dbNotes, dbLabels] = await Promise.all([
-				getAllNotesMetadata(this.pid),
-				getAllLabels(this.pid)
-			]);
-			this.notes = mergeNoteLists(mirrorNotes, dbNotes).sort((a, b) => b.updatedAt - a.updatedAt);
-			this.labels = mergeLabelLists(mirrorLabels, dbLabels).sort((a, b) =>
-				a.name.localeCompare(b.name)
-			);
-			this.mirrorToLS();
-		} catch (err) {
-			this.recordPersistenceError('Could not refresh from IndexedDB', err);
-		}
-		await this.dropAbandonedDraft();
-		this.purgeOldTrash();
+		await localWritesLanded(this.pid);
 	}
 
 	// Persistence helpers --------------------------------------------------
@@ -1575,18 +1022,32 @@ export class NotesStore {
 	private async persistDeletedNotes(ids: string[]): Promise<void> {
 		if (ids.length === 0) return;
 		actionUndo.dropNotes(ids);
+		const pid = this.pid;
 		const deletedAt = Date.now();
-		const next = { ...this.deletedNoteIds };
-		for (const id of ids) next[id] = deletedAt;
-		await writeTombstones(this.pid, next);
-		this.deletedNoteIds = next;
-		reminderHistoryStore.forgetNotes(this.pid, next);
-		this.notes = this.notes.filter((n) => !ids.includes(n.id));
-		this.scheduleMirror();
-		this.dirty = true;
-		this.scheduleSyncPush();
-		await syncStore.queueOutbox(ids.map((id) => `note-tombstone:${id}`));
-		await Promise.all(ids.map((id) => deleteNote(this.pid, id)));
+		const stored = await this.saving.saveNoteDeletes(
+			pid,
+			Object.fromEntries(ids.map((id) => [id, deletedAt]))
+		);
+		reminderHistoryStore.forgetNotes(pid, stored);
+		if (pid === this.pid) {
+			this.deletedNoteIds = newestTombstones(this.deletedNoteIds, stored);
+			this.notes = this.notes.filter((n) => !ids.includes(n.id));
+			this.saving.scheduleMirror();
+		}
+		syncScheduler.changed(pid);
+		await Promise.all(ids.map((id) => deleteNote(pid, id)));
+	}
+
+	/**
+	 * A workspace was replaced whole: nothing from before that waits to be saved, or
+	 * to be saved again, comes back into it.
+	 */
+	forgetUnsaved(pid: string): void {
+		clearBoardsMirror(pid);
+		canvasLibraryStore.forgetUnsaved(pid);
+		this.saving.forgetUnsavedLabels(pid);
+		if (pid === this.pid) this.saving.forgetNotes();
+		clearPendingJournals(pid);
 	}
 
 	private markLabelsDeleted(ids: string[], deletedAt = Date.now()): void {
@@ -1594,256 +1055,37 @@ export class NotesStore {
 		const next = { ...this.deletedLabelIds };
 		for (const id of ids) next[id] = deletedAt;
 		this.deletedLabelIds = next;
-		void Promise.all(
-			ids.map((id) => deleteLabelWithTombstone(this.pid, id, next, [`label-tombstone:${id}`]))
-		)
-			.then(() => this.markLabelsDirty())
-			.catch((err) => this.recordPersistenceError('Could not delete label', err));
+		for (const id of ids) this.persistLabel(id);
 	}
 
-	private markLabelsDirty(keys: Iterable<string> = []): void {
-		syncStore.requestAutoSync(keys);
-		this.dirty = true;
-		this.scheduleSyncPush();
+	/** Save a label as this window holds it now, or its delete. */
+	private persistLabel(id: string): void {
+		const label = this.labels.find((item) => item.id === id);
+		const deletedAt = this.deletedLabelIds[id];
+		if (label) this.saving.writeLabel(this.pid, id, { kind: 'put', value: { ...label } });
+		else if (deletedAt) this.saving.writeLabel(this.pid, id, { kind: 'delete', at: deletedAt });
 	}
 
 	private mayMirror(): boolean {
 		// A workspace removed in another window keeps no mirror either: writing
 		// one back would leave note text behind for a workspace that is gone.
 		if (isProfileReleased(this.pid)) return false;
-		// Another window has written newer notes than this one holds.
-		return this.staleWhileHidden !== this.pid;
+		// Another window has written newer notes than this one holds, or rewrote the
+		// workspace: what this window holds is not to be written anywhere until it has read.
+		return this.staleWhileHidden !== this.pid && this.rewrittenWhileHidden !== this.pid;
 	}
 
-	/** Write the fast-boot mirror now: every note and label this window holds. */
-	private mirrorToLS() {
-		this.cancelScheduledMirror();
-		if (!this.mayMirror()) return;
-		if (!writeNotesMirror(this.notes, this.pid)) {
-			this.recordPersistenceError(
-				'Could not update the local notes mirror',
-				new Error('localStorage write failed')
-			);
-		}
-		writeLabelsMirror(this.labels, this.pid);
-	}
-
-	private mirrorLabels() {
-		if (this.mayMirror()) writeLabelsMirror(this.labels, this.pid);
-	}
-
-	private mirrorTimer: ReturnType<typeof setTimeout> | null = null;
-
-	/**
-	 * Refresh the fast-boot mirror once edits pause. Serializing every note on
-	 * each save would cost a large workspace a long task per keystroke, and so
-	 * would doing it every few seconds of steady typing. Crash safety does not
-	 * wait for it: each edit is journaled before its write starts, and a hidden
-	 * or closing page writes the mirror at once.
-	 */
-	private scheduleMirror() {
-		this.cancelScheduledMirror();
-		const pid = this.pid;
-		this.mirrorTimer = setTimeout(() => {
-			this.mirrorTimer = null;
-			// The window moved to another workspace; its own boot writes that mirror.
-			if (pid === this.pid) this.mirrorToLS();
-		}, MIRROR_DELAY_MS);
-	}
-
-	private cancelScheduledMirror() {
-		if (this.mirrorTimer) clearTimeout(this.mirrorTimer);
-		this.mirrorTimer = null;
-	}
-
-	/** Journal notes whose IndexedDB writes are about to start. */
-	private journal(notes: Note[]) {
-		if (isProfileReleased(this.pid)) return;
-		if (!journalPendingNotes(notes, this.pid)) {
-			this.recordPersistenceError(
-				'Could not journal unsaved notes',
-				new Error('localStorage write failed')
-			);
-		}
-	}
-
-	private recordPersistenceError(context: string, err: unknown): void {
+	/** A save or a load of the open workspace went wrong: it is said where the person sees it. */
+	recordPersistenceError(context: string, err: unknown): void {
 		const detail = formatStorageError(err);
 		this.lastPersistError = `${context}: ${detail}`;
 		console.error(`[notes] ${context}`, err);
 	}
 
-	private syncPushTimer: ReturnType<typeof setTimeout> | null = null;
-	private noteRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
-	/** The holds on the attachment-writes lock that each waiting retry carries. */
-	private noteRetryHolds = new Map<string, Array<() => void>>();
-	private noteRetryAttempts = new Map<string, number>();
-	private dirty = false;
-	private syncFlight = $state<Promise<boolean> | null>(null);
-	private syncFollowupRequested = false;
-	private syncBroadcastChannel: BroadcastChannel | null = null;
 	/** The workspace another window synced while this one was hidden and skipped re-reading. */
 	private staleWhileHidden: string | null = null;
-
-	/**
-	 * Hold the attachment-writes lock for a write of this note that carries bytes,
-	 * until the function returned is called. Asked for before the note is journaled:
-	 * once another window can read that it lists new bytes, it can tell they have
-	 * not landed.
-	 */
-	private holdWhileBytesLand(pid: string, note: Note): () => void {
-		return (note.images ?? []).some((image) => image.dataUrl)
-			? holdAttachmentWrites(pid)
-			: () => undefined;
-	}
-
-	/**
-	 * Write the note again in a while. `bytesLanded` is the failed write's hold on
-	 * the attachment-writes lock: the retry keeps that same hold, so a window already
-	 * waiting to read what is stored goes on waiting until the bytes are in.
-	 */
-	private scheduleNoteRetry(id: string, bytesLanded: () => void = () => undefined): void {
-		this.noteRetryHolds.set(id, [...(this.noteRetryHolds.get(id) ?? []), bytesLanded]);
-		if (this.noteRetryTimers.has(id)) return;
-		const attempt = this.noteRetryAttempts.get(id) ?? 0;
-		const delay = Math.min(30_000, 1_000 * 2 ** attempt);
-		const timer = setTimeout(() => {
-			this.noteRetryTimers.delete(id);
-			const held = this.noteRetryHolds.get(id) ?? [];
-			this.noteRetryHolds.delete(id);
-			const allLanded = () => held.forEach((landed) => landed());
-			const note = this.notes.find((item) => item.id === id);
-			if (!note) return allLanded();
-			const pid = this.pid;
-			putNote(pid, note, noteSyncKeys(note))
-				.then(() => {
-					settlePendingNotes({ [id]: noteForLocalStorage(note) }, pid);
-					this.noteRetryAttempts.delete(id);
-					this.lastPersistError = null;
-					this.dirty = true;
-					this.scheduleSyncPush();
-					allLanded();
-				})
-				.catch((err) => {
-					this.noteRetryAttempts.set(id, attempt + 1);
-					this.recordPersistenceError(`Could not retry note ${id}`, err);
-					this.scheduleNoteRetry(id, allLanded);
-				});
-		}, delay);
-		this.noteRetryTimers.set(id, timer);
-	}
-
-	/** Replay localStorage notes/labels that never landed in IndexedDB after a crash. */
-	private async recoverMirrorIntoIndexedDB(dbNotes: Note[], dbLabels: Label[]): Promise<void> {
-		const dbById = new Map(dbNotes.map((item) => [item.id, item]));
-		for (const item of this.notes) {
-			if (noteNeedsDurableWrite(dbById.get(item.id), item))
-				await putNote(this.pid, item, noteSyncKeys(item));
-		}
-		const dbLabelById = new Map(dbLabels.map((item) => [item.id, item]));
-		const labelKeys: string[] = [];
-		for (const label of this.labels) {
-			const current = dbLabelById.get(label.id);
-			if (current && current.name === label.name && current.updatedAt === label.updatedAt) continue;
-			await putLabel(this.pid, label);
-			labelKeys.push(`label:${label.id}`);
-		}
-		if (labelKeys.length) await syncStore.queueOutbox(labelKeys);
-	}
-
-	private persist(id: string) {
-		this.persistNotes([id]);
-	}
-
-	private persistNotes(ids: string[]) {
-		const wanted = new Set(ids);
-		const notes = this.notes.filter((note) => wanted.has(note.id));
-		if (notes.length === 0) return;
-		const pid = this.pid;
-		const bytesLanded = notes.map((note) => this.holdWhileBytesLand(pid, note));
-		// Preserve a crash-safe, blob-free copy synchronously before async IDB work.
-		this.journal(notes);
-		this.scheduleMirror();
-		const landed: PendingNotes = {};
-		void Promise.all(
-			notes.map((note, index) =>
-				this.writeNote(pid, note, bytesLanded[index]).then((ok) => {
-					if (ok) landed[note.id] = noteForLocalStorage(note);
-				})
-			)
-		).then(() => settlePendingNotes(landed, pid));
-		this.dirty = true;
-		this.scheduleSyncPush();
-	}
-
-	/**
-	 * Write one note to IndexedDB; true once it landed. A failed write retries on its
-	 * own, and takes `bytesLanded` with it: the lock is let go when the bytes are in.
-	 */
-	private writeNote(pid: string, note: Note, bytesLanded: () => void): Promise<boolean> {
-		const id = note.id;
-		// The attachments whose bytes this write carries. Only those may be released
-		// from memory once it lands: a photo added while this write was queued has
-		// its own write, which may still fail and retry from what is in memory.
-		const written = new Set(
-			(note.images ?? []).filter((image) => image.dataUrl).map((image) => image.id)
-		);
-		return putNote(pid, note, noteSyncKeys(note))
-			.then(async () => {
-				this.lastPersistError = null;
-				// Keep only small thumbs in memory after a durable write of full blobs.
-				const idx = this.notes.findIndex((item) => item.id === id);
-				if (idx < 0) return true;
-				const current = this.notes[idx];
-				const images = await Promise.all(
-					(current.images ?? []).map((image) =>
-						written.has(image.id) ? prepareAttachmentForMemory(image) : image
-					)
-				);
-				if (images.some((image, i) => image !== current.images?.[i])) {
-					this.notes[idx] = { ...current, images };
-					this.scheduleMirror();
-				}
-				bytesLanded();
-				return true;
-			})
-			.catch((err) => {
-				this.recordPersistenceError(`Could not save note ${id}`, err);
-				this.scheduleNoteRetry(id, bytesLanded);
-				return false;
-			});
-	}
-
-	private scheduleSyncPush(delay = 5000) {
-		if (this.syncFlight) this.syncFollowupRequested = true;
-		if (this.syncPushTimer) clearTimeout(this.syncPushTimer);
-		this.syncPushTimer = setTimeout(() => {
-			this.syncPushTimer = null;
-			if (!this.dirty) return;
-			void this.flushSync(true);
-		}, delay);
-	}
-
-	flushSync(indicate = true): Promise<boolean> {
-		if (this.syncPushTimer) {
-			clearTimeout(this.syncPushTimer);
-			this.syncPushTimer = null;
-		}
-		return this.queueSync(indicate).then(async (synced) => {
-			const leftover = synced ? await getSyncOutboxKeys(this.pid).catch(() => []) : [];
-			this.dirty = !synced || leftover.length > 0;
-			return synced;
-		});
-	}
-
-	/** Flush durable local changes when leaving a note, without a no-op cloud request. */
-	async syncPendingChanges(): Promise<boolean> {
-		if (!syncStore.isLoggedIn) return false;
-		await syncStore.waitForOutboxWrites();
-		const pending = await getSyncOutboxKeys(this.pid).catch(() => []);
-		if (pending.length === 0) return false;
-		return this.flushSync(true);
-	}
+	/** The workspace another window rewrote while this one was hidden. */
+	private rewrittenWhileHidden: string | null = null;
 
 	private async notesForMemory(notes: Note[]): Promise<Note[]> {
 		return Promise.all(
@@ -1854,470 +1096,111 @@ export class NotesStore {
 		);
 	}
 
-	private async applyPulledSnapshot(
-		snapshot: SyncSnapshot,
-		pid: string,
-		pulled?: PulledRelayState
-	): Promise<SyncSnapshot> {
-		// A flight belongs to the workspace it started in. If the window has moved
-		// to another one, none of this may land: it would merge one workspace's
-		// notes into another's and save them there. The cursor is not committed
-		// either, so the workspace this came from downloads it again next time.
-		if (pid !== this.pid) return snapshot;
-		const tombstones = { ...this.deletedNoteIds };
-		for (const [id, deletedAt] of Object.entries(snapshot.tombstones)) {
-			if (deletedAt > (tombstones[id] || 0)) tombstones[id] = deletedAt;
+	/**
+	 * Another window rewrote the workspace this one shows: an import, or replacing
+	 * the cloud copy. A rewrite takes things away as well as adding them, so nothing
+	 * this window holds is merged with it: the workspace is loaded again from what
+	 * landed, once this window's own saves are in. A hidden window waits until it is
+	 * shown, and mirrors nothing meanwhile.
+	 */
+	private async showRewritten(pid: string): Promise<void> {
+		if (pid !== this.pid) return;
+		if (document.visibilityState === 'hidden') {
+			this.rewrittenWhileHidden = pid;
+			this.staleWhileHidden = pid;
+			return;
 		}
-		const labelTombstones = { ...this.deletedLabelIds };
-		for (const [id, deletedAt] of Object.entries(snapshot.labelTombstones)) {
-			if (deletedAt > (labelTombstones[id] || 0)) labelTombstones[id] = deletedAt;
-		}
-
-		let durableNotes = withoutTombstoned(
-			mergeNoteLists(this.notes, snapshot.notes),
-			tombstones
-		).sort((a, b) => b.updatedAt - a.updatedAt);
-		let mergedLabels = withoutTombstoned(
-			mergeLabelLists(this.labels, snapshot.labels),
-			labelTombstones
-		).sort((a, b) => a.name.localeCompare(b.name));
-		const currentById = new Map(this.notes.map((note) => [note.id, note]));
-		// A sync knows what the relay holds, so it settles every listed attachment.
-		const settled = pulled
-			? await this.settleAttachments(durableNotes, pid, pulled)
-			: { notes: durableNotes, decisions: new Map() as AttachmentDecisions, persist: new Set() };
-		if (pid !== this.pid) return snapshot;
-		durableNotes = settled.notes;
-		const notesToPersist = durableNotes.filter(
-			(note) =>
-				settled.persist.has(note.id) || noteNeedsDurableWrite(currentById.get(note.id), note)
+		this.rewrittenWhileHidden = null;
+		await withWorkspaceLock(async () => {
+			if (pid !== this.pid || isProfileReleased(pid)) return;
+			await this.waitForPendingProfileWrites();
+			await this.reloadForProfile();
+		}).catch((err) =>
+			this.recordPersistenceError('Could not show what another window landed', err)
 		);
-		const labelsChanged = stableStringify(this.labels) !== stableStringify(mergedLabels);
-		const tombstonedNoteIds = this.notes
-			.filter((note) => tombstones[note.id])
-			.map((note) => note.id);
-		const tombstonedLabelIds = this.labels
-			.filter((label) => labelTombstones[label.id])
-			.map((label) => label.id);
+	}
 
-		kanbanStore.applySync(snapshot.boards, snapshot.boardTombstones);
-		canvasLibraryStore.applySync(snapshot.libraryItems, snapshot.libraryTombstones);
-		reminderHistoryStore.forgetNotes(this.pid, tombstones);
-		await writeTombstones(this.pid, tombstones);
-		await writeLabelTombstones(this.pid, labelTombstones);
-		for (const note of notesToPersist) {
-			// An edit made while this flight awaited has already queued its own write;
-			// saving the flight's older merge after it would roll the device copy back.
-			const live = this.notes.find((item) => item.id === note.id);
-			const edited = live && live !== currentById.get(note.id);
-			await putNote(
-				this.pid,
-				edited ? this.withAttachmentDecisions(mergeTwoNotes(live, note), settled.decisions) : note
-			);
+	/**
+	 * Something else saved into the database of the workspace this window shows:
+	 * memory takes what it brought. A sync that ran here hands over what it saved;
+	 * after a save in another window the database is read. Nothing is written here.
+	 * Every save merges with what is stored, so an edit made meanwhile is in the
+	 * database with what was saved, whichever of the two landed first.
+	 *
+	 * The browser may freeze a hidden window in the middle of a read, and its open
+	 * transactions then hold every other window's writes to this workspace until it
+	 * thaws. A hidden window has nothing to show, so it reads once it is shown again,
+	 * or when a sync of its own lands.
+	 */
+	private async show(
+		pid: string,
+		synced?: { snapshot: SyncSnapshot; decisions: AttachmentDecisions }
+	): Promise<void> {
+		// Noted at once, before anything is waited for: until it has read, this window
+		// holds older notes than the database and must not mirror them.
+		if (!synced && pid === this.pid && document.visibilityState === 'hidden') {
+			this.staleWhileHidden = pid;
+			return;
 		}
-		for (const id of tombstonedNoteIds) await deleteNote(this.pid, id);
-		for (const id of tombstonedLabelIds) await deleteLabel(this.pid, id);
-		if (labelsChanged) await bulkPutLabels(this.pid, mergedLabels);
-		await kanbanStore.persistSyncState(this.pid);
-		await canvasLibraryStore.persistSyncState(this.pid);
-		await reminderHistoryStore.waitForPendingWrites();
-
-		// Preserve edits made while the device writes were in flight. Merging keeps
-		// every attachment either side lists, so what was settled is settled again.
-		durableNotes = withoutTombstoned(mergeNoteLists(this.notes, durableNotes), tombstones)
-			.map((note) => this.withAttachmentDecisions(note, settled.decisions))
+		// Another window rewrote this workspace and this one has not loaded it again
+		// yet: what it holds is from before, and nothing is merged into that. The load
+		// that follows, once the window is shown, reads what this sync saved too.
+		if (pid === this.pid && this.rewrittenWhileHidden === pid) return;
+		// A load under way read the database before or after this was saved: either
+		// way what was saved is merged into what it loaded.
+		await this.boot;
+		if (pid !== this.pid || !this.loaded) return;
+		let saved = synced?.snapshot;
+		if (!saved || this.staleWhileHidden === pid) {
+			this.staleWhileHidden = null;
+			try {
+				// What a sync here saved is part of what the database holds.
+				saved = await readWorkspace(pid);
+				if (pid !== this.pid) return;
+				await reminderHistoryStore.hydrate(pid);
+			} catch (err) {
+				this.recordPersistenceError('Could not read what another window saved', err);
+				if (!saved) return;
+			}
+		}
+		const decisions: AttachmentDecisions = synced?.decisions ?? new Map();
+		const lean = await this.notesForMemory(saved.notes);
+		if (pid !== this.pid || !this.loaded) return;
+		// Nothing is awaited from here until memory holds the result: an edit made in
+		// between would be merged with neither.
+		const tombstones = newestTombstones(this.deletedNoteIds, saved.tombstones);
+		const labelTombstones = newestTombstones(this.deletedLabelIds, saved.labelTombstones);
+		const savedById = new Map(saved.notes.map((note) => [note.id, note]));
+		// Full bytes the database holds are let go of, as after any save. Bytes of a
+		// photo it does not hold yet, or holds in another version, stay in memory:
+		// their own save is still under way, and may have to be tried again.
+		const withoutSavedBytes = (note: Note): Note => {
+			const held = new Map(
+				(savedById.get(note.id)?.images ?? []).map((image) => [image.id, image.contentHash])
+			);
+			const images = (note.images ?? []).map((image) =>
+				held.has(image.id) && held.get(image.id) === image.contentHash
+					? stripFullPreviewBytes(image)
+					: image
+			);
+			return images.some((image, index) => image !== note.images?.[index])
+				? { ...note, images }
+				: note;
+		};
+		this.notes = withoutTombstoned(mergeNoteLists(this.notes, lean), tombstones)
+			.map((note) => withoutSavedBytes(withAttachmentDecisions(note, decisions)))
 			.sort((a, b) => b.updatedAt - a.updatedAt);
-		mergedLabels = withoutTombstoned(
-			mergeLabelLists(this.labels, mergedLabels),
+		this.labels = withoutTombstoned(
+			mergeLabelLists(this.labels, saved.labels),
 			labelTombstones
 		).sort((a, b) => a.name.localeCompare(b.name));
-		this.notes = await this.notesForMemory(durableNotes);
-		this.labels = mergedLabels;
 		this.deletedNoteIds = tombstones;
 		this.deletedLabelIds = labelTombstones;
-		// Everything above is on disk already; the mirror only has to catch up for the next boot.
-		this.scheduleMirror();
-		this.lastPersistError = null;
-
-		return this.syncSnapshot({ notes: durableNotes, labels: mergedLabels });
-	}
-
-	/** This workspace as a sync sees it. */
-	private syncSnapshot(parts: Pick<SyncSnapshot, 'notes' | 'labels'>): SyncSnapshot {
-		return {
-			...parts,
-			boards: kanbanStore.boardsForSync(),
-			tombstones: { ...this.deletedNoteIds },
-			labelTombstones: { ...this.deletedLabelIds },
-			boardTombstones: kanbanStore.boardTombstonesForSync(),
-			libraryItems: canvasLibraryStore.entriesForSync(),
-			libraryTombstones: canvasLibraryStore.tombstonesForSync()
-		};
-	}
-
-	private async applyCloudReplacement(
-		snapshot: SyncSnapshot,
-		pid: string,
-		pulled: { readEnvelopes: number }
-	): Promise<SyncSnapshot> {
-		// Replacing this device's notes with the cloud's belongs to one workspace.
-		if (pid !== this.pid) return snapshot;
-		const notes = withoutTombstoned(snapshot.notes, snapshot.tombstones).sort(
-			(a, b) => b.updatedAt - a.updatedAt
-		);
-		const labels = withoutTombstoned(snapshot.labels, snapshot.labelTombstones).sort((a, b) =>
-			a.name.localeCompare(b.name)
-		);
-		// Replacing wipes this device, so a pull that read nothing of an account that
-		// holds envelopes must not stand in for it. An account without notes is fine:
-		// every synced workspace stores at least its name.
-		if (pulled.readEnvelopes === 0 && (syncStore.usage?.envelopeCount ?? 0) > 0) {
-			throw new Error('Could not download synced notes');
-		}
-		if (navigator.storage?.estimate) {
-			const estimate = await navigator.storage.estimate();
-			if (!replacementFitsStorage(notes, estimate)) {
-				throw new Error(
-					'Storage full on this device — free space or remove old notes/attachments.'
-				);
-			}
-		}
-		await replaceAllDeviceData(pid, notes, labels, (note) => this.compactPersistedNoteImages(note));
-		if (pid !== this.pid) return snapshot;
-		this.notes = notes;
-		this.labels = labels;
-		this.deletedNoteIds = { ...snapshot.tombstones };
-		this.deletedLabelIds = { ...snapshot.labelTombstones };
-		kanbanStore.replaceWithCloud(snapshot.boards, snapshot.boardTombstones);
-		canvasLibraryStore.replaceWithCloud(snapshot.libraryItems, snapshot.libraryTombstones);
-		// History only ever grows: what this device already showed stays shown.
-		reminderHistoryStore.forgetNotes(this.pid, this.deletedNoteIds);
-		await writeTombstones(this.pid, this.deletedNoteIds);
-		await writeLabelTombstones(this.pid, this.deletedLabelIds);
-		await kanbanStore.persistSyncState(this.pid);
-		await canvasLibraryStore.persistSyncState(this.pid);
-		await reminderHistoryStore.waitForPendingWrites();
-		this.mirrorToLS();
-		return this.syncSnapshot({ notes, labels });
-	}
-
-	/** Pairing merge: keep every local note and every account note. Same ids get a new local id. */
-	async mergeWithCloudManual(): Promise<boolean> {
-		if (!syncStore.isLoggedIn || !syncStore.account) return false;
-		const merged = await this.withSyncLock(() => this.mergeWithCloudLocked());
-		if (!merged) return false;
-		return this.syncWithCloudManual();
-	}
-
-	// Runs under the same web lock as automatic sync: the control-plane reset below must
-	// never interleave with another flight's baseline/cursor commits.
-	private async mergeWithCloudLocked(): Promise<boolean> {
-		const account = syncStore.account;
-		if (!syncStore.isLoggedIn || !account) return false;
-		const original = this.notes.map(cloneNote);
-		try {
-			await this.hydrateAllAttachments();
-			const leftover = await getSyncOutboxKeys(this.pid).catch(() => []);
-			if (leftover.length) await clearSyncOutbox(this.pid, leftover);
-			await syncStore.clearAccountControlPlane(account.accountId);
-			const pulledSnapshots: SyncSnapshot[] = [];
-			const pulled = await syncStore.sync(syncSnapshot(), true, true, async (snapshot) => {
-				pulledSnapshots.push({
-					...snapshot,
-					notes: snapshot.notes.map(cloneNote),
-					labels: snapshot.labels.map((label) => ({ ...label })),
-					boards: snapshot.boards.map((board) => ({
-						...board,
-						columns: board.columns.map((column) => ({ ...column })),
-						backlogFilter: {
-							...board.backlogFilter,
-							labelIds: [...board.backlogFilter.labelIds]
-						},
-						noteFilter: { ...board.noteFilter, labelIds: [...board.noteFilter.labelIds] }
-					})),
-					tombstones: { ...snapshot.tombstones },
-					labelTombstones: { ...snapshot.labelTombstones },
-					boardTombstones: { ...snapshot.boardTombstones },
-					libraryItems: snapshot.libraryItems.map((entry) => ({ ...entry })),
-					libraryTombstones: { ...snapshot.libraryTombstones }
-				});
-				return snapshot;
-			});
-			const server = pulledSnapshots.at(-1);
-			if (!pulled.success || !server) {
-				this.recordPersistenceError(
-					pulled.error || 'Could not download synced notes',
-					pulled.error
-				);
-				return false;
-			}
-			const remapped = retargetLocalNotes(
-				this.notes.map(cloneNote),
-				server.notes,
-				server.tombstones,
-				uid
-			);
-			for (let index = 0; index < original.length; index++) {
-				const before = original[index];
-				const after = remapped[index];
-				const imagesChanged = (after.images ?? []).some(
-					(image, imageIndex) => image.id !== (before.images ?? [])[imageIndex]?.id
-				);
-				if (before.id !== after.id || imagesChanged) {
-					await putNote(this.pid, after, noteSyncKeys(after));
-				}
-			}
-			this.notes = remapped;
-			try {
-				await this.applyPulledSnapshot(server, this.pid);
-			} catch (err) {
-				this.notes = original;
-				throw err;
-			}
-			const kept = new Set(this.notes.map((note) => note.id));
-			for (const note of original) {
-				if (!kept.has(note.id)) await deleteNote(this.pid, note.id);
-			}
-			await syncStore.clearAccountControlPlane(account.accountId);
-			return true;
-		} catch (err) {
-			this.recordPersistenceError('Could not merge local notes with synced notes', err);
-			return false;
-		}
-	}
-
-	// Replace this device's local data with the already-linked account without uploading any
-	// local records or tombstones first. The cloud response is obtained before local storage is cleared.
-	async replaceWithCloudManual(): Promise<boolean> {
-		if (!syncStore.isLoggedIn || !syncStore.account) return false;
-		return this.withSyncLock(() => this.replaceWithCloudLocked());
-	}
-
-	private async replaceWithCloudLocked(): Promise<boolean> {
-		if (!syncStore.isLoggedIn || !syncStore.account) return false;
-		actionUndo.clear();
-		try {
-			const leftover = await getSyncOutboxKeys(this.pid).catch(() => []);
-			if (leftover.length) await clearSyncOutbox(this.pid, leftover);
-			await syncStore.clearAccountControlPlane(syncStore.account.accountId);
-			const result = await syncStore.sync(syncSnapshot(), true, true, (snapshot, pid, pulled) =>
-				this.applyCloudReplacement(snapshot, pid, pulled)
-			);
-			if (!result.success || !result.snapshot) {
-				this.recordPersistenceError(result.error || 'Cloud sync returned no notes', result.error);
-				return false;
-			}
-			this.dirty = false;
-			this.lastPersistError = null;
-			this.onAfterSync?.();
-			return true;
-		} catch (err) {
-			this.recordPersistenceError('Could not replace this device with cloud notes', err);
-			return false;
-		}
-	}
-
-	async forcePushWorkspace(turnstileToken?: string): Promise<boolean> {
-		return this.withSyncLock(async () => {
-			const account = syncStore.account;
-			if (!account) return false;
-			try {
-				await this.waitForPendingProfileWrites();
-				await this.hydrateAllAttachments();
-				// This device's copy becomes the cloud's, so every photo it lists has to be
-				// here in full: one that could not be read, or was never received, stops it.
-				if (this.notes.some((note) => (note.images ?? []).some((image) => !image.dataUrl)))
-					throw new Error(
-						'Some attachments could not be loaded. Replacing the cloud copy was not started.'
-					);
-				await syncStore.reauthenticateForRecovery(turnstileToken);
-				await syncStore.clearAccountControlPlane(account.accountId);
-				let remote: SyncSnapshot | undefined;
-				const pulled = await syncStore.sync(syncSnapshot(), true, true, async (snapshot) => {
-					remote = snapshot;
-					return snapshot;
-				});
-				if (!pulled.success || !remote)
-					throw new Error(
-						pulled.error ?? 'Could not read cloud state before replacing the cloud copy'
-					);
-				const snapshot = buildForcePushSnapshot(
-					this.syncSnapshot({ notes: this.notes.map(cloneNote), labels: [...this.labels] }),
-					remote,
-					editContext
-				);
-				await bulkPutNotes(this.pid, snapshot.notes);
-				await bulkPutLabels(this.pid, snapshot.labels);
-				this.notes = snapshot.notes;
-				this.labels = snapshot.labels;
-				this.deletedNoteIds = snapshot.tombstones;
-				this.deletedLabelIds = snapshot.labelTombstones;
-				kanbanStore.replaceWithCloud(snapshot.boards, snapshot.boardTombstones);
-				canvasLibraryStore.replaceWithCloud(snapshot.libraryItems, snapshot.libraryTombstones);
-				reminderHistoryStore.forgetNotes(this.pid, snapshot.tombstones);
-				await writeTombstones(this.pid, snapshot.tombstones);
-				await writeLabelTombstones(this.pid, snapshot.labelTombstones);
-				await kanbanStore.persistSyncState(this.pid);
-				await canvasLibraryStore.persistSyncState(this.pid);
-				await reminderHistoryStore.waitForPendingWrites();
-				this.mirrorToLS();
-				// The pull left this device holding the cloud's ids and fingerprints. Queue every
-				// record so the upload sends each one the cloud does not already hold, without
-				// downloading the whole account a second time.
-				await markSyncOutbox(this.pid, [...currentRecordKeys(snapshot)]);
-				const synced = await this.doSyncLocked(true);
-				return synced && !syncStore.lastError && !this.lastPersistError;
-			} catch (err) {
-				this.recordPersistenceError('Could not replace the cloud copy', err);
-				return false;
-			}
-		});
-	}
-
-	async syncWithCloudManual(): Promise<boolean> {
-		return this.flushSync(true);
-	}
-
-	/** Settle with the cloud once: join the sync in flight, or start one. */
-	reconcileWithCloud(): Promise<boolean> {
-		return this.syncFlight ?? this.queueSync(false);
-	}
-
-	/**
-	 * Explicit heuristic sync trigger (live nudge from another device,
-	 * network reconnection, tab foregrounding, or local change).
-	 * Bypasses opportunistic time-throttling and coalesces multiple triggers into one sync run.
-	 */
-	triggerSync(serverSeq?: number): Promise<boolean> {
-		if (!syncStore.isLoggedIn) return Promise.resolve(false);
-		if (typeof serverSeq === 'number' && serverSeq > 0 && serverSeq <= syncStore.syncedCursor) {
-			return Promise.resolve(true);
-		}
-		const syncedPromise = this.queueSync(true);
-		syncedPromise.then((synced) => {
-			if (synced) this.lastAutoSyncAt = Date.now();
-		});
-		return syncedPromise;
-	}
-
-	/**
-	 * Sync with the cloud relay, indicating flight progress via the cloud icon.
-	 * Opportunistic pulls (boot, foreground) are throttled; pending local edits
-	 * always sync via flushSync.
-	 */
-	async syncWithCloud(indicate = true): Promise<boolean> {
-		// Startup and foreground events can arrive together, especially on iOS.
-		// They all ask for the same opportunistic pull, so join the active flight.
-		// Durable edits request their own follow-up in scheduleSyncPush().
-		if (this.syncFlight) return this.syncFlight;
-		if (Date.now() - this.lastAutoSyncAt < AUTO_SYNC_MIN_INTERVAL_MS) return true;
-		const synced = await this.queueSync(indicate);
-		if (synced) this.lastAutoSyncAt = Date.now();
-		return synced;
-	}
-
-	/** One sync at a time; edits during a flight collapse into exactly one follow-up pass. */
-	private queueSync(indicate = true): Promise<boolean> {
-		if (!syncStore.isLoggedIn) return Promise.resolve(false);
-		if (this.syncFlight) {
-			this.syncFollowupRequested = true;
-			// A flight already in progress still owes the cloud icon a pulse.
-			if (indicate) {
-				syncStore.onSyncStart?.();
-				return this.syncFlight.finally(() => {
-					syncStore.onSyncEnd?.();
-				});
-			}
-			return this.syncFlight;
-		}
-		this.syncFlight = (async () => {
-			if (indicate) syncStore.onSyncStart?.();
-			try {
-				let success = false;
-				let showProgress = indicate;
-				do {
-					this.syncFollowupRequested = false;
-					success = await this.doSync(showProgress);
-					showProgress = false;
-				} while (this.syncFollowupRequested);
-				if (success) {
-					try {
-						this.syncBroadcastChannel?.postMessage({ type: 'local-sync-complete', pid: this.pid });
-					} catch {
-						/* ignore BroadcastChannel error */
-					}
-				}
-				return success;
-			} finally {
-				if (indicate) syncStore.onSyncEnd?.();
-			}
-		})().finally(() => {
-			this.syncFlight = null;
-		});
-		return this.syncFlight;
-	}
-
-	private async withSyncLock<T>(run: () => Promise<T>): Promise<T> {
-		const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
-		if (!locks?.request) return run();
-		return locks.request(SYNC_LOCK, run);
-	}
-
-	// Core sync. Local IDB remains authoritative; photo bytes move in small fractions.
-	private async doSync(indicate = true): Promise<boolean> {
-		return this.withSyncLock(() => this.doSyncLocked(indicate));
-	}
-
-	private async doSyncLocked(indicate = true): Promise<boolean> {
-		if (!syncStore.isLoggedIn) return false;
-		// A flight snapshots these notes, so they must not lag what another window saved.
-		if (this.staleWhileHidden === this.pid) await this.rehydrateFromIDB();
-		// A newly reset relay needs one current-state bootstrap from this source device.
-		// Bytes are returned to thumb-only memory immediately after reconciliation below.
-		if (await syncStore.needsCurrentStateBootstrap()) await this.hydrateAllAttachments();
-		// Only pull a few full attachments into memory per normal cycle for upload readiness.
-		await this.hydrateAttachmentsForSync();
-		// Merge other tabs' library writes before taking a sync snapshot.
-		await canvasLibraryStore.persistSyncState(this.pid);
-		const localNotes = this.notes.map(cloneNote);
-		const localLabels = [...this.labels];
-		try {
-			const result = await syncStore.sync(
-				this.syncSnapshot({ notes: localNotes, labels: localLabels }),
-				indicate,
-				false,
-				(snapshot, pid, pulled) => this.applyPulledSnapshot(snapshot, pid, pulled)
-			);
-			if (!result.success || !result.snapshot) {
-				this.recordPersistenceError(result.error || 'Cloud sync returned no notes', result.error);
-				return false;
-			}
-			if (syncStore.consumeCurrentStateBootstrapRequest()) {
-				await this.hydrateAllAttachments();
-				return this.doSyncLocked(indicate);
-			}
-			this.pruneAttachmentHydrationFailures();
-			// A photo that failed to load has no payload to upload: the sync is
-			// only partial. Keep the warning visible until the retry succeeds so
-			// "synced" never hides an unsynced photo.
-			if (this.attachmentHydrationFailures.size > 0) {
-				syncStore.lastError =
-					'Synced, but some photos could not be prepared for upload. They will retry on the next sync.';
-			} else if (
-				syncStore.lastError ===
-				'Synced, but some photos could not be prepared for upload. They will retry on the next sync.'
-			) {
-				syncStore.lastError = null;
-				this.lastPersistError = null;
-			} else if (!syncStore.lastError) {
-				this.lastPersistError = null;
-			}
-			this.onAfterSync?.();
-			return true;
-		} catch (err) {
-			this.recordPersistenceError('Cloud sync reconciliation failed', err);
-			return false;
-		}
+		kanbanStore.applySync(saved.boards, saved.boardTombstones);
+		canvasLibraryStore.applySync(saved.libraryItems, saved.libraryTombstones);
+		this.saving.scheduleMirror();
+		if (synced) this.lastPersistError = null;
+		this.onAfterSync?.();
 	}
 
 	// Seed -----------------------------------------------------------------

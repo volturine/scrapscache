@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { unregisterReminderDevice } from './reminderWake';
 import { syncStore } from '#lib/stores/sync.svelte.js';
+import { relay } from '#lib/relayClient.js';
 import { createSyncIdentity, identityFromSyncKey } from '#lib/syncPairing.js';
 
 /**
@@ -27,7 +28,7 @@ describe('unregisterReminderDevice failure visibility', () => {
 	it('resolves when the relay accepts the unsubscribe', async () => {
 		stubBrowser();
 		const fetchMock = vi
-			.spyOn(syncStore, 'authorizedFetch')
+			.spyOn(relay, 'authorizedFetch')
 			.mockResolvedValue(new Response(null, { status: 204 }));
 
 		await expect(unregisterReminderDevice(workspace)).resolves.toBeUndefined();
@@ -40,14 +41,14 @@ describe('unregisterReminderDevice failure visibility', () => {
 
 	it('rejects when the relay rejects the unsubscribe', async () => {
 		stubBrowser();
-		vi.spyOn(syncStore, 'authorizedFetch').mockResolvedValue(new Response(null, { status: 500 }));
+		vi.spyOn(relay, 'authorizedFetch').mockResolvedValue(new Response(null, { status: 500 }));
 
 		await expect(unregisterReminderDevice(workspace)).rejects.toThrow(/500/);
 	});
 
 	it('rejects when the request never leaves the device', async () => {
 		stubBrowser();
-		vi.spyOn(syncStore, 'authorizedFetch').mockRejectedValue(new TypeError('Failed to fetch'));
+		vi.spyOn(relay, 'authorizedFetch').mockRejectedValue(new TypeError('Failed to fetch'));
 
 		await expect(unregisterReminderDevice(workspace)).rejects.toThrow(/relay/);
 	});

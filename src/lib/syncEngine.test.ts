@@ -1,6 +1,8 @@
+import { createKanbanBoard } from './kanban';
 import { describe, expect, it } from 'vitest';
 import type { Note } from '#lib/types.js';
 import {
+	currentRecordKeys,
 	noteRecordForRelay,
 	planDeletableKeys,
 	reconcileBaseline,
@@ -33,6 +35,28 @@ function note(id: string, imageIds: string[] = []): Note {
 }
 
 describe('incremental sync engine', () => {
+	it('keeps a board that was put back after its delete, and still drops one that was not', () => {
+		const restored = { ...createKanbanBoard('Put back'), id: 'restored', updatedAt: 20 };
+		const deleted = { ...createKanbanBoard('Deleted'), id: 'deleted', updatedAt: 5 };
+		const snapshot = syncSnapshot({
+			boards: [restored, deleted],
+			boardTombstones: { restored: 10, deleted: 10 }
+		});
+
+		const current = currentRecordKeys(snapshot);
+		expect(current.has('board:restored')).toBe(true);
+		expect(current.has('board:deleted')).toBe(false);
+		// Its record on the relay stays; the deleted board's goes.
+		expect(
+			planDeletableKeys({
+				recordIds: { 'board:restored': 'r', 'board:deleted': 'd' },
+				snapshot,
+				pullOnly: false,
+				catchUpComplete: true
+			})
+		).toEqual(['board:deleted']);
+	});
+
 	it('does not delete attachments until catch-up has drained', () => {
 		const planned = planDeletableKeys({
 			recordIds: { 'attachment:pic': 'env-1', 'note:n1': 'env-2' },

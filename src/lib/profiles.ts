@@ -2,18 +2,109 @@
 // owns its own database, so switching is a pointer change plus an in-memory
 // reload — no data copying.
 import {
-	deleteStoredProfile,
-	listStoredProfiles,
-	readStoredProfiles,
-	putStoredProfile,
+	DeleteBlockedError,
+	deleteProfileDatabase,
 	getAllNotesMetadata,
-	hydrateNoteAttachments
+	hydrateNoteAttachments,
+	setRegisteredWorkspaces
 } from '#lib/db/idb.js';
 import type { Note } from '#lib/types.js';
 import { randomWorkspaceName } from '#lib/workspaceNames.js';
 
-export type { StoredProfile } from '#lib/db/idb.js';
-import type { StoredProfile } from '#lib/db/idb.js';
+/** One workspace on this device. Private ones have an empty sync key. */
+export interface StoredProfile {
+	id: string;
+	name: string;
+	syncKey: string;
+	createdAt: number;
+}
+
+/** The keyring. Its `storage` event is how other windows learn of a change. */
+export const LS_PROFILES = 'scrapscache-sync-profiles';
+
+function isStoredProfile(value: unknown): value is StoredProfile {
+	if (!value || typeof value !== 'object') return false;
+	const row = value as Partial<StoredProfile>;
+	return (
+		typeof row.id === 'string' &&
+		typeof row.name === 'string' &&
+		typeof row.syncKey === 'string' &&
+		typeof row.createdAt === 'number'
+	);
+}
+
+function readStoredProfiles(): StoredProfile[] {
+	if (typeof localStorage === 'undefined') return [];
+	try {
+		const raw = localStorage.getItem(LS_PROFILES);
+		if (!raw) return [];
+		const parsed = JSON.parse(raw);
+		if (Array.isArray(parsed)) return parsed.filter(isStoredProfile);
+	} catch {
+		// fall back to empty list
+	}
+	return [];
+}
+
+async function listStoredProfiles(): Promise<StoredProfile[]> {
+	return readStoredProfiles();
+}
+
+/** Write the keyring and bring the service worker's workspace list in line with it. */
+function writeStoredProfiles(profiles: StoredProfile[]): void {
+	if (typeof localStorage === 'undefined') return;
+	try {
+		localStorage.setItem(LS_PROFILES, JSON.stringify(profiles));
+	} catch {
+		// local storage quota or error
+	}
+	void setRegisteredWorkspaces(profiles).catch(() => undefined);
+}
+
+async function putStoredProfile(profile: StoredProfile): Promise<void> {
+	if (typeof localStorage === 'undefined') return;
+	const current = await listStoredProfiles();
+	const index = current.findIndex((p) => p.id === profile.id);
+	const stored: StoredProfile = {
+		id: String(profile.id),
+		name: String(profile.name),
+		syncKey: String(profile.syncKey),
+		createdAt: Number(profile.createdAt) || Date.now()
+	};
+	if (index >= 0) {
+		current[index] = stored;
+	} else {
+		current.push(stored);
+	}
+	writeStoredProfiles(current);
+}
+
+function removeProfileFromLocalStorage(id: string): void {
+	writeStoredProfiles(readStoredProfiles().filter((profile) => profile.id !== id));
+}
+
+/**
+ * Removes the keyring entry together with its entire dataset on this device.
+ *
+ * The keyring entry follows the dataset, never leads it: an entry removed while
+ * the data stayed would leave every note on the device, reachable by nothing and
+ * removable by no one. A delete that errors leaves both, and the workspace
+ * whole. A delete that is blocked has only been put off — the browser finishes
+ * it once the other connection closes — so the entry goes when it lands.
+ */
+async function deleteStoredProfile(id: string): Promise<void> {
+	try {
+		await deleteProfileDatabase(id);
+	} catch (error) {
+		if (error instanceof DeleteBlockedError)
+			void error.completion.then(
+				() => removeProfileFromLocalStorage(id),
+				() => undefined
+			);
+		throw error;
+	}
+	removeProfileFromLocalStorage(id);
+}
 
 const LS_LAST_ACTIVE = 'scrapscache-last-active-profile';
 export function readProfiles(): StoredProfile[] {

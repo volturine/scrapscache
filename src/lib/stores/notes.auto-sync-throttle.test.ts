@@ -1,29 +1,36 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createSyncIdentity } from '#lib/syncPairing.js';
 import { notesStore } from './notes.svelte';
 import { syncStore } from './sync.svelte';
+import { relay } from '#lib/relayClient.js';
+import { CAUGHT_UP_MS, syncScheduler } from './syncScheduler';
+import { linkTestWorkspace, unlinkTestWorkspace } from '../../tests/syncing';
 
 /**
  * Issue #86: opportunistic auto syncs (boot, foreground) are throttled by a
  * staleness window; manual syncs are never throttled.
  */
 describe('auto sync staleness window', () => {
-	beforeEach(() => {
+	beforeEach(async () => {
 		localStorage.clear();
 		vi.restoreAllMocks();
 		notesStore.notes = [];
+		notesStore.loaded = true;
 		notesStore.labels = [];
-		(notesStore as unknown as { lastAutoSyncAt: number }).lastAutoSyncAt = 0;
-		syncStore.account = createSyncIdentity();
+		await syncScheduler.reset();
+		linkTestWorkspace();
+		// Loaded as the app loads it, so its first board is saved and queued like any other.
+		await notesStore.reloadForProfile();
 	});
 
-	afterEach(() => {
+	afterEach(async () => {
 		vi.useRealTimers();
+		await syncScheduler.reset();
+		unlinkTestWorkspace();
 	});
 
 	function mockRelay(requests: unknown[]): void {
 		vi.spyOn(
-			syncStore as unknown as {
+			relay as unknown as {
 				sendSyncRequest(
 					path: string,
 					payload: string
@@ -50,9 +57,9 @@ describe('auto sync staleness window', () => {
 		const requests: unknown[] = [];
 		mockRelay(requests);
 
-		await notesStore.syncWithCloud();
-		await notesStore.syncWithCloud();
-		await notesStore.syncWithCloud();
+		await syncScheduler.catchUp(syncStore.activeId, CAUGHT_UP_MS);
+		await syncScheduler.catchUp(syncStore.activeId, CAUGHT_UP_MS);
+		await syncScheduler.catchUp(syncStore.activeId, CAUGHT_UP_MS);
 
 		expect(requests.length).toBe(2);
 	});
@@ -64,7 +71,7 @@ describe('auto sync staleness window', () => {
 			releaseFirstRequest = resolve;
 		});
 		vi.spyOn(
-			syncStore as unknown as {
+			relay as unknown as {
 				sendSyncRequest(
 					path: string,
 					payload: string
@@ -87,10 +94,10 @@ describe('auto sync staleness window', () => {
 			};
 		});
 
-		const boot = notesStore.syncWithCloud();
+		const boot = syncScheduler.catchUp(syncStore.activeId, CAUGHT_UP_MS);
 		await vi.waitFor(() => expect(requests).toHaveLength(1));
-		const foreground = notesStore.syncWithCloud();
-		const duplicateForeground = notesStore.syncWithCloud();
+		const foreground = syncScheduler.catchUp(syncStore.activeId, CAUGHT_UP_MS);
+		const duplicateForeground = syncScheduler.catchUp(syncStore.activeId, CAUGHT_UP_MS);
 		releaseFirstRequest();
 
 		await Promise.all([boot, foreground, duplicateForeground]);
@@ -105,9 +112,9 @@ describe('auto sync staleness window', () => {
 		const requests: unknown[] = [];
 		mockRelay(requests);
 
-		await notesStore.syncWithCloud();
+		await syncScheduler.catchUp(syncStore.activeId, CAUGHT_UP_MS);
 		clock.mockReturnValue(now + 30_000);
-		await notesStore.syncWithCloud();
+		await syncScheduler.catchUp(syncStore.activeId, CAUGHT_UP_MS);
 
 		// The first bootstrap uses pull + upload rounds; an unchanged established
 		// account needs only the single pull round.

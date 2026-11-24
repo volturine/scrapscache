@@ -3,6 +3,7 @@ import type { NoteImage } from '#lib/types.js';
 import { createSyncIdentity } from '#lib/syncPairing.js';
 import { actionUndo } from './actionUndo.svelte';
 import { notesStore } from './notes.svelte';
+import { syncScheduler } from './syncScheduler';
 import { syncStore } from './sync.svelte';
 
 function photo(id: string): NoteImage {
@@ -33,13 +34,7 @@ describe('note undo', () => {
 	});
 
 	afterEach(() => {
-		const internals = notesStore as unknown as {
-			dirty: boolean;
-			syncPushTimer: ReturnType<typeof setTimeout> | null;
-		};
-		if (internals.syncPushTimer) clearTimeout(internals.syncPushTimer);
-		internals.syncPushTimer = null;
-		internals.dirty = false;
+		syncScheduler.reset();
 		syncStore.account = null;
 		syncStore.profiles = [];
 		notesStore.notes = [];

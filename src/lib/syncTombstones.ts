@@ -1,10 +1,7 @@
-// Durable delete manifests in IndexedDB. Permanent delete wins until cleared.
-import {
-	deleteLabelWithSyncState,
-	getSyncState,
-	setSyncState,
-	writeSyncStateWithOutbox
-} from '#lib/db/idb.js';
+// What a workspace has deleted, and its boards, as its database holds them. A
+// permanent delete wins until cleared. Every write here goes on top of what is
+// stored at that moment, for whichever workspace it names.
+import { deleteLabelRecordingIt, getSyncState, mergeWorkspaceState } from '#lib/db/idb.js';
 
 export const NOTE_IDB = 'scrapscache-idb-note-tombstones';
 export const LABEL_IDB = 'scrapscache-idb-label-tombstones';
@@ -13,7 +10,7 @@ export const BOARDS_IDB = 'scrapscache-idb-kanban-boards';
 
 export type Tombstones = Record<string, number>;
 
-function sanitize(value: unknown): Tombstones {
+export function sanitizeTombstones(value: unknown): Tombstones {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
 	return Object.fromEntries(
 		Object.entries(value as Record<string, unknown>).flatMap(([id, at]) =>
@@ -22,67 +19,57 @@ function sanitize(value: unknown): Tombstones {
 	);
 }
 
-let noteCache: Tombstones | null = null;
-let labelCache: Tombstones | null = null;
-let boardCache: Tombstones | null = null;
-
-export function resetTombstoneCaches(): void {
-	noteCache = null;
-	labelCache = null;
-	boardCache = null;
+/** The later delete of each record in either map. */
+export function newestTombstones(held: Tombstones, other: Tombstones): Tombstones {
+	const merged = { ...held };
+	for (const [id, deletedAt] of Object.entries(other)) {
+		if (deletedAt > (merged[id] || 0)) merged[id] = deletedAt;
+	}
+	return merged;
 }
 
-export function readTombstones(): Tombstones {
-	return { ...(noteCache ?? {}) };
-}
-
-export function readLabelTombstones(): Tombstones {
-	return { ...(labelCache ?? {}) };
-}
-
-export function readBoardTombstones(): Tombstones {
-	return { ...(boardCache ?? {}) };
-}
-
-export async function writeTombstones(pid: string, tombstones: Tombstones): Promise<void> {
-	noteCache = sanitize(tombstones);
-	await setSyncState(pid, NOTE_IDB, noteCache);
-}
-
-export async function writeLabelTombstones(
+/**
+ * Record note deletes, with their upload markers, on top of the ones stored at that
+ * moment: a delete a sync saved meanwhile is kept. Returns all of them.
+ */
+export async function addTombstones(
 	pid: string,
-	tombstones: Tombstones,
+	added: Tombstones,
 	syncOutboxKeys: Iterable<string> = []
-): Promise<void> {
-	labelCache = sanitize(tombstones);
-	await writeSyncStateWithOutbox(pid, [[LABEL_IDB, labelCache]], syncOutboxKeys);
+): Promise<Tombstones> {
+	const state = await mergeWorkspaceState(pid, [NOTE_IDB], (current) => ({
+		value: { [NOTE_IDB]: newestTombstones(sanitizeTombstones(current[NOTE_IDB]), added) },
+		outboxKeys: syncOutboxKeys
+	}));
+	return state[NOTE_IDB];
 }
 
+/** Delete a label and record it; returns every label delete stored. */
 export async function deleteLabelWithTombstone(
 	pid: string,
 	id: string,
-	tombstones: Tombstones,
+	deletedAt: number,
 	syncOutboxKeys: Iterable<string> = []
-): Promise<void> {
-	const next = sanitize(tombstones);
-	await deleteLabelWithSyncState(pid, id, [[LABEL_IDB, next]], syncOutboxKeys);
-	labelCache = next;
+): Promise<Tombstones> {
+	return sanitizeTombstones(
+		await deleteLabelRecordingIt(pid, id, LABEL_IDB, deletedAt, syncOutboxKeys)
+	);
 }
 
-export async function hydrateTombstones(pid: string): Promise<{
-	notes: Tombstones;
-	labels: Tombstones;
-	boards: Tombstones;
-}> {
-	const [idbNotes, idbLabels, idbBoards] = await Promise.all([
+type WorkspaceTombstones = { notes: Tombstones; labels: Tombstones; boards: Tombstones };
+
+/** What a workspace has deleted, as its database holds it. */
+export async function readStoredTombstones(pid: string): Promise<WorkspaceTombstones> {
+	const [notes, labels, boards] = await Promise.all([
 		getSyncState<unknown>(pid, NOTE_IDB),
 		getSyncState<unknown>(pid, LABEL_IDB),
 		getSyncState<unknown>(pid, BOARD_IDB)
 	]);
-	noteCache = sanitize(idbNotes);
-	labelCache = sanitize(idbLabels);
-	boardCache = sanitize(idbBoards);
-	return { notes: { ...noteCache }, labels: { ...labelCache }, boards: { ...boardCache } };
+	return {
+		notes: sanitizeTombstones(notes),
+		labels: sanitizeTombstones(labels),
+		boards: sanitizeTombstones(boards)
+	};
 }
 
 /**
@@ -98,26 +85,25 @@ export async function loadBoardsFromDevice<T>(pid: string, fallback: T): Promise
 	return stored ?? fallback;
 }
 
-export async function saveBoardsToDevice<T>(pid: string, boards: T): Promise<void> {
-	// `$state` board proxies throw DataCloneError in IndexedDB; JSON is already how
-	// localStorage snapshots them.
-	await setSyncState(pid, BOARDS_IDB, JSON.parse(JSON.stringify(boards ?? [])));
-}
-
-/** Persist boards, tombstones, and optional upload markers in one transaction. */
-export async function writeKanbanState(
+/**
+ * Save a workspace's boards and board deletes with their upload markers in one
+ * transaction. `merge` makes them from what is stored at that moment, so boards a
+ * sync saved meanwhile are kept.
+ */
+export async function writeKanbanState<T>(
 	pid: string,
-	boards: unknown,
+	boards: T[],
 	boardTombstones: Tombstones,
-	syncOutboxKeys: Iterable<string> = []
+	syncOutboxKeys: Iterable<string>,
+	merge: (stored: unknown, mine: T[], deleted: Tombstones) => T[]
 ): Promise<void> {
-	boardCache = sanitize(boardTombstones);
-	await writeSyncStateWithOutbox(
-		pid,
-		[
-			[BOARDS_IDB, JSON.parse(JSON.stringify(boards ?? []))],
-			[BOARD_IDB, boardCache]
-		],
-		syncOutboxKeys
-	);
+	const mine = sanitizeTombstones(boardTombstones);
+	const plain = JSON.parse(JSON.stringify(boards ?? [])) as T[];
+	await mergeWorkspaceState(pid, [BOARDS_IDB, BOARD_IDB], (current) => {
+		const deleted = newestTombstones(sanitizeTombstones(current[BOARD_IDB]), mine);
+		return {
+			value: { [BOARDS_IDB]: merge(current[BOARDS_IDB], plain, deleted), [BOARD_IDB]: deleted },
+			outboxKeys: syncOutboxKeys
+		};
+	});
 }

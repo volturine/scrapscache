@@ -104,12 +104,18 @@ function patchedReminder(note: Note, patch: NotePatch): Pick<Note, 'reminder' | 
 	return repeat ? { reminder, repeat } : { reminder };
 }
 
-/** Removed attachments are remembered; a changed attachment records when its content changed. */
+/**
+ * Removed attachments are remembered; a changed attachment records when its content
+ * changed. Both are stamped past what they come after, like the field itself: on a
+ * clock that is behind, a removal would otherwise lose to the copy it was made on,
+ * and a content edit to the content it replaced.
+ */
 function editAttachments(note: Note, next: NoteImage[], at: number): Partial<Note> {
 	const before = new Map((note.images ?? []).map((image) => [image.id, image]));
 	const kept = new Set(next.map((image) => image.id));
 	const imageTombstones = { ...note.imageTombstones };
-	for (const id of before.keys()) if (!kept.has(id)) imageTombstones[id] = at;
+	const removedAt = Math.max(at, fieldTime(note, 'images') + 1);
+	for (const id of before.keys()) if (!kept.has(id)) imageTombstones[id] = removedAt;
 	// An edit that still lists an attachment is putting it back, tombstone or not.
 	for (const id of kept) delete imageTombstones[id];
 	const images = next.map((image) => {
@@ -117,7 +123,7 @@ function editAttachments(note: Note, next: NoteImage[], at: number): Partial<Not
 		if (!previous) return { ...image };
 		// The stored copy may know more (a hash, a size) than an editor's draft of it.
 		return attachmentContentChanged(previous, image)
-			? { ...image, editedAt: at }
+			? { ...image, editedAt: Math.max(at, (previous.editedAt ?? previous.createdAt ?? 0) + 1) }
 			: { ...previous, ...(image.dataUrl ? { dataUrl: image.dataUrl } : {}) };
 	});
 	return {

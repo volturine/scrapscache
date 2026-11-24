@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSyncIdentity } from '#lib/syncPairing.js';
 import { syncClock } from '#lib/editContext.js';
 import { SyncStore } from './sync.svelte';
+import { syncParts } from '../../tests/openSync';
 import { SYNC_DELTA_PATH } from '#lib/model/protocol.js';
 
 type Reply = { status: number; body?: Record<string, unknown> };
@@ -39,15 +40,16 @@ type Transport = {
 		path: string,
 		payload: string,
 		uploadBytes: number,
-		indicate: boolean
+		indicate: boolean,
+		account: unknown
 	): Promise<{ success: boolean }>;
 	accessToken(): Promise<string>;
 };
 
 async function send(store: SyncStore) {
-	const internals = store as unknown as Transport;
+	const internals = syncParts(store).relay as unknown as Transport;
 	vi.spyOn(internals, 'accessToken').mockResolvedValue('token');
-	const pending = internals.sendSyncRequest(SYNC_DELTA_PATH, '{}', 2, false);
+	const pending = internals.sendSyncRequest(SYNC_DELTA_PATH, '{}', 2, false, store.account);
 	await vi.runAllTimersAsync();
 	return pending;
 }

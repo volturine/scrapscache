@@ -38,22 +38,28 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
 
 ## Client
 
-| Area           | Location                                                   | Responsibility                                                  |
-| -------------- | ---------------------------------------------------------- | --------------------------------------------------------------- |
-| Routes / pages | `src/routes/`                                              | Notes home, kanban, reminders, archive, trash, labels           |
-| Components     | `src/lib/components/`                                      | Editors, feed, sidebar, sync UI, backup dialogs                 |
-| Note model     | `src/lib/model/`                                           | Note types, edits, merge, body CRDT; shared with the MCP server |
-| Notes state    | `src/lib/stores/notes.svelte.ts`                           | CRUD, search, trash, labels                                     |
-| Sync state     | `src/lib/stores/sync.svelte.ts`                            | Pairing, auto-sync, cloud status                                |
-| Kanban         | `src/lib/stores/kanban.svelte.ts`, `src/lib/kanban.ts`     | Boards and columns                                              |
-| IndexedDB      | `src/lib/db/idb.ts`                                        | Persistence, outbox, replace/import; one database per workspace |
-| Workspaces     | `src/lib/profiles.ts`, `src/lib/stores/profiles.svelte.ts` | Sync-key keyring, workspace switching, dataset handover         |
-| Sync crypto    | `src/lib/syncPairing.ts`                                   | Identity, pairing PAKE, payload encrypt/decrypt                 |
-| Sync records   | `src/lib/syncRecords.ts`                                   | Envelope packing, tombstones                                    |
-| Backups        | `src/lib/backup.ts`, `backupCrypto.ts`                     | Export/import encrypted `.scraps-cache-backup`                  |
-| Images         | `src/lib/imageOptimize.ts`                                 | Resize, WebP, strip EXIF before store/sync                      |
-| App viewport   | `src/lib/appViewport.ts`                                   | Safe area + keyboard frame; overlay host                        |
-| Reminder wakes | `src/lib/server/wakeDispatch.ts`, `webPush.ts`             | Contentless Web Push ticks; SW finds the note in any workspace  |
+| Area           | Location                                                      | Responsibility                                                                                                                 |
+| -------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Routes / pages | `src/routes/`                                                 | Notes home, kanban, reminders, archive, trash, labels                                                                          |
+| Components     | `src/lib/components/`                                         | Editors, feed, sidebar, sync UI, backup dialogs                                                                                |
+| Note model     | `src/lib/model/`                                              | Note types, edits, merge, body CRDT; shared with the MCP server                                                                |
+| Notes state    | `src/lib/stores/notes.svelte.ts`                              | CRUD, search, trash, labels                                                                                                    |
+| Note saving    | `src/lib/stores/noteSaving.ts`                                | Journal, saves, retries and the fast-start copy of what a window changes                                                       |
+| Sync state     | `src/lib/stores/sync.svelte.ts`                               | Keyring, open workspace, sync status per workspace                                                                             |
+| Relay client   | `src/lib/relayClient.ts`                                      | Sign-ins and requests, per account                                                                                             |
+| Sync engine    | `src/lib/relaySync.ts`, `relaySyncRun.ts`, `workspaceSync.ts` | One sync of a workspace: its rounds, database read and save                                                                    |
+| Sync scheduler | `src/lib/stores/syncScheduler.ts`                             | When each workspace syncs; one lane per workspace                                                                              |
+| Rewrites       | `src/lib/stores/workspaceRewrites.svelte.ts`                  | Backup and Keep import, replacing the cloud copy                                                                               |
+| Device pairing | `src/lib/deviceLink.ts`                                       | Rendezvous and sealed key handover                                                                                             |
+| Kanban         | `src/lib/stores/kanban.svelte.ts`, `src/lib/kanban.ts`        | Boards and columns                                                                                                             |
+| IndexedDB      | `src/lib/db/` (`idb.ts` is what the app imports)              | Connections and write queues, notes and photos, the other records of a workspace, the upload queue; one database per workspace |
+| Workspaces     | `src/lib/profiles.ts`, `src/lib/stores/profiles.svelte.ts`    | Sync-key keyring, workspace switching, dataset handover                                                                        |
+| Sync crypto    | `src/lib/syncPairing.ts`                                      | Identity, pairing PAKE, payload encrypt/decrypt                                                                                |
+| Sync records   | `src/lib/syncRecords.ts`                                      | Envelope packing, tombstones                                                                                                   |
+| Backups        | `src/lib/backup.ts`, `backupCrypto.ts`                        | Export/import encrypted `.scraps-cache-backup`                                                                                 |
+| Images         | `src/lib/imageOptimize.ts`                                    | Resize, WebP, strip EXIF before store/sync                                                                                     |
+| App viewport   | `src/lib/appViewport.ts`                                      | Safe area + keyboard frame; overlay host                                                                                       |
+| Reminder wakes | `src/lib/server/wakeDispatch.ts`, `webPush.ts`                | Contentless Web Push ticks; SW finds the note in any workspace                                                                 |
 
 ### Local data model (conceptual)
 
@@ -83,8 +89,8 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
   sync, even in the active workspace. Nothing stays connected and nothing
   polls: the client sends immediately after a local write, and exchanges before
   showing a missed reminder and when the app starts, is shown again or comes
-  back online. There the open workspace catches up, and another workspace sends
-  only what it has queued. A dismissal on one device therefore clears the other
+  back online. Every synced workspace catches up there, whichever one a window
+  shows. A dismissal on one device therefore clears the other
   device's alert the next time that device is looked at, not instantly.
   Failures retry with backoff, except a full account, which waits for the next
   change. System notifications
@@ -100,6 +106,17 @@ The same SvelteKit app serves the UI and the sync API when self-hosted.
   merge with persisted entries and tombstones in one transaction across tabs.
 - **Sync outbox** — changed record keys scheduled for upload (not a full
   mirror of every field into `localStorage`).
+- **Unsaved changes** — every change to a note, label, board or library item is
+  written to a journal in `localStorage` in one synchronous step before its save
+  to IndexedDB starts, and taken out once that save has landed
+  (`src/lib/pendingJournal.ts`). A start replays what is left through the ordinary
+  merging save, so a change outlives the app being stopped before its save
+  finished, deletes included. A save that fails is tried again, later each time.
+  Windows share the journal and `localStorage` has no transactions across them,
+  so each change is an entry under a key of its own, written once and taken out
+  by that key: no window writes over what another journaled.
+  The journal comes first when `localStorage` is short of room: the fast-start
+  copy of the notes, which only makes a start quicker, is dropped for it.
 - **Attachments** — full bytes loaded when needed; grid/list may keep thumbnails
   only in memory. A picked photo is re-encoded on the way in; a picked file that
   is not (a video, a document) is refused over 8 MB, since the relay takes 16 MB of
@@ -143,7 +160,8 @@ A small device database, `scrapscache-device`, lists the workspaces by id and
 one-way link tag, never by name or sync key, and caches link previews. The
 service worker reads it to find which workspace a reminder push belongs to.
 
-Reminders are equal across workspaces. While the app is open it watches every
+Reminders are equal across workspaces. Receipts of handled reminders are
+exchanged for every synced workspace at the same moments, whichever one is open. While the app is open it watches every
 workspace, not only the open one: a due reminder from another workspace alerts
 with that workspace's name, and opening it switches there. Each workspace keeps
 its own fired ledger and synced history. With the app closed, the relay pushes
@@ -152,12 +170,119 @@ service worker finds the note in that workspace, shows its title, and skips a
 reminder any device already handled. Private workspaces get the same alerts
 while the app is open; only closed-app push needs the relay.
 
+Everything written on a device goes to that workspace's database straight away,
+together with a mark in its upload queue. Sync is then one thing only: sending
+what a database holds to the relay and saving what the relay holds into it, in the
+background. Which workspace a window shows has no part in it, so switching
+workspace neither waits for a sync nor disturbs one. The window is a view: it
+writes to the database, and shows what a sync saved once it is saved.
+
+When a workspace syncs is decided in one place, the sync scheduler
+(`src/lib/stores/syncScheduler.ts`). The stores only say what happened ("this
+workspace changed", "sync now", "this rewrites the workspace"); the scheduler
+applies the same rules to every workspace on the device:
+
+1. Every workspace syncs from its own database (`src/lib/workspaceSync.ts`),
+   whether or not a window has it open.
+2. Each workspace has one lane. A lane is asked to sync, runs rounds until it has
+   settled with the relay, and gives everyone who asked meanwhile the same answer.
+   One round of a workspace runs at a time, under a lock of its own shared by
+   every window. Workspaces do not wait for each other, and none interrupts
+   another: a long upload in one never holds up, or is restarted by, another.
+3. Only something that rewrites a workspace interrupts its sync: an import
+   landing, replacing the cloud copy, unlinking, deleting. The interrupted round
+   drops its request and its lane goes again afterwards. What it had not
+   committed is still queued.
+4. A sync that could not reach the relay is tried again by itself, from 5 seconds
+   and later each time up to 5 minutes, for as long as the workspace has
+   something to send; coming back online or to the foreground tries at once. A
+   sync the relay refused (a full account, a client it no longer accepts) waits
+   until something changes.
+5. Every workspace catches up with the relay at the same moments, shown or not:
+   when the app starts, when it is shown again, when the connection comes back.
+   One that caught up within the last 30 seconds and has nothing new queued is
+   left alone.
+6. The cloud icon turns while a round runs, whichever workspace it is for.
+
+How a workspace's sync went (its last error, progress, storage used, whether its
+key was retired) is recorded for that workspace, under the key it was learned
+with, whichever workspace a window shows. The sync indicator and Sync settings
+read the open workspace's, so another workspace's trouble is shown once it is
+opened. Each account has one sign-in, good for every window and workspace.
+
+So what other devices changed in a workspace is saved into its database without
+anyone opening it, and opening it shows that at once. A workspace left by a
+switch, or by the app closing, still sends what was written in it, and a sync
+that was under way when the window moved on simply finishes. Between those
+moments only the workspace a window shows hears of changes as they happen: the
+live connection to the relay is one per window, for the account it shows.
+
+A sync and any number of windows write to the same database at the same time, so
+every save merges with what is stored at that moment and none goes over another:
+the database only moves forward. An edited note is saved merged with the stored
+copy (`saveNote` in `src/lib/db/idb.ts`), and so is a note a sync pulled; a label
+keeps the later of two renames; deletes, boards and the canvas library go on top
+of the ones stored. Each save reads the stored copy and writes the result, with
+its attachment bytes and its upload marks, in one transaction, so no other
+window's save can land in between. Whichever of two saves lands last, the result
+is the same. An
+edit never undoes what a sync brought, and a sync never undoes an edit. A window
+that shows a workspace takes in what something else saved one way, writing
+nothing: after a sync that ran in it, what that sync saved is merged into what
+it holds; after a sync in another window, what the database holds is. A rewrite
+in another window takes things away as well, so after one the workspace is
+loaded again.
+
+Two things do not merge, and each lands whole in one transaction as a rewrite of
+the workspace (`rewriteWorkspace`): an import, and replacing the cloud copy.
+
+Pairing needs no operation of its own. A key received from another device gets a
+workspace, and that workspace syncs like any other before a window opens it.
+Nothing was written in it on this device, so the account's copy is all it ends up
+with, in its database by the time it is shown.
+
+Replacing the cloud copy ("force push") has the shape an import has. The relay's
+copy is read first, with nothing held and nothing recorded on this device
+(`relaySync.read`). Then one transaction stamps this device's copy past the one that
+was read, records the sync state of that copy, and queues every record; an
+ordinary sync sends whatever differs. It lands over what it read, so it refuses to
+land when anything was saved in the workspace since, and is planned again. A tab
+closed at any point leaves the workspace either as it was or ready to upload.
+
+What changes the workspaces themselves (switching, creating, unlinking, deleting,
+an import landing) runs one at a time under a separate lock that only ever covers
+work on this device. Whatever asks the relay first, registering a key or deleting
+the cloud copy, does so before that lock is taken.
+
+A relay that goes silent is not waited for either. On a connection that is up in
+name only a request neither arrives nor fails, so each relay request a sync makes
+is given up after a minute in which no byte moved (`RELAY_SILENCE_MS` in
+`src/lib/syncRetry.ts`); a request that is slow but moving is left to finish. That
+is the only time limit on a sync request: a photo on a weak signal takes as long
+as it takes, since given up at a fixed time it would start again from nothing.
+
+Sync stays in the background by design: working in a synced workspace should be
+as free as working in one that only lives on this device. So a server that could
+not be reached is not shown as an error. The notes are saved here and the sync is
+tried again by itself; the cloud icon stays calm and Sync settings reads "Saved on
+this device · Waiting to sync". The banner above the feed is kept for what needs
+the user: a sync the server turned down, a full account, a retired key.
+
+A backup or Google Keep import is read and prepared without holding anything,
+then lands in one IndexedDB transaction (`rewriteWorkspace` in
+`src/lib/db/idb.ts`): notes, attachments, labels, deletes, boards, the canvas
+library and the upload queue are written together or not at all. It lands in the
+workspace it was started for, whichever one is open by then, so a tab closed
+part-way leaves that workspace exactly as it was.
+
 Notifications are one switch for the whole app (the browser's permission), but
 each synced workspace gets a push subscription of its own: a service worker
 registration under `/push/<workspace id>/`, with its own push address and a
 device id derived per account from a secret that never leaves the device. The
-relay therefore cannot tell that two accounts belong to the same browser; the
-push provider still can. Removing or unlinking a workspace removes its
+name a window gives the relay so its own changes are not signalled back to it
+(`x-sync-client-id`) is a different random one for each account too. The relay
+therefore cannot tell from any identifier that two accounts belong to the same
+browser; the network address still shows it, and the push provider can tell. Removing or unlinking a workspace removes its
 subscription only.
 
 The keyring itself — id, display name, and sync key per workspace — is held in

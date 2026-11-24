@@ -377,7 +377,6 @@
 						onApply={(r, repeat) => {
 							notesStore.setReminder(note.id, r, repeat);
 							reminderStore.sync(notesStore.notes);
-							void notesStore.flushSync();
 							reminderDialogOpen = false;
 						}}
 						onClose={() => {

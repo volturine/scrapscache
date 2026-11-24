@@ -143,6 +143,16 @@ const positiveTime = (value: unknown) =>
 const writerId = (value: unknown) => (typeof value === 'string' && value ? value : undefined);
 
 /** The one validating copy of a board, for storage, sync, and backups alike. */
+/** The boards in a stored or received list that are whole, each in its current shape. */
+export function normalizeBoards(value: unknown): KanbanBoard[] {
+	return Array.isArray(value)
+		? value.flatMap((board): KanbanBoard[] => {
+				const normalized = normalizeBoard(board);
+				return normalized ? [normalized] : [];
+			})
+		: [];
+}
+
 export function normalizeBoard(value: unknown): KanbanBoard | null {
 	if (!value || typeof value !== 'object') return null;
 	const board = value as StoredBoard;
@@ -456,9 +466,19 @@ export function mergeKanbanBoards(
 		const current = byId.get(board.id);
 		byId.set(board.id, current ? mergeTwoBoards(current, board) : board);
 	}
-	return [...byId.values()].filter(
-		(board) => board.updatedAt > (Number(tombstones[board.id]) || 0)
-	);
+	return [...byId.values()].filter((board) => boardOutlives(board, tombstones));
+}
+
+/**
+ * True when a board is alive given the deletes known of: it was never deleted, or
+ * it was put back since, which stamps it past its delete. Deciding by the id alone
+ * would let a delete that was undone take the board away again on another device.
+ */
+export function boardOutlives(
+	board: Pick<KanbanBoard, 'id' | 'updatedAt'>,
+	tombstones: Record<string, number>
+): boolean {
+	return board.updatedAt > (Number(tombstones[board.id]) || 0);
 }
 
 /**

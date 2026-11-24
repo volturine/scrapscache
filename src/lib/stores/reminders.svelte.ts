@@ -1,10 +1,6 @@
 import { tickAppClock } from '#lib/appClock.svelte.js';
-import {
-	addFiredReminderKeys,
-	claimFiredReminderKey,
-	getFiredReminderKeys,
-	workspaceKey
-} from '#lib/db/idb.js';
+import { addFiredReminderKeys, claimFiredReminderKey, getFiredReminderKeys } from '#lib/db/idb.js';
+import { workspaceKey } from '#lib/localMirror.js';
 import {
 	isReminderTime,
 	reminderDueAt,

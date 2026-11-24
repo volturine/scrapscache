@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { clearAllNotes, getAllNotesMetadata, putNote } from '#lib/db/idb.js';
+import { getAllNotesMetadata, putNote } from '#lib/db/idb.js';
 import { applyNoteEdit, BodyAuthor, type EditContext } from '#lib/model/index.js';
 import { noteForLocalStorage, NOTES_MIRROR_KEY } from '#lib/noteStorage.js';
 import type { Note } from '#lib/types.js';
 import { notesStore } from './notes.svelte.js';
 import { syncStore } from './sync.svelte.js';
-import { seedTestKeyring, TEST_WORKSPACE } from '../../tests/workspace';
+import { emptyWorkspace, seedTestKeyring, TEST_WORKSPACE } from '../../tests/workspace';
 
 const MIRROR = `${NOTES_MIRROR_KEY}:${TEST_WORKSPACE}`;
 
@@ -44,7 +44,7 @@ beforeEach(async () => {
 	localStorage.clear();
 	seedTestKeyring();
 	syncStore.activateLocalWorkspace(TEST_WORKSPACE);
-	await clearAllNotes(TEST_WORKSPACE);
+	await emptyWorkspace(TEST_WORKSPACE);
 	notesStore.notes = [];
 	notesStore.labels = [];
 	notesStore.loaded = false;

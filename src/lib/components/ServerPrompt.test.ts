@@ -1,21 +1,26 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SERVER_ORIGIN, serverSetting } from '#lib/serverOrigin.svelte.js';
-import { syncStore } from '#lib/stores/sync.svelte.js';
 import ServerPrompt from './ServerPrompt.svelte';
+
+const sync = vi.hoisted(() => ({ serverChanged: vi.fn() }));
+vi.mock('#lib/stores/sync.svelte.js', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/stores/sync.svelte.js')>()),
+	serverChanged: sync.serverChanged
+}));
 
 const CHOSEN_KEY = 'scrapscache-server-chosen';
 
 describe('ServerPrompt', () => {
 	let onClose: ReturnType<typeof vi.fn<() => void>>;
-	let serverChanged: ReturnType<typeof vi.spyOn>;
+	let serverChanged: ReturnType<typeof vi.fn>;
 	let fetchMock: ReturnType<typeof vi.fn>;
 
 	beforeEach(() => {
 		serverSetting.set(DEFAULT_SERVER_ORIGIN);
 		localStorage.clear();
 		onClose = vi.fn<() => void>();
-		serverChanged = vi.spyOn(syncStore, 'serverChanged').mockImplementation(() => {});
+		serverChanged = sync.serverChanged.mockImplementation(() => {});
 		fetchMock = vi.fn();
 		vi.stubGlobal('fetch', fetchMock);
 		vi.useFakeTimers();

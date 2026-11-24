@@ -6,6 +6,7 @@
 import { sha256 } from '@noble/hashes/sha2.js';
 import { relayReminderWakes, type ReminderWake } from '#lib/model/index.js';
 import type { ReminderNote } from '#lib/reminderNotify.js';
+import { relay } from '#lib/relayClient.js';
 import { syncStore } from '#lib/stores/sync.svelte.js';
 import type { StoredProfile } from '#lib/profiles.js';
 import { identityFromSyncKey } from '#lib/syncPairing.js';
@@ -171,7 +172,7 @@ export async function registerReminderDevice(workspace: Workspace): Promise<bool
 	if (pending) return pending;
 	const promise = (async () => {
 		try {
-			const response = await syncStore.authorizedFetch(
+			const response = await relay.authorizedFetch(
 				'/api/sync/push/wakes',
 				{
 					method: 'POST',
@@ -244,14 +245,18 @@ export async function publishReminderWakes(notes: ReminderNote[]): Promise<Remin
 	if (publishFlight?.key === key) return publishFlight.promise;
 	const promise = (async () => {
 		try {
-			const response = await syncStore.authorizedFetch('/api/sync/push/wakes', {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					revision,
-					wakes
-				})
-			});
+			const response = await relay.authorizedFetch(
+				'/api/sync/push/wakes',
+				{
+					method: 'PUT',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						revision,
+						wakes
+					})
+				},
+				account
+			);
 			if (!response.ok) return null;
 			publishedWakes = { accountId: account.accountId, revision, signature };
 			return wakes;
@@ -272,7 +277,7 @@ export async function fetchReminderWakes(
 	if (!workspace.syncKey) return null;
 	const account = identityFromSyncKey(workspace.syncKey);
 	try {
-		const response = await syncStore.authorizedFetch(
+		const response = await relay.authorizedFetch(
 			'/api/sync/push/wakes',
 			{ method: 'GET' },
 			account
@@ -317,7 +322,7 @@ export async function unregisterReminderDevice(workspace: Workspace): Promise<vo
 	if (publishedWakes?.accountId === account.accountId) publishedWakes = null;
 	let response: Response;
 	try {
-		response = await syncStore.authorizedFetch(
+		response = await relay.authorizedFetch(
 			'/api/sync/push/wakes',
 			{
 				method: 'DELETE',

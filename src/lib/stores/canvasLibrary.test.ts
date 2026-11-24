@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getSyncOutboxKeys } from '#lib/db/idb.js';
+import { readCanvasLibrary } from '#lib/canvasLibrary.js';
 import { CanvasLibraryStore } from './canvasLibrary';
-import { syncStore } from './sync.svelte';
+import { syncScheduler } from './syncScheduler';
 
 function item(id: string, name?: string) {
 	return {
@@ -14,7 +15,7 @@ function item(id: string, name?: string) {
 }
 
 beforeEach(() => {
-	vi.spyOn(syncStore, 'requestAutoSync').mockImplementation(() => undefined);
+	vi.spyOn(syncScheduler, 'changed').mockImplementation(() => undefined);
 });
 
 describe('workspace canvas library', () => {
@@ -35,7 +36,7 @@ describe('workspace canvas library', () => {
 		const reloaded = new CanvasLibraryStore();
 		await reloaded.hydrate('library-a');
 		expect(reloaded.items()).toEqual([item('star')]);
-		expect(reloaded.tombstonesForSync()).toHaveProperty('box');
+		expect((await readCanvasLibrary('library-a')).tombstones).toHaveProperty('box');
 	});
 
 	it('keeps an item another device added while the editor was open', async () => {
@@ -54,7 +55,8 @@ describe('workspace canvas library', () => {
 				.map((candidate) => candidate.id)
 				.sort()
 		).toEqual(['mine', 'theirs']);
-		expect(store.tombstonesForSync()).toEqual({});
+		await store.waitForPendingWrites();
+		expect((await readCanvasLibrary('library-b')).tombstones).toEqual({});
 	});
 
 	it('tells an open editor about changes that came from another device', async () => {

@@ -6,8 +6,10 @@ vi.mock('#lib/imageThumb.js', async (importOriginal) => {
 });
 
 import * as idb from '#lib/db/idb.js';
+import { makeImageThumbDataUrl } from '#lib/imageThumb.js';
 import type { NoteImage } from '#lib/types.js';
 import { notesStore } from './notes.svelte';
+import { syncScheduler } from './syncScheduler';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 
 function photo(id: string): NoteImage {
@@ -34,20 +36,10 @@ describe('photo bytes across a failed save', () => {
 		notesStore.labels = [];
 	});
 
-	afterEach(() => {
+	afterEach(async () => {
 		vi.restoreAllMocks();
-		const internals = notesStore as unknown as {
-			dirty: boolean;
-			syncPushTimer: ReturnType<typeof setTimeout> | null;
-			noteRetryTimers: Map<string, ReturnType<typeof setTimeout>>;
-			noteRetryAttempts: Map<string, number>;
-		};
-		if (internals.syncPushTimer) clearTimeout(internals.syncPushTimer);
-		internals.syncPushTimer = null;
-		internals.dirty = false;
-		for (const timer of internals.noteRetryTimers.values()) clearTimeout(timer);
-		internals.noteRetryTimers.clear();
-		internals.noteRetryAttempts.clear();
+		await syncScheduler.reset();
+		notesStore.saving.forgetNotes();
 		notesStore.notes = [];
 		notesStore.lastPersistError = null;
 	});
@@ -56,7 +48,7 @@ describe('photo bytes across a failed save', () => {
 		vi.spyOn(console, 'error').mockImplementation(() => undefined);
 		const earlierSave = deferred<void>();
 		const putNote = vi
-			.spyOn(idb, 'putNote')
+			.spyOn(idb, 'saveNote')
 			// The text-only save, still queued when the photo is added.
 			.mockImplementationOnce(() => earlierSave.promise)
 			// The photo's own save: refused, as a full disk refuses it.
@@ -92,5 +84,37 @@ describe('photo bytes across a failed save', () => {
 			inMemory as NonNullable<typeof inMemory>
 		);
 		expect(hydrated.images?.[0]?.dataUrl).toBe(photo('shot').dataUrl);
+	});
+
+	it('lets go of its hold on the photo saves when the note left the list before its save landed', async () => {
+		const letGo = vi.fn();
+		vi.spyOn(idb, 'holdAttachmentWrites').mockReturnValue(letGo);
+		const save = deferred<void>();
+		vi.spyOn(idb, 'saveNote').mockImplementation(() => save.promise as never);
+		notesStore.createNote({ title: 'Photo', images: [photo('shot')] });
+		expect(idb.holdAttachmentWrites).toHaveBeenCalledOnce();
+
+		// Deleted, or the window moved to another workspace, while the save was under way.
+		notesStore.notes = [];
+		save.resolve();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		// Held on, every sync of the workspace would wait for it for good.
+		expect(letGo).toHaveBeenCalled();
+	});
+
+	it('writes over no other note when the list changed while the saved photo was shrunk', async () => {
+		const shrunk = deferred<string | null>();
+		vi.mocked(makeImageThumbDataUrl).mockImplementationOnce(() => shrunk.promise);
+		const withPhoto = notesStore.createNote({ title: 'Photo', images: [photo('shot')] });
+		await vi.waitFor(() => expect(makeImageThumbDataUrl).toHaveBeenCalled());
+
+		const newer = notesStore.createNote({ title: 'Newer' });
+		shrunk.resolve('data:image/jpeg;base64,/9j/2Q==');
+		await new Promise((resolve) => setTimeout(resolve, 10));
+
+		expect(notesStore.notes.find((note) => note.id === newer.id)?.title).toBe('Newer');
+		expect(notesStore.notes.find((note) => note.id === withPhoto.id)?.title).toBe('Photo');
+		expect(notesStore.notes).toHaveLength(2);
 	});
 });

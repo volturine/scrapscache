@@ -33,6 +33,7 @@ import * as idb from '#lib/db/idb.js';
 import { hydrateHistoryNote, loadNoteHistory } from '#lib/historyClient.js';
 import { SyncStore, syncStore } from './sync.svelte';
 import { notesStore } from './notes.svelte';
+import { syncScheduler } from './syncScheduler';
 import {
 	splitNoteForSync,
 	syncSnapshot,
@@ -45,6 +46,10 @@ import { photoMarker } from '#lib/photoMarker.js';
 import type { Note, NoteImage } from '#lib/types.js';
 import { sha256 } from '#lib/syncHash.js';
 import { seedTestKeyring, TEST_WORKSPACE } from '../../tests/workspace';
+import { syncOpen, syncParts } from '../../tests/openSync';
+import { relay as appRelay } from '#lib/relayClient.js';
+import { linkTestWorkspace, unlinkTestWorkspace } from '../../tests/syncing';
+import * as settling from '#lib/attachmentSettling.js';
 
 const OTHER_DEVICE = 'device-a';
 
@@ -109,7 +114,9 @@ function wire(
 	relay: RelayStore,
 	options: { limit?: number; afterUpload?: () => Promise<void>; cursors?: number[] } = {}
 ): void {
-	vi.spyOn(client as unknown as { sendSyncRequest: Send }, 'sendSyncRequest').mockImplementation(
+	// The app's own store syncs through the app's relay client; any other through its own.
+	const sender = client === syncStore ? appRelay : syncParts(client).relay;
+	vi.spyOn(sender as unknown as { sendSyncRequest: Send }, 'sendSyncRequest').mockImplementation(
 		async (_path, payload) => {
 			const body = JSON.parse(payload) as {
 				cursor: number;
@@ -152,10 +159,9 @@ async function otherDevice(
 			]);
 		},
 		async sync() {
-			const result = await client.sync(
+			const result = await syncOpen(
+				client,
 				syncSnapshot({ notes: device.notes }),
-				false,
-				false,
 				async (snapshot: SyncSnapshot) => {
 					for (const item of snapshot.notes) await putNote(OTHER_DEVICE, item);
 					device.notes = snapshot.notes;
@@ -170,7 +176,7 @@ async function otherDevice(
 
 /** This device is the app's own stores: the phone in these cases. */
 async function phoneSync(): Promise<void> {
-	expect(await notesStore.syncWithCloudManual()).toBe(true);
+	expect(await syncScheduler.request(syncStore.activeId)).toBe(true);
 }
 
 /** What the phone holds on disk for a note, attachments in full; null when it has no such note. */
@@ -332,12 +338,12 @@ describe('attachments across devices', () => {
 		relay = new RelayStore(testDb());
 		identity = createSyncIdentity();
 		await relay.createAccount(identity.accountId, 'credential');
-		syncStore.account = identity;
+		linkTestWorkspace(identity.syncKey);
 		phoneCursors = [];
 		wire(syncStore, relay, { cursors: phoneCursors });
 		askedByName = 0;
 		// The history route, answered by the same relay.
-		vi.spyOn(syncStore, 'authorizedFetch').mockImplementation(async (input) => {
+		vi.spyOn(appRelay, 'authorizedFetch').mockImplementation(async (input) => {
 			const url = new URL(String(input), 'https://relay.test');
 			const slot = url.searchParams.get('slot');
 			const at = url.searchParams.get('at');
@@ -351,26 +357,19 @@ describe('attachments across devices', () => {
 				: Response.json({ error: 'Envelope not found' }, { status: 404 });
 		});
 		notesStore.notes = [];
+		notesStore.loaded = true;
 		notesStore.labels = [];
 		notesStore.deletedNoteIds = {};
 		notesStore.lastPersistError = null;
 	});
 
-	afterEach(() => {
-		const internals = notesStore as unknown as {
-			dirty: boolean;
-			syncPushTimer: ReturnType<typeof setTimeout> | null;
-			attachmentHydrationFailures: Set<string>;
-		};
-		if (internals.syncPushTimer) clearTimeout(internals.syncPushTimer);
-		internals.syncPushTimer = null;
-		internals.dirty = false;
-		internals.attachmentHydrationFailures.clear();
+	afterEach(async () => {
+		await syncScheduler.reset();
 		vi.restoreAllMocks();
 		vi.unstubAllGlobals();
-		syncStore.account = null;
-		syncStore.lastError = null;
+		unlinkTestWorkspace();
 		notesStore.notes = [];
+		notesStore.loaded = true;
 		cleanupTestDbs();
 	});
 
@@ -481,6 +480,109 @@ describe('attachments across devices', () => {
 			expect(photoBytes(other.notes.find((item) => item.id === 'album') ?? null)).toEqual(all);
 		});
 
+		// A sync saves what it pulled into the database and the window shows it a
+		// moment later. An edit made in between was made on the note as it was before
+		// the sync, and is saved whole: it must not undo what the sync just saved.
+		it('keeps what a sync pulled when the note is edited before the window shows it', async () => {
+			const other = await otherDevice(relay, identity);
+			await other.save(note('trip', []));
+			await other.sync();
+			await phoneSync();
+			expect(notesStore.notes.map((item) => item.title)).toEqual(['trip']);
+			await other.save({
+				...note('trip', [], 9),
+				title: 'Renamed on the other device',
+				fieldTimes: { ...note('trip', []).fieldTimes, title: 9 }
+			});
+			await other.sync();
+			const mergeLabels = idb.mergeStoredLabels;
+			let editedBetween = false;
+			vi.spyOn(idb, 'mergeStoredLabels').mockImplementation(async (...args) => {
+				// The renamed note is in the database; the window still shows the old one.
+				if (!editedBetween && (await phoneStored('trip'))?.title !== 'trip') {
+					editedBetween = true;
+					expect(notesStore.notes.map((item) => item.title)).toEqual(['trip']);
+					notesStore.togglePin('trip');
+				}
+				return mergeLabels(...args);
+			});
+
+			await phoneSync();
+			await idb.waitForDeviceWrites(TEST_WORKSPACE);
+
+			expect(editedBetween).toBe(true);
+			const shown = notesStore.notes.find((item) => item.id === 'trip');
+			expect([shown?.title, shown?.pinned]).toEqual(['Renamed on the other device', true]);
+			const stored = await phoneStored('trip');
+			expect([stored?.title, stored?.pinned]).toEqual(['Renamed on the other device', true]);
+
+			// The pin is sent with the next sync, and the rename is still on the relay.
+			await phoneSync();
+			await other.sync();
+			const theirs = other.notes.find((item) => item.id === 'trip');
+			expect([theirs?.title, theirs?.pinned]).toEqual(['Renamed on the other device', true]);
+		});
+
+		// A note deleted for good while a sync waits on the relay stays deleted: the
+		// sync must not save its own older copy back, and the delete reaches the relay.
+		it('does not bring back a note deleted for good while a sync was under way', async () => {
+			const other = await otherDevice(relay, identity);
+			await other.save(note('trip', []));
+			await other.sync();
+			await phoneSync();
+			await other.save({
+				...note('trip', [], 9),
+				title: 'Renamed on the other device',
+				fieldTimes: { ...note('trip', []).fieldTimes, title: 9 }
+			});
+			await other.sync();
+			const settle = settling.settleAttachments;
+			let deletedMeanwhile = false;
+			vi.spyOn(settling, 'settleAttachments').mockImplementation(async (...args) => {
+				// The sync has read the workspace and is still asking the relay.
+				if (!deletedMeanwhile) {
+					deletedMeanwhile = true;
+					await notesStore.deleteNoteForever('trip');
+				}
+				return settle(...args);
+			});
+
+			await phoneSync();
+			await idb.waitForDeviceWrites(TEST_WORKSPACE);
+
+			expect(deletedMeanwhile).toBe(true);
+			expect(await phoneStored('trip')).toBeNull();
+			expect(notesStore.notes).toEqual([]);
+
+			await phoneSync();
+			await other.sync();
+			expect(other.notes.map((item) => item.id)).not.toContain('trip');
+			expect((await relayRecords()).map((record) => record.kind)).toContain('note-tombstone');
+		});
+
+		// What a sync saves and then shows is the same thing: showing it must not
+		// queue anything, or every sync would be followed by another for ever.
+		it('queues nothing again once a workspace with photos has settled', async () => {
+			const shot = await photo('shot', bytes('the photo'));
+			const other = await otherDevice(relay, identity);
+			await other.save(note('trip', [shot]));
+			await other.sync();
+			const mine = notesStore.createNote({ title: 'Written on the phone' });
+			await notesStore.flushNote(mine.id);
+			await phoneSync();
+			await phoneSync();
+			await idb.waitForDeviceWrites(TEST_WORKSPACE);
+
+			expect(await idb.getSyncOutboxKeys(TEST_WORKSPACE)).toEqual([]);
+			const before = phoneCursors.length;
+			await phoneSync();
+			await idb.waitForDeviceWrites(TEST_WORKSPACE);
+
+			expect(await idb.getSyncOutboxKeys(TEST_WORKSPACE)).toEqual([]);
+			// One request to ask what is new, and nothing to send after it.
+			expect(phoneCursors.length - before).toBe(1);
+		});
+
 		it('sends a photo taken on the phone to the other device', async () => {
 			const shot = await photo('shot', bytes('taken here'));
 			const created = notesStore.createNote({ title: 'From the phone' });
@@ -574,14 +676,56 @@ describe('attachments across devices', () => {
 			notesStore.togglePin('trip');
 			await notesStore.flushNote('trip');
 
-			vi.mocked(syncStore.authorizedFetch).mockRejectedValueOnce(new Error('offline'));
-			expect(await notesStore.syncWithCloudManual()).toBe(false);
+			vi.mocked(appRelay.authorizedFetch).mockRejectedValueOnce(new Error('offline'));
+			expect(await syncScheduler.request(syncStore.activeId)).toBe(false);
 			expect((await onTheRelay('trip')).pinned).toBe(false);
 
 			// The next sync asks again and goes through.
 			await phoneSync();
 			expect(photoBytes(await phoneStored('trip'))).toEqual({ shot: shot.dataUrl });
 			expect((await onTheRelay('trip')).pinned).toBe(true);
+		});
+
+		// A rewrite of the workspace takes its sync lock from a sync that is still
+		// asking, however long the relay would take to answer.
+		it('gives up the request for a rewrite, sends nothing, and goes again after it', async () => {
+			const shot = await photo('shot', bytes('the photo'));
+			const other = await otherDevice(relay, identity);
+			await other.save(note('trip', [shot]));
+			await other.sync();
+			await phoneSync();
+			await phoneBytesStore((store) => store.delete('trip::shot'));
+			notesStore.togglePin('trip');
+			await notesStore.flushNote('trip');
+
+			let unanswered: AbortSignal | null | undefined;
+			vi.mocked(appRelay.authorizedFetch).mockImplementationOnce((_input, init) => {
+				unanswered = init?.signal;
+				return new Promise<Response>((_resolve, reject) => {
+					init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+				});
+			});
+			const flight = syncScheduler.request(syncStore.activeId);
+			await vi.waitFor(() => expect(unanswered).toBeTruthy());
+
+			let duringHandover: { pinned?: boolean; bytes: Record<string, string> } | undefined;
+			await syncScheduler.rewrite(TEST_WORKSPACE, async () => {
+				duringHandover = {
+					pinned: (await onTheRelay('trip')).pinned,
+					bytes: photoBytes(await phoneStored('trip'))
+				};
+			});
+
+			// The handover found the workspace as the sync had found it: nothing of the
+			// round was sent to the relay or written to the device.
+			expect(unanswered?.aborted).toBe(true);
+			expect(duringHandover).toEqual({ pinned: false, bytes: { shot: '' } });
+			// The same sync then goes through, and reports nothing of the round it gave up.
+			expect(await flight).toBe(true);
+			expect(photoBytes(await phoneStored('trip'))).toEqual({ shot: shot.dataUrl });
+			expect((await onTheRelay('trip')).pinned).toBe(true);
+			expect(notesStore.lastPersistError).toBeNull();
+			expect(syncStore.lastError).toBeNull();
 		});
 	});
 
@@ -681,9 +825,10 @@ describe('attachments across devices', () => {
 
 	describe('a workspace that does not sync', () => {
 		async function boot(listing: Note): Promise<Note | null> {
-			syncStore.account = null;
+			unlinkTestWorkspace();
 			await putNote(TEST_WORKSPACE, listing);
 			notesStore.notes = [];
+			notesStore.loaded = true;
 			notesStore.loaded = false;
 			await notesStore.init();
 			return phoneStored(listing.id);
@@ -735,7 +880,7 @@ describe('attachments across devices', () => {
 		});
 
 		it('holds the lock before a note listing new bytes can be read by another window', async () => {
-			syncStore.account = null;
+			unlinkTestWorkspace();
 			const locks = sharedLocks();
 			const order: string[] = [];
 			vi.stubGlobal('navigator', {
@@ -772,12 +917,12 @@ describe('attachments across devices', () => {
 		});
 
 		it('keeps the lock through the retry of a write that failed', async () => {
-			syncStore.account = null;
+			unlinkTestWorkspace();
 			vi.stubGlobal('navigator', { ...navigator, locks: sharedLocks() });
 			const created = notesStore.createNote({ title: 'trip' });
 			await notesStore.flushNote(created.id);
 			const shot = await photo('shot', bytes('saved on the second try'));
-			vi.spyOn(idb, 'putNote').mockRejectedValueOnce(
+			vi.spyOn(idb, 'saveNote').mockRejectedValueOnce(
 				new DOMException('Storage full', 'QuotaExceededError')
 			);
 

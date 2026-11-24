@@ -1,15 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { SyncEventsClient, type SyncStoreLike } from './syncEventsClient';
+import { SyncEventsClient, type LiveRelay } from './syncEventsClient';
+import type { SyncAccount } from './relayClient';
+
+const account: SyncAccount = {
+	syncKey: 'sync-key',
+	accountId: 'account-1',
+	authPublicKey: 'key',
+	pairingCode: ''
+};
 
 describe('SyncEventsClient', () => {
-	let mockSyncStore: SyncStoreLike;
+	let mockRelay: LiveRelay;
+	let signedIn: SyncAccount | null;
 
 	beforeEach(() => {
 		vi.useFakeTimers();
-		mockSyncStore = {
-			isLoggedIn: true,
-			authorizedFetch: vi.fn()
+		mockRelay = {
+			authorizedFetch: vi.fn(),
+			connectionToken: vi.fn(),
+			clientId: vi.fn(() => 'window-1')
 		};
+		signedIn = account;
 	});
 
 	it('connects and dispatches sync events to subscribers', async () => {
@@ -21,11 +32,11 @@ describe('SyncEventsClient', () => {
 			}
 		});
 
-		(mockSyncStore.authorizedFetch as any).mockResolvedValueOnce(
+		(mockRelay.authorizedFetch as any).mockResolvedValueOnce(
 			new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } })
 		);
 
-		const client = new SyncEventsClient(mockSyncStore);
+		const client = new SyncEventsClient(mockRelay, () => signedIn);
 		const listener = vi.fn();
 		client.subscribe(listener);
 
@@ -38,7 +49,7 @@ describe('SyncEventsClient', () => {
 	});
 
 	it('pulls once whenever a connection opens, since nothing signalled changes in between', async () => {
-		const fetch = mockSyncStore.authorizedFetch as ReturnType<typeof vi.fn>;
+		const fetch = mockRelay.authorizedFetch as ReturnType<typeof vi.fn>;
 		fetch.mockImplementationOnce(
 			async () =>
 				new Response(
@@ -51,7 +62,7 @@ describe('SyncEventsClient', () => {
 				)
 		);
 		fetch.mockImplementation(async () => new Response(new ReadableStream()));
-		const client = new SyncEventsClient(mockSyncStore);
+		const client = new SyncEventsClient(mockRelay, () => signedIn);
 		const listener = vi.fn();
 		client.subscribe(listener);
 
@@ -66,10 +77,8 @@ describe('SyncEventsClient', () => {
 	});
 
 	it('does not pull for a connection that never opened', async () => {
-		(mockSyncStore.authorizedFetch as ReturnType<typeof vi.fn>).mockRejectedValue(
-			new Error('offline')
-		);
-		const client = new SyncEventsClient(mockSyncStore);
+		(mockRelay.authorizedFetch as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('offline'));
+		const client = new SyncEventsClient(mockRelay, () => signedIn);
 		const listener = vi.fn();
 		client.subscribe(listener);
 
@@ -79,7 +88,7 @@ describe('SyncEventsClient', () => {
 	});
 
 	it('stops connection when unsubscribed', () => {
-		const client = new SyncEventsClient(mockSyncStore);
+		const client = new SyncEventsClient(mockRelay, () => signedIn);
 		const listener = vi.fn();
 		const unsub = client.subscribe(listener);
 
@@ -91,21 +100,18 @@ describe('SyncEventsClient', () => {
 	});
 
 	it('does not connect when user is not logged in', () => {
-		mockSyncStore = {
-			isLoggedIn: false,
-			authorizedFetch: vi.fn()
-		};
-		const client = new SyncEventsClient(mockSyncStore);
+		signedIn = null;
+		const client = new SyncEventsClient(mockRelay, () => signedIn);
 		const listener = vi.fn();
 		client.subscribe(listener);
 
-		expect(mockSyncStore.authorizedFetch).not.toHaveBeenCalled();
+		expect(mockRelay.authorizedFetch).not.toHaveBeenCalled();
 		client.destroy();
 	});
 
 	it('replaces an active event stream when the sync account changes', async () => {
 		const signals: AbortSignal[] = [];
-		(mockSyncStore.authorizedFetch as ReturnType<typeof vi.fn>).mockImplementation(
+		(mockRelay.authorizedFetch as ReturnType<typeof vi.fn>).mockImplementation(
 			async (_input: RequestInfo | URL, init?: RequestInit) => {
 				const signal = init?.signal as AbortSignal;
 				signals.push(signal);
@@ -118,7 +124,7 @@ describe('SyncEventsClient', () => {
 				return new Response(stream);
 			}
 		);
-		const client = new SyncEventsClient(mockSyncStore);
+		const client = new SyncEventsClient(mockRelay, () => signedIn);
 		client.subscribe(() => undefined);
 		await vi.waitFor(() => expect(signals).toHaveLength(1));
 
@@ -131,9 +137,9 @@ describe('SyncEventsClient', () => {
 	});
 
 	it('backs off between connections that never open, and stops when no longer wanted', async () => {
-		const fetch = mockSyncStore.authorizedFetch as ReturnType<typeof vi.fn>;
+		const fetch = mockRelay.authorizedFetch as ReturnType<typeof vi.fn>;
 		fetch.mockRejectedValue(new Error('offline'));
-		const client = new SyncEventsClient(mockSyncStore);
+		const client = new SyncEventsClient(mockRelay, () => signedIn);
 		client.subscribe(() => undefined);
 		await vi.advanceTimersByTimeAsync(0);
 		expect(fetch).toHaveBeenCalledTimes(1);
@@ -155,14 +161,14 @@ describe('SyncEventsClient', () => {
 	});
 
 	it('reconnects shortly after an open stream ends, with the backoff started over', async () => {
-		const fetch = mockSyncStore.authorizedFetch as ReturnType<typeof vi.fn>;
+		const fetch = mockRelay.authorizedFetch as ReturnType<typeof vi.fn>;
 		fetch.mockImplementation(
 			async () => new Response(new ReadableStream({ start: (c) => c.close() }))
 		);
 		// The pause is 1.6–2.4s at random; pinned to its middle, 2s, so three short
 		// draws in a row cannot fit a fourth attempt before the last check.
 		const random = vi.spyOn(Math, 'random').mockReturnValue(0.5);
-		const client = new SyncEventsClient(mockSyncStore);
+		const client = new SyncEventsClient(mockRelay, () => signedIn);
 		client.subscribe(() => undefined);
 		await vi.advanceTimersByTimeAsync(0);
 		expect(fetch).toHaveBeenCalledTimes(1);

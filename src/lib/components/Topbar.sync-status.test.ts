@@ -10,8 +10,22 @@ vi.mock('#lib/editorContext.js', () => ({
 	useEditorActions: () => ({ startNewNote: vi.fn(), closeNote: vi.fn() })
 }));
 
-import { syncStore, type StartedDeviceLink } from '#lib/stores/sync.svelte.js';
+const deviceLink = vi.hoisted(() => ({ startDeviceLink: vi.fn(), pollDeviceLink: vi.fn() }));
+vi.mock('#lib/deviceLink.js', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/deviceLink.js')>()),
+	...deviceLink
+}));
+
+import { relaySync, syncStore } from '#lib/stores/sync.svelte.js';
+import type { StartedDeviceLink } from '#lib/deviceLink.js';
 import { notesStore } from '#lib/stores/notes.svelte.js';
+import { CAUGHT_UP_MS, syncScheduler } from '#lib/stores/syncScheduler.js';
+import { syncSnapshot } from '#lib/syncRecords.js';
+import {
+	linkTestWorkspace,
+	showOpenWorkspaceSyncing,
+	unlinkTestWorkspace
+} from '../../tests/syncing';
 import { uiStore } from '#lib/stores/ui.svelte.js';
 import Topbar from './Topbar.svelte';
 
@@ -19,16 +33,16 @@ import Topbar from './Topbar.svelte';
 // first transform of the dialog and its QR libraries out of each test's waits.
 beforeAll(() => import('./SyncModal.svelte'), 30_000);
 
-afterEach(() => {
+afterEach(async () => {
 	uiStore.syncOpen = false;
 	history.replaceState({}, '', '/');
 	syncStore.lastError = null;
 	syncStore.usage = null;
-	syncStore.account = null;
-	syncStore.onSyncStart = null;
-	syncStore.onSyncEnd = null;
-	(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = null;
-	(notesStore as unknown as { lastAutoSyncAt: number }).lastAutoSyncAt = 0;
+	unlinkTestWorkspace();
+	syncScheduler.onSyncStart = null;
+	syncScheduler.onSyncEnd = null;
+	showOpenWorkspaceSyncing(false);
+	await syncScheduler.reset();
 	vi.restoreAllMocks();
 });
 
@@ -74,8 +88,8 @@ describe('Topbar sync status', () => {
 			syncCode: 'ABCD1234EFGH5678',
 			pake: { ephemeralSecret: 'secret', share: 'share' }
 		};
-		const start = vi.spyOn(syncStore, 'startDeviceLink').mockResolvedValue({ success: true, link });
-		vi.spyOn(syncStore, 'pollDeviceLink').mockReturnValue(new Promise(() => undefined));
+		const start = deviceLink.startDeviceLink.mockResolvedValue({ success: true, link });
+		deviceLink.pollDeviceLink.mockReturnValue(new Promise(() => undefined));
 		render(Topbar);
 
 		location.hash = `pair=${link.syncCode}`;
@@ -123,41 +137,34 @@ describe('Topbar sync status', () => {
 		const { container } = render(Topbar);
 		const icon = container.querySelector('[data-scrapscache-sync-spinner]');
 
-		(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = new Promise(
-			() => undefined
-		);
+		showOpenWorkspaceSyncing(true);
 		await tick();
 		expect(icon?.classList.contains('scrapscache-sync-icon-active')).toBe(true);
 
-		(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = null;
+		showOpenWorkspaceSyncing(false);
 		await tick();
 		expect(icon?.classList.contains('scrapscache-sync-icon-active')).toBe(false);
 	});
 
-	it('notifies sync indicator to spin during syncWithCloud and flushSync', async () => {
+	it('notifies sync indicator to spin during a catch-up and a sync request', async () => {
 		const startSpy = vi.fn();
 		const endSpy = vi.fn();
-		syncStore.onSyncStart = startSpy;
-		syncStore.onSyncEnd = endSpy;
-		syncStore.account = {
-			syncKey: 'k',
-			accountId: 'acc',
-			authPublicKey: 'pub',
-			pairingCode: 'code'
-		};
-		vi.spyOn(syncStore, 'sync').mockImplementation(async () => {
+		syncScheduler.onSyncStart = startSpy;
+		syncScheduler.onSyncEnd = endSpy;
+		linkTestWorkspace();
+		vi.spyOn(relaySync, 'sync').mockImplementation(async () => {
 			expect(startSpy).toHaveBeenCalledOnce();
-			return { success: true, notes: [], labels: [] };
+			return { success: true, snapshot: syncSnapshot() };
 		});
 
-		await notesStore.syncWithCloud();
+		await syncScheduler.catchUp(syncStore.activeId, CAUGHT_UP_MS);
 		expect(startSpy).toHaveBeenCalledOnce();
 		expect(endSpy).toHaveBeenCalledOnce();
 
 		startSpy.mockClear();
 		endSpy.mockClear();
 
-		await notesStore.flushSync();
+		await syncScheduler.request(syncStore.activeId);
 		expect(startSpy).toHaveBeenCalledOnce();
 		expect(endSpy).toHaveBeenCalledOnce();
 	});

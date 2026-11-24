@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getAllNotesMetadata, getSyncOutboxKeys, waitForDeviceWrites } from '#lib/db/idb.js';
 import { createSyncIdentity } from '#lib/syncPairing.js';
 import { notesStore } from './notes.svelte';
+import { syncScheduler } from './syncScheduler';
 import { syncStore } from './sync.svelte';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 
@@ -22,13 +23,7 @@ describe('profile-scoped note persistence', () => {
 	});
 
 	afterEach(() => {
-		const internals = notesStore as unknown as {
-			dirty: boolean;
-			syncPushTimer: ReturnType<typeof setTimeout> | null;
-		};
-		if (internals.syncPushTimer) clearTimeout(internals.syncPushTimer);
-		internals.syncPushTimer = null;
-		internals.dirty = false;
+		syncScheduler.reset();
 		syncStore.account = null;
 		syncStore.profiles = [];
 		notesStore.notes = [];

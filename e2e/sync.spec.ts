@@ -1,5 +1,14 @@
 import { expect, test, type Page } from '@playwright/test';
-import { createNote, editor, noteCard, noteCardOpen, openEmptyApp, quickAction } from './app';
+import {
+	composer,
+	composerPrompt,
+	createNote,
+	editor,
+	noteCard,
+	noteCardOpen,
+	openEmptyApp,
+	quickAction
+} from './app';
 
 async function openSync(page: Page) {
 	await page.getByRole('button', { name: /^Sync settings/ }).click();
@@ -360,21 +369,139 @@ test('sync speaks up above the feed only when it needs attention', async ({ page
 	// Synced and quiet: still nothing.
 	await expect(banner).toHaveCount(0);
 
-	// A sync that cannot reach the relay is worth a banner, with the next step on it.
-	// The relay goes, not the network: coming back online syncs by itself and would
-	// take the banner, and its Retry, away before the press below.
+	// Sync stays in the background: a relay that cannot be reached is not worth a
+	// banner. The note is saved on this device and the sync is tried again by itself.
 	const relay = /\/api\/sync\/(?!events)/;
 	await page.route(relay, (route) => route.abort());
+	await createNote(page, 'Written while the server is away');
 	dialog = await openSync(page);
+	// Whoever asks for a sync is told how it went.
 	await dialog.getByRole('button', { name: 'Sync now' }).click();
 	await expect(dialog.getByText('Could not reach server. Check your connection.')).toBeVisible();
 	await dialog.getByRole('button', { name: 'Close' }).click();
+	await expect(banner).toHaveCount(0);
+	dialog = await openSync(page);
+	await expect(dialog.getByText('Saved on this device · Waiting to sync')).toBeVisible();
+
+	// The relay is back: nobody presses anything, and the wait ends.
+	await page.unroute(relay);
+	await expect(dialog.getByText('Saved on this device · Waiting to sync')).toBeHidden({
+		timeout: 45_000
+	});
+	await dialog.getByRole('button', { name: 'Close' }).click();
+	await expect(banner).toHaveCount(0);
+
+	// A sync the server turns down needs the user, so that one speaks up.
+	await page.route(relay, (route) =>
+		route.fulfill({ status: 403, json: { error: 'This device may not sync.' } })
+	);
+	await createNote(page, 'Written while the server refuses');
+	dialog = await openSync(page);
+	await dialog.getByRole('button', { name: 'Sync now' }).click();
+	await expect(dialog.getByRole('alert')).toBeVisible();
+	await dialog.getByRole('button', { name: 'Close' }).click();
 	await expect(banner).toHaveAttribute('data-sync-attention', 'error');
-	await expect(banner).toContainText('Sync stopped: the server could not be reached.');
+	await expect(banner).toContainText('Sync stopped');
 	await expect(banner).toContainText('Your notes are safe on this device.');
 
-	// Retry once the relay is back clears it.
+	// Retry once the relay takes it again clears it.
 	await page.unroute(relay);
 	await banner.getByRole('button', { name: 'Retry' }).click();
 	await expect(banner).toHaveCount(0);
+});
+
+// A sync waits on the relay for as long as the connection takes: minutes when it is
+// poor, and a switch between workspaces only reads what is on this device.
+test('switching workspaces does not wait for a relay that never answers', async ({ page }) => {
+	await openEmptyApp(page);
+	await createNote(page, 'Synced note');
+	let dialog = await openSync(page);
+	await dialog.getByRole('button', { name: /^Expand / }).click();
+	await dialog.getByRole('button', { name: /^Sync this workspace/ }).click();
+	await dialog.getByRole('button', { name: 'Start sync' }).click();
+	const synced = dialog.getByRole('button', { name: / is active$/ });
+	await expect(synced).toContainText('Synced');
+	const syncedName = ((await synced.getAttribute('aria-label')) ?? '').replace(/ is active$/, '');
+	await dialog.getByRole('button', { name: '+ New workspace' }).click();
+	await dialog.getByRole('button', { name: /^Create workspace/ }).click();
+	await expect(dialog.getByText('Created a local workspace on this device.')).toBeVisible();
+	await dialog.getByRole('button', { name: 'Close' }).click();
+	await createNote(page, 'Local note');
+	dialog = await openSync(page);
+	await dialog.getByRole('button', { name: `Switch to ${syncedName}` }).click();
+	await expect(noteCard(page, 'Synced note')).toBeVisible();
+
+	// From here the relay takes every request and answers none of them.
+	const relay = /\/api\/sync\/(?!events)/;
+	let unanswered = 0;
+	await page.route(relay, () => {
+		unanswered += 1;
+	});
+
+	// Putting a note away sends it, in the background; that sync now waits for good.
+	// Not `createNote`: it waits for every animation to end, and the sync icon turns
+	// for as long as the sync does.
+	await composerPrompt(page).click();
+	await composer(page).getByPlaceholder('Title', { exact: true }).fill('Unsent note');
+	await composer(page).getByRole('button', { name: 'Done' }).click();
+	await expect(noteCard(page, 'Unsent note')).toBeVisible();
+	await expect.poll(() => unanswered).toBeGreaterThan(0);
+	dialog = await openSync(page);
+	await dialog.getByRole('button', { name: /^Switch to / }).click();
+	await expect(dialog).toBeHidden();
+	await expect(noteCard(page, 'Local note')).toBeVisible();
+	await expect(noteCard(page, 'Unsent note')).toBeHidden();
+
+	// Back in the synced workspace, where arriving starts a sync that waits as well.
+	dialog = await openSync(page);
+	await dialog.getByRole('button', { name: `Switch to ${syncedName}` }).click();
+	await expect(dialog).toBeHidden();
+	await expect(noteCard(page, 'Unsent note')).toBeVisible();
+
+	// And away again while that one waits. The dialog can be left as well.
+	dialog = await openSync(page);
+	await dialog.getByRole('button', { name: /^Switch to / }).click();
+	await expect(dialog).toBeHidden();
+	await expect(noteCard(page, 'Local note')).toBeVisible();
+
+	// With the connection back, the note that never left is sent from the workspace
+	// it was written in, which is not the one open.
+	const leastQueued = () =>
+		page.evaluate(async () => {
+			const queued: number[] = [];
+			for (const { name } of await indexedDB.databases()) {
+				if (!name) continue;
+				const db = await new Promise<IDBDatabase>((resolve, reject) => {
+					const opening = indexedDB.open(name);
+					opening.onsuccess = () => resolve(opening.result);
+					opening.onerror = () => reject(opening.error);
+				});
+				if (db.objectStoreNames.contains('sync-outbox')) {
+					queued.push(
+						await new Promise<number>((resolve, reject) => {
+							const count = db.transaction('sync-outbox').objectStore('sync-outbox').count();
+							count.onsuccess = () => resolve(count.result);
+							count.onerror = () => reject(count.error);
+						})
+					);
+				}
+				db.close();
+			}
+			return Math.min(...queued);
+		});
+	// Both workspaces have something queued: the local one never sends its own.
+	expect(await leastQueued()).toBeGreaterThan(0);
+	await page.unroute(relay);
+	await page.context().setOffline(true);
+	await page.context().setOffline(false);
+	await expect.poll(leastQueued, { timeout: 30_000 }).toBe(0);
+	await expect(noteCard(page, 'Local note')).toBeVisible();
+
+	// Opened again, it has nothing left to send and nothing to report.
+	dialog = await openSync(page);
+	await dialog.getByRole('button', { name: `Switch to ${syncedName}` }).click();
+	await expect(dialog).toBeHidden();
+	await expect(noteCard(page, 'Unsent note')).toBeVisible();
+	await syncNow(page);
+	await expect(page.locator('[data-sync-attention]')).toHaveCount(0);
 });

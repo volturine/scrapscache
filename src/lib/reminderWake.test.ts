@@ -8,6 +8,7 @@ import {
 	workspacePushScope
 } from './reminderWake';
 import { syncStore } from '#lib/stores/sync.svelte.js';
+import { relay } from '#lib/relayClient.js';
 import { createSyncIdentity, identityFromSyncKey } from '#lib/syncPairing.js';
 
 const ORIGIN = window.location.origin;
@@ -121,7 +122,7 @@ describe('reminder wake requests', () => {
 		syncStore.account = createSyncIdentity();
 		vi.spyOn(syncStore, 'committedRevision').mockResolvedValue(3);
 		const requestMock = vi
-			.spyOn(syncStore, 'authorizedFetch')
+			.spyOn(relay, 'authorizedFetch')
 			.mockResolvedValue(new Response(JSON.stringify({ ok: true })));
 		const notes = [
 			{
@@ -139,7 +140,8 @@ describe('reminder wake requests', () => {
 		expect(requestMock).toHaveBeenCalledOnce();
 		expect(requestMock).toHaveBeenCalledWith(
 			'/api/sync/push/wakes',
-			expect.objectContaining({ method: 'PUT' })
+			expect.objectContaining({ method: 'PUT' }),
+			expect.objectContaining({ accountId: syncStore.account!.accountId })
 		);
 	});
 
@@ -148,7 +150,7 @@ describe('reminder wake requests', () => {
 		let revision = 3;
 		vi.spyOn(syncStore, 'committedRevision').mockImplementation(async () => revision);
 		const requestMock = vi
-			.spyOn(syncStore, 'authorizedFetch')
+			.spyOn(relay, 'authorizedFetch')
 			.mockResolvedValue(new Response(JSON.stringify({ ok: true })));
 		const notes = [
 			{
@@ -177,7 +179,7 @@ describe('reminder wake requests', () => {
 		const work = workspace('work');
 		syncStore.profiles = [home, work, { ...workspace('private'), syncKey: '' }];
 		const requestMock = vi
-			.spyOn(syncStore, 'authorizedFetch')
+			.spyOn(relay, 'authorizedFetch')
 			.mockResolvedValue(new Response(JSON.stringify({ ok: true })));
 
 		expect(await registerAllReminderDevices()).toBe(true);
@@ -211,7 +213,7 @@ describe('reminder wake requests', () => {
 		expect(registrations.get(scope)?.active.scriptURL).toBe(`${ORIGIN}/sw.js`);
 		stubBrowser(container);
 		syncStore.profiles = [workspace('home')];
-		vi.spyOn(syncStore, 'authorizedFetch').mockResolvedValue(
+		vi.spyOn(relay, 'authorizedFetch').mockResolvedValue(
 			new Response(JSON.stringify({ ok: true }))
 		);
 
@@ -230,7 +232,7 @@ describe('reminder wake requests', () => {
 		stubBrowser(container);
 		syncStore.profiles = [workspace('home')];
 		const requestMock = vi
-			.spyOn(syncStore, 'authorizedFetch')
+			.spyOn(relay, 'authorizedFetch')
 			.mockResolvedValue(new Response(JSON.stringify({ ok: true })));
 
 		expect(await registerAllReminderDevices()).toBe(true);
@@ -243,7 +245,7 @@ describe('reminder wake requests', () => {
 		stubBrowser(container);
 		vi.stubGlobal('Notification', { permission: 'default' });
 		syncStore.profiles = [workspace('home')];
-		const requestMock = vi.spyOn(syncStore, 'authorizedFetch');
+		const requestMock = vi.spyOn(relay, 'authorizedFetch');
 
 		expect(await registerAllReminderDevices()).toBe(false);
 		expect(registrations.size).toBe(0);
@@ -256,7 +258,7 @@ describe('reminder wake requests', () => {
 		const root = registrations.get(`${ORIGIN}/`)!;
 		stubBrowser(container);
 		syncStore.profiles = [workspace('home')];
-		vi.spyOn(syncStore, 'authorizedFetch').mockResolvedValue(
+		vi.spyOn(relay, 'authorizedFetch').mockResolvedValue(
 			new Response(JSON.stringify({ ok: true }))
 		);
 
@@ -275,7 +277,7 @@ describe('reminder wake requests', () => {
 		const work = workspace('work');
 		syncStore.profiles = [home, work];
 		const requestMock = vi
-			.spyOn(syncStore, 'authorizedFetch')
+			.spyOn(relay, 'authorizedFetch')
 			.mockResolvedValue(new Response(JSON.stringify({ ok: true })));
 		await registerAllReminderDevices();
 
@@ -298,7 +300,7 @@ describe('reminder wake requests', () => {
 		const home = workspace('home');
 		const wake = { id: 'a'.repeat(43), fireAt: 12345 };
 		const requestMock = vi
-			.spyOn(syncStore, 'authorizedFetch')
+			.spyOn(relay, 'authorizedFetch')
 			.mockResolvedValue(new Response(JSON.stringify({ revision: 5, wakes: [wake] })));
 
 		const result = await fetchReminderWakes(home);

@@ -4,6 +4,7 @@ import { moveCardToColumn } from './kanbanMove';
 import { actionUndo } from './stores/actionUndo.svelte';
 import { kanbanStore } from './stores/kanban.svelte';
 import { notesStore } from './stores/notes.svelte';
+import { syncScheduler } from './stores/syncScheduler';
 import { syncStore } from './stores/sync.svelte';
 
 describe('moveCardToColumn', () => {
@@ -26,13 +27,7 @@ describe('moveCardToColumn', () => {
 	afterEach(async () => {
 		// Queued writes must land before the setup drops the test databases.
 		await notesStore.waitForPendingProfileWrites();
-		const internals = notesStore as unknown as {
-			dirty: boolean;
-			syncPushTimer: ReturnType<typeof setTimeout> | null;
-		};
-		if (internals.syncPushTimer) clearTimeout(internals.syncPushTimer);
-		internals.syncPushTimer = null;
-		internals.dirty = false;
+		syncScheduler.reset();
 		syncStore.account = null;
 		syncStore.profiles = [];
 		notesStore.notes = [];

@@ -3,17 +3,20 @@ import type { Note } from '#lib/types.js';
 import {
 	clearSyncOutbox,
 	commitSyncControl,
-	deleteLabelWithSyncState,
+	deleteLabelRecordingIt,
+	deleteNote,
 	getAllLabels,
 	getAllNotesMetadata,
+	getOutboxGeneration,
 	getSyncOutboxKeys,
 	getSyncState,
-	getOutboxGeneration,
 	hydrateNoteAttachments,
 	markSyncOutbox,
-	putLabel,
+	mergeNote,
 	putNote,
-	setSyncState
+	saveLabel,
+	setSyncState,
+	uploadGeneration
 } from './idb';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 
@@ -110,7 +113,7 @@ describe('durable sync outbox', () => {
 			createdAt: 1,
 			updatedAt: 1
 		};
-		await putLabel(TEST_WORKSPACE, label, ['label:atomic-label']);
+		await saveLabel(TEST_WORKSPACE, label, ['label:atomic-label']);
 		expect((await getAllLabels(TEST_WORKSPACE)).find(({ id }) => id === 'atomic-label')?.name).toBe(
 			'saved'
 		);
@@ -118,7 +121,7 @@ describe('durable sync outbox', () => {
 
 		await clearSyncOutbox(TEST_WORKSPACE, ['label:atomic-label']);
 		await expect(
-			putLabel(TEST_WORKSPACE, { ...label, name: 'must roll back' }, [
+			saveLabel(TEST_WORKSPACE, { ...label, name: 'must roll back' }, [
 				Number.NaN as unknown as string
 			])
 		).rejects.toThrow();
@@ -130,30 +133,80 @@ describe('durable sync outbox', () => {
 
 	it('commits label deletion, its tombstone, and outbox marker in one transaction', async () => {
 		const label = { id: 'deleted-label', name: 'Delete me', createdAt: 1, updatedAt: 1 };
-		await putLabel(TEST_WORKSPACE, label);
-		await deleteLabelWithSyncState(
-			TEST_WORKSPACE,
-			label.id,
-			[['label-tombstones', { [label.id]: 123 }]],
-			[`label-tombstone:${label.id}`]
-		);
+		await saveLabel(TEST_WORKSPACE, label);
+		// A delete a sync saved meanwhile is kept, and a later delete of the same label stands.
+		await setSyncState(TEST_WORKSPACE, 'label-tombstones', {
+			'saved-meanwhile': 50,
+			[label.id]: 200
+		});
+		expect(
+			await deleteLabelRecordingIt(TEST_WORKSPACE, label.id, 'label-tombstones', 123, [
+				`label-tombstone:${label.id}`
+			])
+		).toEqual({ 'saved-meanwhile': 50, [label.id]: 200 });
 		expect(await getAllLabels(TEST_WORKSPACE)).toEqual([]);
-		expect(await getSyncState(TEST_WORKSPACE, 'label-tombstones')).toEqual({ [label.id]: 123 });
+		expect(await getSyncState(TEST_WORKSPACE, 'label-tombstones')).toEqual({
+			'saved-meanwhile': 50,
+			[label.id]: 200
+		});
 		expect(await getSyncOutboxKeys(TEST_WORKSPACE)).toEqual([`label-tombstone:${label.id}`]);
 
 		await clearSyncOutbox(TEST_WORKSPACE, await getSyncOutboxKeys(TEST_WORKSPACE));
-		await putLabel(TEST_WORKSPACE, label);
+		await saveLabel(TEST_WORKSPACE, label);
 		await expect(
-			deleteLabelWithSyncState(
-				TEST_WORKSPACE,
-				label.id,
-				[['label-tombstones', () => undefined]],
-				[`label-tombstone:${label.id}`]
-			)
+			deleteLabelRecordingIt(TEST_WORKSPACE, label.id, 'label-tombstones', 300, [
+				Number.NaN as unknown as string
+			])
 		).rejects.toThrow();
 		expect((await getAllLabels(TEST_WORKSPACE)).map(({ id }) => id)).toEqual([label.id]);
-		expect(await getSyncState(TEST_WORKSPACE, 'label-tombstones')).toEqual({ [label.id]: 123 });
+		expect(await getSyncState(TEST_WORKSPACE, 'label-tombstones')).toEqual({
+			'saved-meanwhile': 50,
+			[label.id]: 200
+		});
 		expect(await getSyncOutboxKeys(TEST_WORKSPACE)).toEqual([]);
+	});
+
+	// Rewrites of a workspace tell that nothing was saved since they read it by this
+	// number, so it has to move on with every save from every window, whatever the
+	// clock does: one that repeated would let a rewrite go over a save.
+	it('moves the upload generation past what another window stored, even on a clock set back', async () => {
+		await markSyncOutbox(TEST_WORKSPACE, ['note:first']);
+		const mine = await uploadGeneration(TEST_WORKSPACE);
+		// Another window, whose clock ran ahead, saved since this one last looked.
+		const theirs = mine + 60_000;
+		await setSyncState(TEST_WORKSPACE, 'scrapscache-outbox-generation', theirs);
+
+		await markSyncOutbox(TEST_WORKSPACE, ['note:second']);
+		const after = await uploadGeneration(TEST_WORKSPACE);
+		expect(after).toBeGreaterThan(theirs);
+
+		await markSyncOutbox(TEST_WORKSPACE, ['note:third']);
+		expect(await uploadGeneration(TEST_WORKSPACE)).toBeGreaterThan(after);
+	});
+
+	// A sync saves a note it pulled as merged with what is stored when its turn
+	// comes: a save asked for before it, still on its way in, is what it merges with.
+	it('gives a merge save every save of that note asked for before it', async () => {
+		await putNote(TEST_WORKSPACE, note('first'));
+		const edit = putNote(TEST_WORKSPACE, note('edited meanwhile'));
+		const seen: Array<string | undefined> = [];
+		const merged = mergeNote(TEST_WORKSPACE, note('pulled'), (stored) => {
+			seen.push(stored?.title);
+			return stored ? { ...stored, title: `${stored.title}, with what was pulled` } : null;
+		});
+		await Promise.all([edit, merged]);
+
+		expect(seen).toEqual(['edited meanwhile']);
+		expect(
+			(await getAllNotesMetadata(TEST_WORKSPACE)).find(({ id }) => id === 'atomic-note')?.title
+		).toBe('edited meanwhile, with what was pulled');
+
+		// Answering null saves nothing: a note deleted meanwhile stays deleted.
+		await deleteNote(TEST_WORKSPACE, 'atomic-note');
+		expect(await mergeNote(TEST_WORKSPACE, note('pulled'), () => null)).toBeNull();
+		expect((await getAllNotesMetadata(TEST_WORKSPACE)).some(({ id }) => id === 'atomic-note')).toBe(
+			false
+		);
 	});
 
 	it('commits a note and its outbox marker together or rolls both back', async () => {
@@ -242,5 +295,16 @@ describe('durable sync outbox', () => {
 			images: withPhoto.images.map((image) => ({ ...image, dataUrl: '' }))
 		});
 		expect(hydrated.images?.[0]?.dataUrl?.startsWith('data:image/png;base64,')).toBe(true);
+	});
+
+	it('reads how far the upload queue has come from the database, where another window moves it on', async () => {
+		await markSyncOutbox(TEST_WORKSPACE, ['note:queued-here']);
+		const here = await getOutboxGeneration(TEST_WORKSPACE);
+
+		// Another window queues something later: it writes the database, not this window's memory.
+		await setSyncState(TEST_WORKSPACE, 'scrapscache-outbox-generation', here + 1_000);
+
+		// A sync started in this window has to be able to settle what that window queued.
+		expect(await getOutboxGeneration(TEST_WORKSPACE)).toBe(here + 1_000);
 	});
 });

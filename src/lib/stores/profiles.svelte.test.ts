@@ -15,9 +15,14 @@ import { createSyncIdentity, identityFromSyncKey } from '#lib/syncPairing.js';
 import type { Note } from '#lib/types.js';
 import { unregisterReminderDevice } from '#lib/reminderWake.js';
 import { ProfileCoordinator, profileCoordinator } from './profiles.svelte';
-import { notesStore, SYNC_LOCK } from './notes.svelte';
-import { PROFILE_META_KEY, syncStore } from './sync.svelte';
+import { notesStore } from './notes.svelte';
+import { SYNC_LOCK, syncScheduler } from './syncScheduler';
+import { syncStore } from './sync.svelte';
+import { PROFILE_META_KEY } from '#lib/syncRecords.js';
+import { relay } from '#lib/relayClient.js';
 import { TEST_WORKSPACE } from '../../tests/workspace';
+import { WORKSPACE_LOCK, withWorkspaceLock } from '#lib/webLock.js';
+import { workspaceRewrites } from '#lib/stores/workspaceRewrites.svelte.js';
 
 vi.mock('#lib/reminderWake.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('#lib/reminderWake.js')>();
@@ -67,13 +72,12 @@ async function databaseNames(): Promise<string[]> {
 	return databases.map((entry) => entry.name).filter((name): name is string => !!name);
 }
 
-function stubHandover() {
+function stubChange() {
 	vi.spyOn(notesStore, 'waitForPendingProfileWrites').mockResolvedValue();
-	vi.spyOn(syncStore, 'queueOutbox').mockResolvedValue();
 	return vi.spyOn(notesStore, 'reloadForProfile').mockResolvedValue();
 }
 
-describe('workspace handovers', () => {
+describe('workspace changes', () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
 		syncStore.activateLocalWorkspace(TEST_WORKSPACE);
@@ -88,8 +92,8 @@ describe('workspace handovers', () => {
 		syncStore.profiles = [local, workspace('other', false, 2)];
 		syncStore.activateProfile(local);
 		await putNote(local.id, note('local-note'));
-		stubHandover();
-		const sync = vi.spyOn(notesStore, 'syncWithCloudManual').mockReturnValue(new Promise(() => {}));
+		stubChange();
+		const sync = vi.spyOn(syncScheduler, 'request').mockReturnValue(new Promise(() => {}));
 		vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ ok: true }));
 
 		const result = await new ProfileCoordinator().startSync(local.id, 'Field notes');
@@ -113,8 +117,8 @@ describe('workspace handovers', () => {
 		syncStore.keyRetired = true;
 		await putNote(retired.id, note('kept-note'));
 		const oldAccount = syncStore.account!.accountId;
-		stubHandover();
-		const sync = vi.spyOn(notesStore, 'syncWithCloudManual').mockReturnValue(new Promise(() => {}));
+		stubChange();
+		const sync = vi.spyOn(syncScheduler, 'request').mockReturnValue(new Promise(() => {}));
 		const cleared = vi.spyOn(syncStore, 'clearAccountControlPlane');
 		const register = vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ ok: true }));
 
@@ -139,7 +143,7 @@ describe('workspace handovers', () => {
 		const retired = workspace('retired-failing', true);
 		syncStore.profiles = [retired];
 		syncStore.activateProfile(retired);
-		stubHandover();
+		stubChange();
 		vi.spyOn(globalThis, 'fetch').mockResolvedValue(
 			Response.json({ error: 'Human verification failed. Try again.' }, { status: 403 })
 		);
@@ -155,8 +159,8 @@ describe('workspace handovers', () => {
 		const other = workspace('inactive-promote', false, 2);
 		syncStore.profiles = [current, other];
 		syncStore.activateProfile(current);
-		stubHandover();
-		const sync = vi.spyOn(notesStore, 'syncWithCloudManual');
+		stubChange();
+		const sync = vi.spyOn(syncScheduler, 'request');
 		vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ ok: true }));
 
 		const result = await new ProfileCoordinator().startSync(other.id);
@@ -169,13 +173,78 @@ describe('workspace handovers', () => {
 		expect(sync).not.toHaveBeenCalled();
 	});
 
+	// Registering asks the relay, which can take as long as a poor connection does.
+	// A workspace change, in this window or another, must not wait behind it.
+	it('holds nothing while the relay registers a workspace that starts syncing', async () => {
+		const current = workspace('current-registering', false);
+		const other = workspace('other-registering', false, 2);
+		syncStore.profiles = [current, other];
+		syncStore.activateProfile(current);
+		stubChange();
+		let registered: (response: Response) => void = () => undefined;
+		const fetched = vi
+			.spyOn(globalThis, 'fetch')
+			.mockReturnValue(new Promise<Response>((resolve) => (registered = resolve)));
+		const coordinator = new ProfileCoordinator();
+
+		const started = coordinator.startSync(other.id);
+		await vi.waitFor(() => expect(fetched).toHaveBeenCalledOnce());
+
+		expect(coordinator.switching).toBe(false);
+		expect(await withWorkspaceLock(async () => 'another change')).toBe('another change');
+		expect(await syncScheduler.rewrite(other.id, async () => 'a rewrite')).toBe('a rewrite');
+		expect(syncStore.profiles.find(({ id }) => id === other.id)?.syncKey).toBe('');
+
+		registered(Response.json({ ok: true }));
+		expect(await started).toEqual({ success: true });
+		expect(syncStore.profiles.find(({ id }) => id === other.id)?.syncKey).not.toBe('');
+	});
+
+	it('does not give a workspace a key when it changed while the relay registered it', async () => {
+		const current = workspace('current-changed', false);
+		const other = workspace('other-changed', false, 2);
+		syncStore.profiles = [current, other];
+		syncStore.activateProfile(current);
+		stubChange();
+		let registered: (response: Response) => void = () => undefined;
+		const fetched = vi
+			.spyOn(globalThis, 'fetch')
+			.mockReturnValue(new Promise<Response>((resolve) => (registered = resolve)));
+
+		const started = new ProfileCoordinator().startSync(other.id);
+		await vi.waitFor(() => expect(fetched).toHaveBeenCalledOnce());
+		// Another window gave it a key meanwhile.
+		const theirs = { ...other, syncKey: createSyncIdentity().syncKey };
+		syncStore.profiles = [current, theirs];
+		registered(Response.json({ ok: true }));
+
+		expect(await started).toEqual({
+			success: false,
+			error: 'This workspace changed meanwhile. Try again.'
+		});
+		expect(syncStore.profiles).toEqual([current, theirs]);
+	});
+
+	it('does not ask the relay to register a workspace that already syncs', async () => {
+		const synced = workspace('already-synced', true);
+		syncStore.profiles = [synced];
+		syncStore.activateProfile(synced);
+		const fetched = vi.spyOn(globalThis, 'fetch');
+
+		expect(await new ProfileCoordinator().startSync(synced.id)).toEqual({
+			success: false,
+			error: 'That workspace is already synced'
+		});
+		expect(fetched).not.toHaveBeenCalled();
+	});
+
 	it('unlinks the active workspace into a private one that keeps its notes', async () => {
 		const active = workspace(TEST_WORKSPACE, true, 0);
 		syncStore.profiles = [active];
 		syncStore.activateProfile(active);
 		await putNote(active.id, note('synced-note'));
-		const reload = stubHandover();
-		const deleteCloud = vi.spyOn(syncStore, 'deleteCloudAccount');
+		const reload = stubChange();
+		const deleteCloud = vi.spyOn(relay, 'deleteAccount');
 
 		const result = await new ProfileCoordinator().unlink(active.id);
 
@@ -195,7 +264,7 @@ describe('workspace handovers', () => {
 		syncStore.profiles = [current, other];
 		syncStore.activateProfile(current);
 		await putNote(other.id, note('other-note'));
-		const reload = stubHandover();
+		const reload = stubChange();
 
 		const result = await new ProfileCoordinator().unlink(other.id);
 
@@ -211,9 +280,9 @@ describe('workspace handovers', () => {
 		syncStore.profiles = [active];
 		syncStore.activateProfile(active);
 		await putNote(active.id, note('kept-note'));
-		stubHandover();
+		stubChange();
 		const request = vi
-			.spyOn(syncStore, 'authorizedFetch')
+			.spyOn(relay, 'authorizedFetch')
 			.mockResolvedValue(new Response(null, { status: 204 }));
 
 		const result = await new ProfileCoordinator().unlink(active.id, true);
@@ -221,7 +290,10 @@ describe('workspace handovers', () => {
 		expect(result).toEqual({ success: true });
 		expect(request).toHaveBeenCalledWith(
 			'/api/sync/account',
-			{ method: 'DELETE', headers: { 'content-type': 'application/json' } },
+			expect.objectContaining({
+				method: 'DELETE',
+				headers: { 'content-type': 'application/json' }
+			}),
 			expect.objectContaining({ syncKey: active.syncKey })
 		);
 		expect(syncStore.profiles).toEqual([{ ...active, syncKey: '' }]);
@@ -233,8 +305,8 @@ describe('workspace handovers', () => {
 		const active = workspace('delete-cloud-fails', true);
 		syncStore.profiles = [active];
 		syncStore.activateProfile(active);
-		stubHandover();
-		vi.spyOn(syncStore, 'authorizedFetch').mockResolvedValue(
+		stubChange();
+		vi.spyOn(relay, 'authorizedFetch').mockResolvedValue(
 			Response.json({ error: 'Relay unavailable' }, { status: 503 })
 		);
 
@@ -269,7 +341,7 @@ describe('workspace handovers', () => {
 			localStorage.setItem(key, '["removed"]');
 			localStorage.setItem(`${base}:${other.id}`, '["kept"]');
 		}
-		const reload = stubHandover();
+		const reload = stubChange();
 
 		const result = await new ProfileCoordinator().remove(target.id);
 
@@ -295,7 +367,7 @@ describe('workspace handovers', () => {
 		syncStore.profiles = [only];
 		syncStore.activateProfile(only);
 		await putNote(only.id, note('last-note'));
-		stubHandover();
+		stubChange();
 
 		const result = await new ProfileCoordinator().remove(only.id);
 
@@ -311,8 +383,8 @@ describe('workspace handovers', () => {
 		syncStore.profiles = [current];
 		syncStore.activateProfile(current);
 		await putNote(current.id, note('stay'));
-		const reload = stubHandover();
-		const register = vi.spyOn(syncStore, 'register');
+		const reload = stubChange();
+		const register = vi.spyOn(relay, 'registerAccount');
 
 		const result = await new ProfileCoordinator().createLocal();
 
@@ -331,8 +403,8 @@ describe('workspace handovers', () => {
 		const local = workspace(TEST_WORKSPACE, false, 0);
 		syncStore.profiles = [local, synced];
 		syncStore.activateProfile(synced);
-		const reload = stubHandover();
-		const sync = vi.spyOn(notesStore, 'syncWithCloudManual').mockResolvedValue(true);
+		const reload = stubChange();
+		const sync = vi.spyOn(syncScheduler, 'catchUp').mockResolvedValue(true);
 
 		expect(await new ProfileCoordinator().switchTo(local.id)).toEqual({ success: true });
 		expect(syncStore.activeId).toBe(local.id);
@@ -352,10 +424,8 @@ describe('workspace handovers', () => {
 		const local = workspace(TEST_WORKSPACE, false, 0);
 		syncStore.profiles = [local, synced];
 		syncStore.activateProfile(local);
-		stubHandover();
-		const sync = vi
-			.spyOn(notesStore, 'syncWithCloudManual')
-			.mockReturnValue(new Promise(() => undefined));
+		stubChange();
+		const sync = vi.spyOn(syncScheduler, 'catchUp').mockReturnValue(new Promise(() => undefined));
 
 		expect(await new ProfileCoordinator().switchTo(synced.id)).toEqual({ success: true });
 		expect(syncStore.activeId).toBe(synced.id);
@@ -366,35 +436,35 @@ describe('workspace handovers', () => {
 		const active = workspace(TEST_WORKSPACE, true, 0);
 		syncStore.profiles = [active];
 		syncStore.activateProfile(active);
-		stubHandover();
-		const push = vi.spyOn(notesStore, 'forcePushWorkspace').mockResolvedValue(true);
+		stubChange();
+		const push = vi.spyOn(workspaceRewrites, 'forcePush').mockResolvedValue({ success: true });
 
 		const result = await new ProfileCoordinator().forceResync(undefined, active.id);
 
 		expect(result).toEqual({ success: true });
-		expect(push).toHaveBeenCalledOnce();
+		expect(push).toHaveBeenCalledExactlyOnceWith(active.id, undefined);
 		expect(syncStore.activeProfile).toEqual(active);
 	});
 
-	it('activates another synced workspace before force pushing it', async () => {
+	it('force pushes another synced workspace without leaving the open one', async () => {
 		const active = workspace('active-force', true);
 		const other = workspace('other-force', true, 2);
 		syncStore.profiles = [active, other];
 		syncStore.activateProfile(active);
-		stubHandover();
-		const push = vi.spyOn(notesStore, 'forcePushWorkspace').mockResolvedValue(true);
+		stubChange();
+		const push = vi.spyOn(workspaceRewrites, 'forcePush').mockResolvedValue({ success: true });
 
-		const result = await new ProfileCoordinator().forceResync(undefined, other.id);
+		const result = await new ProfileCoordinator().forceResync('token', other.id);
 
 		expect(result).toEqual({ success: true });
-		expect(syncStore.activeProfile).toEqual(other);
-		expect(push).toHaveBeenCalledOnce();
+		expect(push).toHaveBeenCalledExactlyOnceWith(other.id, 'token');
+		expect(syncStore.activeProfile).toEqual(active);
 	});
 
 	it('rejects changes to an unknown workspace', async () => {
 		const kept = workspace('kept', true);
 		syncStore.profiles = [kept];
-		stubHandover();
+		stubChange();
 
 		for (const run of [
 			(c: ProfileCoordinator) => c.unlink('missing'),
@@ -410,20 +480,36 @@ describe('workspace handovers', () => {
 		expect(syncStore.profiles).toEqual([kept]);
 	});
 
+	it('opens the workspace a received key already has on this device, without adding another', async () => {
+		const held = workspace('held', true, 2);
+		syncStore.profiles = [workspace(TEST_WORKSPACE, false, 0), held];
+		syncStore.activateLocalWorkspace(TEST_WORKSPACE);
+		stubChange();
+		const sync = vi.spyOn(syncScheduler, 'request').mockResolvedValue(true);
+
+		expect(await new ProfileCoordinator().receiveLinkedKey(held.syncKey)).toEqual({
+			outcome: 'linked'
+		});
+
+		expect(syncStore.profiles.map(({ id }) => id)).toEqual([TEST_WORKSPACE, 'held']);
+		expect(sync).toHaveBeenCalledExactlyOnceWith('held');
+		expect(syncStore.activeId).toBe('held');
+	});
+
 	it.each([true, false])(
-		'releases the handover lock before pulling a new paired workspace (sync succeeds: %s)',
+		'syncs a newly paired workspace before a window opens it, with no lock held meanwhile (sync succeeds: %s)',
 		async (success) => {
-			let held = false;
+			const held = new Set<string>();
 			vi.stubGlobal('navigator', {
 				locks: {
 					request: async (name: string, run: () => Promise<unknown>) => {
-						expect(name).toBe(SYNC_LOCK);
-						if (held) throw new Error('Nested sync lock would deadlock');
-						held = true;
+						expect(name === WORKSPACE_LOCK || name.startsWith(SYNC_LOCK)).toBe(true);
+						if (held.size > 0) throw new Error(`${name} asked for while ${[...held]} is held`);
+						held.add(name);
 						try {
 							return await run();
 						} finally {
-							held = false;
+							held.delete(name);
 						}
 					}
 				}
@@ -431,22 +517,25 @@ describe('workspace handovers', () => {
 			try {
 				syncStore.activateLocalWorkspace(TEST_WORKSPACE);
 				await putNote(TEST_WORKSPACE, note('keep-local'));
-				stubHandover();
+				stubChange();
 				const coordinator = new ProfileCoordinator();
-				const pull = vi.spyOn(notesStore, 'replaceWithCloudManual').mockImplementation(async () => {
+				const sync = vi.spyOn(syncScheduler, 'request').mockImplementation(async (pid) => {
+					// The sync waits on the relay: no workspace change may wait behind it.
+					expect(held.size).toBe(0);
 					expect(coordinator.switching).toBe(true);
-					return navigator.locks.request(SYNC_LOCK, async () => success);
+					// The workspace is on the device, and no window shows it yet.
+					expect(syncStore.profiles.some((entry) => entry.id === pid)).toBe(true);
+					expect(syncStore.activeId).toBe(TEST_WORKSPACE);
+					return success;
 				});
-				const merge = vi.spyOn(notesStore, 'syncWithCloudManual').mockResolvedValue(true);
-				syncStore.lastError = null;
 				const result = await coordinator.receiveLinkedKey(createSyncIdentity().syncKey);
 				expect(result).toEqual(
 					success
 						? { outcome: 'linked' }
 						: { outcome: 'linked', error: 'Could not sync the received profile' }
 				);
-				expect(pull).toHaveBeenCalledOnce();
-				expect(merge).not.toHaveBeenCalled();
+				expect(sync).toHaveBeenCalledExactlyOnceWith(syncStore.activeId);
+				expect(syncStore.activeId).not.toBe(TEST_WORKSPACE);
 				expect(coordinator.switching).toBe(false);
 				expect(await getAllNotesMetadata(syncStore.activePid)).toEqual([]);
 				expect(await noteIds(TEST_WORKSPACE)).toContain('keep-local');
@@ -463,6 +552,29 @@ describe('workspace handovers', () => {
  * the device, and the next write would build it back with no keyring entry
  * naming the result.
  */
+describe('renaming a workspace', () => {
+	afterEach(() => vi.restoreAllMocks());
+
+	it('sends a synced workspace\u2019s new name on, and only when it changed', async () => {
+		const synced = workspace('renamed-synced', true, 1);
+		const local = workspace('renamed-local', false, 2);
+		syncStore.profiles = [synced, local];
+		const changed = vi.spyOn(syncScheduler, 'changed').mockImplementation(() => undefined);
+		const coordinator = new ProfileCoordinator();
+
+		expect((await coordinator.rename(synced.id, 'New name'))?.name).toBe('New name');
+		expect(await getSyncOutboxKeys(synced.id)).toContain(PROFILE_META_KEY);
+		expect(changed).toHaveBeenCalledWith(synced.id);
+
+		changed.mockClear();
+		await coordinator.rename(synced.id, 'New name');
+		// A private workspace has nobody to tell.
+		expect((await coordinator.rename(local.id, 'Local name'))?.name).toBe('Local name');
+		expect(changed).not.toHaveBeenCalled();
+		expect(await getSyncOutboxKeys(local.id)).toEqual([]);
+	});
+});
+
 describe('a workspace removed in another window', () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
@@ -479,7 +591,7 @@ describe('a workspace removed in another window', () => {
 		syncStore.profiles = [removed, kept];
 		syncStore.activateProfile(removed);
 		await putNote(kept.id, note('kept-note'));
-		const reload = stubHandover();
+		const reload = stubChange();
 		// What the other window left behind: a keyring without the open workspace.
 		localStorage.setItem('scrapscache-sync-profiles', JSON.stringify([kept]));
 
@@ -498,7 +610,7 @@ describe('a workspace removed in another window', () => {
 		const removed = workspace('only-elsewhere', false, 1);
 		syncStore.profiles = [removed];
 		syncStore.activateProfile(removed);
-		stubHandover();
+		stubChange();
 		localStorage.setItem('scrapscache-sync-profiles', JSON.stringify([]));
 
 		await new ProfileCoordinator().adoptKeyring();
@@ -513,7 +625,7 @@ describe('a workspace removed in another window', () => {
 		const added = workspace('added-elsewhere', false, 2);
 		syncStore.profiles = [open];
 		syncStore.activateProfile(open);
-		const reload = stubHandover();
+		const reload = stubChange();
 		localStorage.setItem('scrapscache-sync-profiles', JSON.stringify([open, added]));
 
 		await new ProfileCoordinator().adoptKeyring();
@@ -543,18 +655,21 @@ describe('a workspace removed in another window', () => {
 		const chosen = workspace('picked-meanwhile', false, 3);
 		syncStore.profiles = [removed, kept, chosen];
 		syncStore.activateProfile(removed);
-		const reload = stubHandover();
+		const reload = stubChange();
 		vi.stubGlobal('navigator', { ...navigator, locks: serialLocks() });
 		try {
 			let releaseSwitch!: () => void;
 			const switchGate = new Promise<void>((resolve) => (releaseSwitch = resolve));
-			// A switch the user started is holding the lock.
-			const userSwitch = navigator.locks.request(SYNC_LOCK, async () => {
+			// A switch the user started is holding the workspace lock.
+			const userSwitch = navigator.locks.request(WORKSPACE_LOCK, async () => {
 				await switchGate;
 				syncStore.activateProfile(chosen);
 			});
 			localStorage.setItem('scrapscache-sync-profiles', JSON.stringify([kept, chosen]));
 			const adopting = new ProfileCoordinator().adoptKeyring();
+			// The handover has asked for the lock and waits behind the switch.
+			await new Promise((resolve) => setTimeout(resolve, 5));
+			expect(syncStore.activeId).toBe(removed.id);
 
 			releaseSwitch();
 			await userSwitch;
@@ -572,7 +687,7 @@ describe('a workspace removed in another window', () => {
 		const kept = workspace('kept-twice', false, 2);
 		syncStore.profiles = [removed, kept];
 		syncStore.activateProfile(removed);
-		const reload = stubHandover();
+		const reload = stubChange();
 		vi.stubGlobal('navigator', { ...navigator, locks: serialLocks() });
 		try {
 			localStorage.setItem('scrapscache-sync-profiles', JSON.stringify([kept]));
@@ -597,7 +712,7 @@ describe('a workspace removed in another window', () => {
 		syncStore.activateProfile(deleting);
 		// Holds this window's connection open, as working in the workspace does.
 		await putNote(deleting.id, note('open-here'));
-		stubHandover();
+		stubChange();
 
 		await dropDatabase(resolveDbName(deleting.id), 50);
 
@@ -618,7 +733,7 @@ describe('a workspace removed in another window', () => {
 		await closeDeviceDatabase();
 		// A window this one cannot ask to step aside: one on an older build.
 		const holder = await openDB(resolveDbName(target.id));
-		stubHandover();
+		stubChange();
 
 		const result = await new ProfileCoordinator().remove(target.id);
 
@@ -662,7 +777,7 @@ describe('a workspace whose sync another window changed', () => {
 		const open = workspace('synced-elsewhere', false);
 		syncStore.profiles = [open];
 		syncStore.activateProfile(open);
-		const reload = stubHandover();
+		const reload = stubChange();
 		const synced = { ...open, syncKey: createSyncIdentity().syncKey };
 		localStorage.setItem('scrapscache-sync-profiles', JSON.stringify([synced]));
 
@@ -680,7 +795,7 @@ describe('a workspace whose sync another window changed', () => {
 		syncStore.activateProfile(open);
 		// A delete retires the key; the retired state must not outlive it.
 		syncStore.keyRetired = true;
-		const reload = stubHandover();
+		const reload = stubChange();
 		localStorage.setItem('scrapscache-sync-profiles', JSON.stringify([{ ...open, syncKey: '' }]));
 
 		await new ProfileCoordinator().adoptKeyring();
@@ -695,7 +810,7 @@ describe('a workspace whose sync another window changed', () => {
 		const open = workspace('rekeyed-elsewhere', true);
 		syncStore.profiles = [open];
 		syncStore.activateProfile(open);
-		const reload = stubHandover();
+		const reload = stubChange();
 		const rekeyed = { ...open, syncKey: createSyncIdentity().syncKey };
 		localStorage.setItem('scrapscache-sync-profiles', JSON.stringify([rekeyed]));
 
@@ -710,7 +825,7 @@ describe('a workspace whose sync another window changed', () => {
 		const other = workspace('renamed-elsewhere', false, 2);
 		syncStore.profiles = [open, other];
 		syncStore.activateProfile(open);
-		const reload = stubHandover();
+		const reload = stubChange();
 		const accountId = syncStore.account?.accountId;
 		localStorage.setItem(
 			'scrapscache-sync-profiles',

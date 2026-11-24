@@ -19,9 +19,16 @@ function connection(reply: () => Response) {
 	const authorizedFetch = vi.fn(async () => reply());
 	const onOpen = vi.fn(() => true);
 	const onSeq = vi.fn();
+	const relay = { authorizedFetch, connectionToken: vi.fn(), clientId: vi.fn(() => 'window-1') };
+	const account = {
+		syncKey: 'sync-key',
+		accountId: 'account-1',
+		authPublicKey: 'key',
+		pairingCode: ''
+	};
 	const value: SyncEventsConnection = {
-		store: { isLoggedIn: true, authorizedFetch },
-		clientId: 'window-1',
+		relay,
+		account,
 		signal: new AbortController().signal,
 		onOpen,
 		onSeq
@@ -51,7 +58,8 @@ describe('the app reaching a server it knows nothing about', () => {
 		await openSyncEvents(parts.value);
 		expect(parts.authorizedFetch).toHaveBeenCalledWith(
 			'/api/sync/events?clientId=window-1',
-			expect.objectContaining({ signal: parts.value.signal })
+			expect.objectContaining({ signal: parts.value.signal }),
+			parts.value.account
 		);
 	});
 

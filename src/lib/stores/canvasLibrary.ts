@@ -1,26 +1,26 @@
 import {
-	CANVAS_LIBRARY_STATE_KEY,
-	CANVAS_LIBRARY_TOMBSTONES_KEY,
 	diffCanvasLibrary,
-	isCanvasLibraryItem,
-	isCanvasLibraryEntry,
 	libraryItemsFor,
 	mergeCanvasLibrary,
+	mergeStoredCanvasLibrary,
 	readCanvasLibrary,
 	type CanvasLibraryEntry,
 	type CanvasLibraryItem
 } from '#lib/canvasLibrary.js';
-import { mergeWorkspaceState } from '#lib/db/idb.js';
 import { syncClock } from '#lib/editContext.js';
-import { syncStore } from '#lib/stores/sync.svelte.js';
-import { BackupImportMode } from '#lib/backup.js';
+import { recordKey } from '#lib/syncRecords.js';
+import { dropNotesMirror } from '#lib/noteStorage.js';
+import { PendingJournal, type Pending, type PendingChange } from '#lib/pendingJournal.js';
+import { UnsavedChanges } from '#lib/unsavedChanges.js';
+import { trackLocalWrites } from '#lib/localWrites.js';
+import { sanitizeTombstones } from '#lib/syncTombstones.js';
+import { syncScheduler } from '#lib/stores/syncScheduler.js';
 
-function sanitizeTombstones(value: unknown): Record<string, number> {
-	if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-	return Object.fromEntries(
-		Object.entries(value).flatMap(([id, at]) => (Number(at) > 0 ? [[id, Number(at)]] : []))
-	);
-}
+/** Library items whose save has not landed: the item, or the time it was removed. */
+const pendingLibrary = new PendingJournal<PendingChange<CanvasLibraryEntry>>(
+	'scrapscache-library-pending',
+	dropNotesMirror
+);
 
 /** IndexedDB cannot store frozen editor objects that carry `undefined`; JSON is the stored shape. */
 function plain<T>(value: T): T {
@@ -34,9 +34,10 @@ export class CanvasLibraryStore {
 	private tombstones: Record<string, number> = {};
 	private generation = 0;
 	private revision = 0;
-	private replacePending = false;
 	private listeners = new Set<(items: CanvasLibraryItem[]) => void>();
 	private pendingWrites: Promise<void> = Promise.resolve();
+	/** Saves that failed and wait to be tried again, by workspace, with the upload marks they owe. */
+	private unsaved = new UnsavedChanges(pendingLibrary, 'canvas library items');
 
 	/** Load a workspace's library. Nothing of the previous workspace's survives the switch. */
 	async hydrate(pid: string): Promise<void> {
@@ -47,12 +48,34 @@ export class CanvasLibraryStore {
 		this.pid = pid;
 		this.entries = [];
 		this.tombstones = {};
-		this.replacePending = false;
 		const stored = await readCanvasLibrary(pid);
 		if (generation !== this.generation) return;
-		this.entries = stored.entries;
-		this.tombstones = stored.tombstones;
+		// Changes whose save never landed are laid over what is stored and saved again.
+		const unsaved = this.unsaved.read(pid);
+		const tombstones = { ...stored.tombstones };
+		const keys: string[] = [];
+		const items: CanvasLibraryEntry[] = [];
+		for (const [id, change] of Object.entries(unsaved)) {
+			if (change.kind === 'put') {
+				items.push(change.value);
+				keys.push(recordKey('library-item', id));
+			} else if (change.at > (tombstones[id] || 0)) {
+				tombstones[id] = change.at;
+				keys.push(recordKey('library-item-tombstone', id));
+			}
+		}
+		this.entries = mergeCanvasLibrary(stored.entries, items, tombstones);
+		this.tombstones = tombstones;
 		this.notify();
+		if (keys.length) {
+			this.persist(pid, keys, unsaved);
+			syncScheduler.changed(pid);
+		} else this.unsaved.settle(pid, unsaved);
+	}
+
+	/** No save of this workspace's library waits to be tried again. The journal keeps what it has. */
+	forgetUnsaved(pid: string): void {
+		this.unsaved.forget(pid);
 	}
 
 	items(): CanvasLibraryItem[] {
@@ -82,14 +105,14 @@ export class CanvasLibraryStore {
 				(tombstones[item.id] ?? 0) + 1
 			);
 			byId.set(item.id, { id: item.id, updatedAt, item: plain(item) });
-			keys.push(`library-item:${item.id}`);
+			keys.push(recordKey('library-item', item.id));
 		}
 		for (const id of removals) {
 			const existing = byId.get(id);
 			if (!existing) continue;
 			tombstones[id] = Math.max(syncClock.now(), existing.updatedAt + 1);
 			byId.delete(id);
-			keys.push(`library-item-tombstone:${id}`);
+			keys.push(recordKey('library-item-tombstone', id));
 		}
 		if (!keys.length) return;
 		this.revision += 1;
@@ -97,52 +120,7 @@ export class CanvasLibraryStore {
 		this.tombstones = tombstones;
 		this.notify();
 		this.persist(this.pid, keys);
-		syncStore.requestAutoSync([]);
-	}
-
-	/**
-	 * Bring a backup's library into this workspace as a new save of each item, so
-	 * it wins over any older version or delete elsewhere. Keep adds what is
-	 * missing; Replace also deletes what the backup does not have.
-	 */
-	restore(pid: string, items: readonly unknown[], mode: BackupImportMode): void {
-		if (pid !== this.pid) return;
-		const now = syncClock.now();
-		const byId = new Map(this.entries.map((entry) => [entry.id, entry]));
-		const tombstones = { ...this.tombstones };
-		const keys: string[] = [];
-		const restored = new Set<string>();
-		for (const item of items.filter(isCanvasLibraryItem)) {
-			restored.add(item.id);
-			const current = byId.get(item.id);
-			if (current && mode === BackupImportMode.Keep) continue;
-			const updatedAt = Math.max(
-				now,
-				(current?.updatedAt ?? 0) + 1,
-				(tombstones[item.id] ?? 0) + 1
-			);
-			byId.set(item.id, { id: item.id, updatedAt, item: plain(item) });
-			keys.push(`library-item:${item.id}`);
-		}
-		if (mode === BackupImportMode.Replace) {
-			for (const [id, entry] of byId) {
-				if (restored.has(id)) continue;
-				tombstones[id] = Math.max(now, entry.updatedAt + 1);
-				byId.delete(id);
-				keys.push(`library-item-tombstone:${id}`);
-			}
-		}
-		if (!keys.length) return;
-		this.set([...byId.values()], tombstones);
-		this.persist(pid, keys);
-	}
-
-	entriesForSync(): CanvasLibraryEntry[] {
-		return this.entries.map((entry) => ({ ...entry }));
-	}
-
-	tombstonesForSync(): Record<string, number> {
-		return { ...this.tombstones };
+		syncScheduler.changed(this.pid);
 	}
 
 	/** Merge what a sync pulled without scheduling another upload. */
@@ -152,19 +130,6 @@ export class CanvasLibraryStore {
 			if (deletedAt > (tombstones[id] || 0)) tombstones[id] = deletedAt;
 		}
 		this.set(mergeCanvasLibrary(this.entries, remote, tombstones), tombstones);
-	}
-
-	/** Used when this device takes the cloud's copy instead of its own. */
-	replaceWithCloud(remote: CanvasLibraryEntry[], remoteTombstones: Record<string, number>): void {
-		this.replacePending = true;
-		const tombstones = sanitizeTombstones(remoteTombstones);
-		this.set(mergeCanvasLibrary([], remote, tombstones), tombstones);
-	}
-
-	async persistSyncState(pid: string, syncOutboxKeys: Iterable<string> = []): Promise<void> {
-		if (pid !== this.pid) return;
-		this.persist(pid, [...syncOutboxKeys]);
-		await this.pendingWrites;
 	}
 
 	waitForPendingWrites(): Promise<void> {
@@ -178,43 +143,49 @@ export class CanvasLibraryStore {
 		this.notify();
 	}
 
-	private persist(pid: string, keys: string[]): void {
+	/**
+	 * Save the library with the upload marks for `keys`. The changes are journaled
+	 * before the save starts, so they outlive a stop that comes first. A save that
+	 * failed is tried again, later each time, with every mark the failed ones owed,
+	 * for as long as the window shows that workspace; whichever it shows, the journal
+	 * has the change for the next start.
+	 */
+	private persist(
+		pid: string,
+		keys: string[],
+		/** What a start read from the journal and saves again: it is journaled already. */
+		replayed?: Pending<PendingChange<CanvasLibraryEntry>>
+	): void {
+		const marks = this.unsaved.begin(pid, keys);
 		const entries = plain(this.entries);
 		const tombstones = { ...this.tombstones };
+		// A replay journals nothing: another window may have journaled something newer since.
+		const changes =
+			replayed ??
+			this.unsaved.journalFor(pid, marks, (id): PendingChange<CanvasLibraryEntry> | undefined => {
+				// An item that is here was put back after its removal, so it is the newer of the two.
+				const entry = entries.find((candidate) => candidate.id === id);
+				if (entry) return { kind: 'put', value: entry };
+				return tombstones[id] ? { kind: 'delete', at: tombstones[id] } : undefined;
+			});
 		const generation = this.generation;
 		const revision = this.revision;
-		const replace = this.replacePending;
-		this.replacePending = false;
 		const write = this.pendingWrites.then(async () => {
-			const state = await mergeWorkspaceState(
-				pid,
-				[CANVAS_LIBRARY_STATE_KEY, CANVAS_LIBRARY_TOMBSTONES_KEY],
-				(current) => {
-					const deleted = sanitizeTombstones(replace ? {} : current[CANVAS_LIBRARY_TOMBSTONES_KEY]);
-					for (const [id, at] of Object.entries(tombstones))
-						deleted[id] = Math.max(deleted[id] ?? 0, at);
-					const stored = replace ? [] : current[CANVAS_LIBRARY_STATE_KEY];
-					return {
-						value: {
-							[CANVAS_LIBRARY_STATE_KEY]: mergeCanvasLibrary(
-								Array.isArray(stored) ? stored.filter(isCanvasLibraryEntry) : [],
-								entries,
-								deleted
-							),
-							[CANVAS_LIBRARY_TOMBSTONES_KEY]: deleted
-						},
-						outboxKeys: keys
-					};
-				}
-			);
+			const stored = await mergeStoredCanvasLibrary(pid, entries, tombstones, marks);
+			// Everything journaled for these marks is saved, a change that lost to a newer one included.
+			this.unsaved.settle(pid, changes);
+			this.unsaved.succeeded(pid);
 			if (pid === this.pid && generation === this.generation && revision === this.revision)
-				this.applySync(
-					state[CANVAS_LIBRARY_STATE_KEY] as CanvasLibraryEntry[],
-					state[CANVAS_LIBRARY_TOMBSTONES_KEY] as Record<string, number>
-				);
+				this.applySync(stored.entries, stored.tombstones);
 		});
 		this.pendingWrites = write.catch((err) => {
 			console.error('[canvas library] could not save the library:', err);
+			this.unsaved.failed(pid, marks, () => {
+				if (pid === this.pid) {
+					this.persist(pid, []);
+					syncScheduler.changed(pid);
+				} else this.unsaved.forget(pid);
+			});
 		});
 	}
 
@@ -225,3 +196,4 @@ export class CanvasLibraryStore {
 }
 
 export const canvasLibraryStore = new CanvasLibraryStore();
+trackLocalWrites(() => canvasLibraryStore.waitForPendingWrites());

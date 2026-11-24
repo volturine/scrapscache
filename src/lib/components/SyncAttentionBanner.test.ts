@@ -4,6 +4,7 @@ import { tick } from 'svelte';
 import { createSyncIdentity } from '#lib/syncPairing.js';
 import { notesStore } from '#lib/stores/notes.svelte.js';
 import { syncStore } from '#lib/stores/sync.svelte.js';
+import { syncScheduler } from '#lib/stores/syncScheduler.js';
 import { uiStore } from '#lib/stores/ui.svelte.js';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 import SyncAttentionBanner from './SyncAttentionBanner.svelte';
@@ -59,8 +60,18 @@ describe('SyncAttentionBanner', () => {
 		expect(banner()).toBeNull();
 	});
 
+	it('stays quiet when the server could only not be reached, since the sync is tried again', async () => {
+		render(SyncAttentionBanner);
+
+		syncStore.issue = { kind: 'unreachable', message: 'Sync network error' };
+		await tick();
+
+		expect(syncStore.relayUnreachable).toBe(true);
+		expect(banner()).toBeNull();
+	});
+
 	it('offers a retry for a sync error and goes away when dismissed, until a new error', async () => {
-		const retry = vi.spyOn(notesStore, 'syncWithCloudManual').mockResolvedValue(true);
+		const retry = vi.spyOn(syncScheduler, 'request').mockResolvedValue(true);
 		render(SyncAttentionBanner);
 
 		syncStore.lastError = 'TypeError: Failed to fetch';
@@ -111,7 +122,7 @@ describe('SyncAttentionBanner', () => {
 
 	it('shows a warning from a sync that went through as written, with a retry', async () => {
 		render(SyncAttentionBanner);
-		syncStore.lastError = 'Skipped 1 unreadable sync record';
+		syncStore.issue = { kind: 'warning', message: 'Skipped 1 unreadable sync record' };
 		await tick();
 
 		expect(screen.getByText('Skipped 1 unreadable sync record')).toBeTruthy();

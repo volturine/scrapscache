@@ -5,6 +5,7 @@ import * as idb from '#lib/db/idb.js';
 import { SyncStore } from './sync.svelte';
 import { syncSnapshot } from '#lib/syncRecords.js';
 import { seedTestKeyring, TEST_WORKSPACE } from '../../tests/workspace';
+import { syncOpen, syncParts } from '../../tests/openSync';
 
 type RequestResult = { success: boolean; data?: Record<string, unknown>; error?: string };
 
@@ -67,7 +68,7 @@ describe('quota isolation independent of server error wording', () => {
 		store.account = account;
 		const local = note('note-1', [attachment('ok'), attachment('huge')]);
 		vi.spyOn(
-			store as unknown as {
+			syncParts(store).relay as unknown as {
 				sendSyncRequest(
 					path: string,
 					payload: string
@@ -96,7 +97,7 @@ describe('quota isolation independent of server error wording', () => {
 		});
 		await idb.markSyncOutbox(TEST_WORKSPACE, ['note:note-1', 'attachment:ok', 'attachment:huge']);
 
-		const result = await store.sync(syncSnapshot({ notes: [local] }), false, false, async (s) => s);
+		const result = await syncOpen(store, syncSnapshot({ notes: [local] }), async (s) => s);
 
 		expect(result.success).toBe(false);
 		expect(result.error).toMatch(/quota/);

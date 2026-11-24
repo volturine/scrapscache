@@ -1,17 +1,27 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createSyncIdentity, formatPairingCode } from '#lib/syncPairing.js';
+import { createSyncIdentity, formatPairingCode, identityFromSyncKey } from '#lib/syncPairing.js';
 import type { StoredProfile } from '#lib/profiles.js';
 import { notesStore } from '#lib/stores/notes.svelte.js';
 import { profileCoordinator } from '#lib/stores/profiles.svelte.js';
-import {
-	syncStore,
-	SYNC_VERSION_MISMATCH_MESSAGE,
-	type StartedDeviceLink
-} from '#lib/stores/sync.svelte.js';
+import { syncStore } from '#lib/stores/sync.svelte.js';
+import { SYNC_VERSION_MISMATCH_MESSAGE } from '#lib/relayClient.js';
+import type { StartedDeviceLink } from '#lib/deviceLink.js';
+import { syncScheduler } from '#lib/stores/syncScheduler.js';
 import SyncModal from './SyncModal.svelte';
 import { loadTurnstileNeed, type TurnstileNeed } from '#lib/turnstileOrigin.js';
+
+// The pairing calls of the sync dialog, each replaced by the test that uses it.
+const deviceLink = vi.hoisted(() => ({
+	startDeviceLink: vi.fn(),
+	startExistingDeviceLink: vi.fn(),
+	pollDeviceLink: vi.fn()
+}));
+vi.mock('#lib/deviceLink.js', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/deviceLink.js')>()),
+	...deviceLink
+}));
 
 // The sync server says whether it wants a Turnstile token; most tests use one that does not.
 vi.mock('#lib/turnstileOrigin.js', () => ({
@@ -31,6 +41,8 @@ const tokenFrom = (
 		})
 	);
 import { TEST_WORKSPACE } from '../../tests/workspace';
+import { showOpenWorkspaceSyncing } from '../../tests/syncing';
+import { workspaceRewrites } from '#lib/stores/workspaceRewrites.svelte.js';
 
 function profile(id: string, name: string, createdAt: number): StoredProfile {
 	return { id, name, createdAt, syncKey: createSyncIdentity().syncKey };
@@ -57,6 +69,7 @@ describe('SyncModal profile interactions', () => {
 
 	beforeEach(() => {
 		vi.restoreAllMocks();
+		for (const mock of Object.values(deviceLink)) mock.mockReset();
 		localStorage.clear();
 		home = { id: 'device-local', name: 'Home', syncKey: '', createdAt: 0 };
 		main = profile('profile-main', 'Main', 1);
@@ -67,11 +80,11 @@ describe('SyncModal profile interactions', () => {
 		syncStore.progress = null;
 		syncStore.usage = null;
 		profileCoordinator.switching = false;
-		(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = null;
+		showOpenWorkspaceSyncing(false);
 	});
 
 	it('keeps an incompatibility message visible after a failed manual sync', async () => {
-		const sync = vi.spyOn(notesStore, 'syncWithCloudManual').mockImplementation(async () => {
+		const sync = vi.spyOn(syncScheduler, 'request').mockImplementation(async () => {
 			syncStore.lastError = SYNC_VERSION_MISMATCH_MESSAGE;
 			return false;
 		});
@@ -120,7 +133,7 @@ describe('SyncModal profile interactions', () => {
 
 	it('renames a workspace inline and keeps the row editable when saving fails', async () => {
 		const rename = vi
-			.spyOn(syncStore, 'renameProfile')
+			.spyOn(profileCoordinator, 'rename')
 			.mockResolvedValueOnce(null)
 			.mockResolvedValueOnce({ ...side, name: 'Studio' });
 
@@ -143,7 +156,7 @@ describe('SyncModal profile interactions', () => {
 	});
 
 	it('escapes an inline rename without saving', async () => {
-		const rename = vi.spyOn(syncStore, 'renameProfile');
+		const rename = vi.spyOn(profileCoordinator, 'rename');
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
 		await expand('Side');
@@ -324,7 +337,7 @@ describe('SyncModal profile interactions', () => {
 	});
 
 	it('asks for a new key when a sync finds the key retired, and creates it', async () => {
-		vi.spyOn(notesStore, 'syncWithCloudManual').mockImplementation(async () => {
+		vi.spyOn(syncScheduler, 'request').mockImplementation(async () => {
 			syncStore.keyRetired = true;
 			syncStore.lastError = 'This sync key was deleted from the cloud.';
 			return false;
@@ -461,7 +474,7 @@ describe('SyncModal profile interactions', () => {
 	});
 
 	it('releases the UI after an unexpected sync rejection', async () => {
-		vi.spyOn(notesStore, 'syncWithCloudManual').mockRejectedValueOnce(new Error('relay failed'));
+		vi.spyOn(syncScheduler, 'request').mockRejectedValueOnce(new Error('relay failed'));
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
 		const button = screen.getByRole('button', { name: 'Sync now' }) as HTMLButtonElement;
@@ -605,7 +618,7 @@ describe('SyncModal profile interactions', () => {
 	});
 
 	it('offers recovery for authentication failure and places joining under new workspace only', async () => {
-		syncStore.lastError = 'Could not start sync authentication';
+		syncStore.issue = { kind: 'sign-in', message: 'Could not start sync authentication' };
 		render(SyncModal, { props: { onClose: vi.fn() } });
 		expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull();
 		expect(screen.getByRole('button', { name: 'Replace the cloud copy' })).toBeTruthy();
@@ -624,7 +637,7 @@ describe('SyncModal profile interactions', () => {
 
 	it('shows syncing once on the button for a sync started from the modal', async () => {
 		const manualSync = deferred<boolean>();
-		vi.spyOn(notesStore, 'syncWithCloudManual').mockReturnValueOnce(manualSync.promise);
+		vi.spyOn(syncScheduler, 'request').mockReturnValueOnce(manualSync.promise);
 		render(SyncModal, { props: { onClose: vi.fn() } });
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Sync now' }));
@@ -635,32 +648,49 @@ describe('SyncModal profile interactions', () => {
 		await waitFor(() => expect(screen.getByRole('button', { name: 'Sync now' })).toBeTruthy());
 	});
 
-	it('reacts when a store-owned sync starts and ends', async () => {
+	// A background sync waits on the relay, which a poor connection can stretch to
+	// minutes, and an import can run as long. Nothing in the dialog waits for either:
+	// a workspace change takes over from the sync, asking for a sync joins it, and
+	// an import lands in its own workspace whatever is open by then.
+	it('holds nothing while a store-owned sync or an import runs', async () => {
 		render(SyncModal, { props: { onClose: vi.fn() } });
 		const syncNow = screen.getByRole('button', { name: 'Sync now' }) as HTMLButtonElement;
-
-		(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = new Promise(
-			() => undefined
-		);
-		await tick();
-		expect(syncNow.disabled).toBe(true);
-		expect(syncNow.textContent).toContain('Sync now');
-		expect(screen.queryByText('Syncing…')).toBeNull();
-
-		(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = null;
-		await tick();
 		const target = screen.getByRole('button', { name: 'Switch to Side' }) as HTMLButtonElement;
+		const close = screen.getByRole('button', { name: 'Close' }) as HTMLButtonElement;
 
-		(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = new Promise(
-			() => undefined
-		);
+		showOpenWorkspaceSyncing(true);
+		workspaceRewrites.importing = true;
 		await tick();
-		expect(target.disabled).toBe(true);
-		expect(screen.queryByText('Wait for sync to finish before changing workspaces.')).toBeNull();
+		try {
+			expect(syncNow.disabled).toBe(false);
+			expect(syncNow.textContent).toContain('Sync now');
+			expect(screen.queryByText('Syncing…')).toBeNull();
+			expect(target.disabled).toBe(false);
+			expect(close.disabled).toBe(false);
+		} finally {
+			showOpenWorkspaceSyncing(false);
+			workspaceRewrites.importing = false;
+		}
+	});
 
-		(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = null;
-		await tick();
+	it('switches workspace while a sync started from the modal still waits', async () => {
+		const onClose = vi.fn();
+		vi.spyOn(syncScheduler, 'request').mockReturnValueOnce(new Promise(() => undefined));
+		const switchTo = vi.spyOn(profileCoordinator, 'switchTo').mockResolvedValue({ success: true });
+		render(SyncModal, { props: { onClose } });
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Sync now' }));
+		expect(screen.getByRole('button', { name: 'Syncing…' })).toBeTruthy();
+		const target = screen.getByRole('button', { name: 'Switch to Side' }) as HTMLButtonElement;
 		expect(target.disabled).toBe(false);
+		// Everything else in the row still waits for the sync the person asked for.
+		expect(
+			(screen.getByRole('button', { name: 'Export Side' }) as HTMLButtonElement).disabled
+		).toBe(true);
+
+		await fireEvent.click(target);
+		await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+		expect(switchTo).toHaveBeenCalledOnce();
 	});
 
 	it('unlinks the active workspace from its own row into a private workspace', async () => {
@@ -725,8 +755,8 @@ describe('SyncModal profile interactions', () => {
 				receivedSyncKey: string;
 			}>();
 			const handover = deferred<{ outcome: 'linked'; error?: string }>();
-			vi.spyOn(syncStore, 'startDeviceLink').mockResolvedValue({ success: true, link });
-			vi.spyOn(syncStore, 'pollDeviceLink').mockReturnValue(poll.promise);
+			deviceLink.startDeviceLink.mockResolvedValue({ success: true, link });
+			deviceLink.pollDeviceLink.mockReturnValue(poll.promise);
 			const receive = vi
 				.spyOn(profileCoordinator, 'receiveLinkedKey')
 				.mockReturnValue(handover.promise);
@@ -739,14 +769,13 @@ describe('SyncModal profile interactions', () => {
 			});
 			await fireEvent.click(screen.getByRole('button', { name: 'Start connection' }));
 			// A background sync may start while the pairing poll is in flight.
-			(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight =
-				Promise.resolve(true);
+			showOpenWorkspaceSyncing(true);
 			poll.resolve({ success: true, linked: true, expired: false, receivedSyncKey: side.syncKey });
 			await waitFor(() => expect(receive).toHaveBeenCalledWith(side.syncKey));
 			expect(screen.getByText('Connected. Syncing workspace…')).toBeTruthy();
 			expect(screen.queryByText('Expires in')).toBeNull();
 			expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
-			(notesStore as unknown as { syncFlight: Promise<boolean> | null }).syncFlight = null;
+			showOpenWorkspaceSyncing(false);
 			handover.resolve({ outcome: 'linked', error: syncError });
 			await waitFor(() => expect(screen.getByText(syncError ?? 'Paired and synced.')).toBeTruthy());
 			expect(screen.queryByText('Connected. Syncing workspace…')).toBeNull();
@@ -761,8 +790,8 @@ describe('SyncModal profile interactions', () => {
 			syncCode: 'ABCD1234EFGH5678',
 			pake: { ephemeralSecret: 'secret', share: 'share' }
 		};
-		const start = vi.spyOn(syncStore, 'startDeviceLink').mockResolvedValue({ success: true, link });
-		vi.spyOn(syncStore, 'pollDeviceLink').mockReturnValue(new Promise(() => undefined));
+		const start = deviceLink.startDeviceLink.mockResolvedValue({ success: true, link });
+		deviceLink.pollDeviceLink.mockReturnValue(new Promise(() => undefined));
 
 		render(SyncModal, {
 			props: { onClose: vi.fn(), initialPairingCode: 'ABCD-1234-EFGH-5678' }
@@ -798,9 +827,8 @@ describe('SyncModal profile interactions', () => {
 			linked: boolean;
 			expired: boolean;
 		}>();
-		vi.spyOn(syncStore, 'startExistingDeviceLink').mockResolvedValue({ success: true, link });
-		const poll = vi
-			.spyOn(syncStore, 'pollDeviceLink')
+		deviceLink.startExistingDeviceLink.mockResolvedValue({ success: true, link });
+		const poll = deviceLink.pollDeviceLink
 			.mockImplementationOnce(() => firstPoll.promise)
 			.mockResolvedValue({ success: true, linked: false, expired: false });
 		render(SyncModal, { props: { onClose: vi.fn() } });
@@ -821,6 +849,34 @@ describe('SyncModal profile interactions', () => {
 		expect(poll).toHaveBeenCalledTimes(2);
 	});
 
+	it('hands over the key of the workspace the link was started for, whichever is open by then', async () => {
+		vi.useFakeTimers();
+		const link: StartedDeviceLink = {
+			id: 'link-1',
+			expiresAt: Date.now() + 60_000,
+			role: 'existing',
+			syncCode: 'ABCD1234EFGH5678',
+			pake: { ephemeralSecret: 'secret', share: 'share' }
+		};
+		deviceLink.startExistingDeviceLink.mockResolvedValue({ success: true, link });
+		const poll = deviceLink.pollDeviceLink.mockResolvedValue({
+			success: true,
+			linked: false,
+			expired: false
+		});
+		render(SyncModal, { props: { onClose: vi.fn() } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Connect another device' }));
+		await waitFor(() => expect(poll).toHaveBeenCalledTimes(1));
+		expect(poll.mock.calls[0][1]).toEqual(identityFromSyncKey(main.syncKey));
+
+		// The window moves to another workspace while the other device is waited for.
+		syncStore.activateProfile(side);
+		await vi.advanceTimersByTimeAsync(1_500);
+
+		expect(poll).toHaveBeenCalledTimes(2);
+		expect(poll.mock.calls[1][1]).toEqual(identityFromSyncKey(main.syncKey));
+	});
+
 	it('copies the one-time code when it is pressed, and keeps the link button as it is', async () => {
 		const link: StartedDeviceLink = {
 			id: 'link-1',
@@ -829,8 +885,8 @@ describe('SyncModal profile interactions', () => {
 			syncCode: 'HKB4RW7CY75S4VCY',
 			pake: { ephemeralSecret: 'secret', share: 'share' }
 		};
-		vi.spyOn(syncStore, 'startExistingDeviceLink').mockResolvedValue({ success: true, link });
-		vi.spyOn(syncStore, 'pollDeviceLink').mockResolvedValue({
+		deviceLink.startExistingDeviceLink.mockResolvedValue({ success: true, link });
+		deviceLink.pollDeviceLink.mockResolvedValue({
 			success: true,
 			linked: false,
 			expired: false

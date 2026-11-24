@@ -6,7 +6,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as idb from '#lib/db/idb.js';
-import { clearAllNotes, getAllNotesMetadata } from '#lib/db/idb.js';
+import { getAllNotesMetadata } from '#lib/db/idb.js';
 import {
 	journalPendingNotes,
 	NOTES_MIRROR_KEY,
@@ -15,7 +15,7 @@ import {
 } from '#lib/noteStorage.js';
 import type { Note } from '#lib/types.js';
 import { notesStore } from './notes.svelte';
-import { TEST_WORKSPACE } from '../../tests/workspace';
+import { emptyWorkspace, TEST_WORKSPACE } from '../../tests/workspace';
 
 function note(id: string): Note {
 	return {
@@ -36,17 +36,22 @@ function note(id: string): Note {
 }
 
 const MIRROR = `${NOTES_MIRROR_KEY}:${TEST_WORKSPACE}`;
-const PENDING = `${PENDING_NOTES_KEY}:${TEST_WORKSPACE}`;
+/** Every journaled change is an entry of its own, under a key that starts with this. */
+const PENDING = `${PENDING_NOTES_KEY}:${TEST_WORKSPACE}:`;
 
 function writesTo(setItem: { mock: { calls: unknown[][] } }, key: string): string[] {
 	return setItem.mock.calls
-		.filter(([written]) => written === key)
+		.filter(([written]) => (key === PENDING ? String(written).startsWith(key) : written === key))
 		.map(([, value]) => String(value));
+}
+
+function journalKeys(): string[] {
+	return Object.keys(localStorage).filter((key) => key.startsWith(PENDING));
 }
 
 beforeEach(async () => {
 	localStorage.clear();
-	await clearAllNotes(TEST_WORKSPACE);
+	await emptyWorkspace(TEST_WORKSPACE);
 	notesStore.notes = Array.from({ length: 500 }, (_, index) => note(`n${index}`));
 	notesStore.labels = [];
 	notesStore.deletedNoteIds = {};
@@ -70,7 +75,7 @@ describe('saving a note', () => {
 		const journaled = writesTo(setItem, PENDING);
 		expect(journaled).toHaveLength(20);
 		// Each journal write carries the one note, not the workspace.
-		for (const value of journaled) expect(Object.keys(JSON.parse(value))).toEqual(['n7']);
+		for (const value of journaled) expect(JSON.parse(value).id).toBe('n7');
 
 		await vi.runAllTimersAsync();
 
@@ -78,7 +83,7 @@ describe('saving a note', () => {
 		expect(JSON.parse(localStorage.getItem(MIRROR) ?? '[]')).toHaveLength(500);
 		// Every write landed, so nothing is left pending.
 		expect(readPendingNotes(TEST_WORKSPACE)).toEqual({});
-		expect(localStorage.getItem(PENDING)).toBeNull();
+		expect(journalKeys()).toEqual([]);
 	});
 
 	it('waits for typing to pause before mirroring every note', async () => {
@@ -120,14 +125,14 @@ describe('saving a note', () => {
 
 		expect(writesTo(setItem, MIRROR)).toEqual([]);
 		const journaled = writesTo(setItem, PENDING);
-		expect(journaled).toHaveLength(1);
-		expect(Object.keys(JSON.parse(journaled[0]))).toHaveLength(100);
+		// One entry per note the label was on, and none for the other four hundred.
+		expect(journaled).toHaveLength(100);
 	});
 
 	it('brings back an edit whose IndexedDB write never landed', async () => {
 		notesStore.notes = [note('kept')];
 		// The page dies before the write commits: it never resolves.
-		vi.spyOn(idb, 'putNote').mockImplementationOnce(() => new Promise(() => undefined));
+		vi.spyOn(idb, 'saveNote').mockImplementationOnce(() => new Promise(() => undefined));
 
 		notesStore.updateNote('kept', { title: 'typed just before the crash' });
 		vi.restoreAllMocks();
@@ -164,12 +169,12 @@ describe('saving a note', () => {
 	it('keeps a newer journaled edit when an older write lands', async () => {
 		notesStore.notes = [note('n1')];
 		let land: () => void = () => undefined;
-		vi.spyOn(idb, 'putNote').mockImplementationOnce(
+		vi.spyOn(idb, 'saveNote').mockImplementationOnce(
 			() => new Promise<void>((resolve) => (land = resolve))
 		);
 		notesStore.updateNote('n1', { title: 'first' });
 		// The second write is still in flight when the first lands.
-		vi.spyOn(idb, 'putNote').mockImplementationOnce(() => new Promise(() => undefined));
+		vi.spyOn(idb, 'saveNote').mockImplementationOnce(() => new Promise(() => undefined));
 		notesStore.updateNote('n1', { title: 'second' });
 
 		land();

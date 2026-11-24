@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { strToU8 } from 'fflate';
-import { waitForDeviceWrites } from '#lib/db/idb.js';
+import { saveLabel, putNote, waitForDeviceWrites } from '#lib/db/idb.js';
 import { BackupImportMode } from '#lib/backup.js';
 import { notesStore } from './notes.svelte';
+import { syncScheduler } from './syncScheduler';
 import { syncStore } from './sync.svelte';
+import { workspaceRewrites } from '#lib/stores/workspaceRewrites.svelte.js';
 
 function keepNote(overrides: Record<string, unknown> = {}) {
 	return {
@@ -20,21 +22,21 @@ function keepNote(overrides: Record<string, unknown> = {}) {
 }
 
 describe('Google Keep takeout import', () => {
-	beforeEach(() => {
+	// An import lands on what the workspace's database holds.
+	beforeEach(async () => {
 		localStorage.clear();
 		syncStore.account = null;
-		notesStore.notes = [];
-		notesStore.labels = [{ id: 'existing-recipes', name: 'Recipes', createdAt: 1, updatedAt: 1 }];
+		await saveLabel(syncStore.activeId, {
+			id: 'existing-recipes',
+			name: 'Recipes',
+			createdAt: 1,
+			updatedAt: 1
+		});
+		await notesStore.reloadForProfile();
 	});
 
 	afterEach(() => {
-		const internals = notesStore as unknown as {
-			dirty: boolean;
-			syncPushTimer: ReturnType<typeof setTimeout> | null;
-		};
-		if (internals.syncPushTimer) clearTimeout(internals.syncPushTimer);
-		internals.syncPushTimer = null;
-		internals.dirty = false;
+		syncScheduler.reset();
 		notesStore.notes = [];
 		notesStore.labels = [];
 	});
@@ -51,7 +53,7 @@ describe('Google Keep takeout import', () => {
 			)
 		};
 
-		const result = await notesStore.importKeepTakeout(files, BackupImportMode.Keep);
+		const result = await workspaceRewrites.importKeepTakeout(files, BackupImportMode.Keep);
 		await waitForDeviceWrites();
 
 		expect(result).toEqual({ success: true });
@@ -66,24 +68,23 @@ describe('Google Keep takeout import', () => {
 	});
 
 	it('replaces local notes without touching unmatched keep timestamps', async () => {
-		notesStore.notes = [
-			{
-				id: 'old',
-				title: 'Old',
-				body: '',
-				color: 'default',
-				pinned: false,
-				archived: false,
-				trashed: false,
-				trashedAt: null,
-				createdAt: 1,
-				updatedAt: 1,
-				reminder: null,
-				labels: []
-			}
-		];
+		await putNote(syncStore.activeId, {
+			id: 'old',
+			title: 'Old',
+			body: '',
+			color: 'default',
+			pinned: false,
+			archived: false,
+			trashed: false,
+			trashedAt: null,
+			createdAt: 1,
+			updatedAt: 1,
+			reminder: null,
+			labels: []
+		});
+		await notesStore.reloadForProfile();
 
-		const result = await notesStore.importKeepTakeout(
+		const result = await workspaceRewrites.importKeepTakeout(
 			{
 				'Takeout/Keep/Note.json': strToU8(JSON.stringify(keepNote({ title: 'New' })))
 			},

@@ -5,13 +5,14 @@ import {
 	type ReminderPage
 } from '#lib/reminderChannel.js';
 import { reminderHistoryStore, type ReminderHistoryStore } from '#lib/stores/reminderHistory.js';
+import { relay } from '#lib/relayClient.js';
 import { syncStore } from '#lib/stores/sync.svelte.js';
 import { identityFromSyncKey } from '#lib/syncPairing.js';
 import { isProfileReleased } from '#lib/db/idb.js';
 import type { StoredProfile } from '#lib/profiles.js';
+import { Retries, receiptRetry } from '#lib/syncRetry.js';
 
 type Workspace = Pick<StoredProfile, 'id' | 'syncKey'>;
-type Retry = { timer: ReturnType<typeof setTimeout> | null; backoff: number };
 
 /** The relay's receipt storage for this account is full; retrying will not help until something changes. */
 export class ReminderStorageFullError extends Error {}
@@ -20,18 +21,17 @@ export class ReminderStorageFullError extends Error {}
  * Independent of note-sync flights and their lock, cursor, outbox and status indicator.
  * Nothing stays connected and nothing polls: a workspace exchanges right after a
  * local receipt, before it shows a missed reminder, and when the app starts, is
- * shown again or comes back online. The open workspace then catches up; another
- * sends only what it has queued.
+ * shown again or comes back online. Every synced workspace does, whichever one a
+ * window shows: what another device handled is known here before it is opened.
  */
 export class ReminderHistoryClient {
 	private flights = new Map<string, { syncKey: string; promise: Promise<void> }>();
 	private again = new Set<string>();
 	private attached = false;
-	private retries = new Map<string, Retry>();
+	private retries = new Retries(receiptRetry);
 	constructor(
 		private history: ReminderHistoryStore,
 		private profiles: () => Workspace[],
-		private activeId: () => string,
 		private send: (profile: Workspace, body: string) => Promise<Response>
 	) {}
 	exchange(pid: string): Promise<void> {
@@ -108,61 +108,38 @@ export class ReminderHistoryClient {
 		this.flights.set(pid, { syncKey: profile.syncKey, promise: flight });
 		return flight;
 	}
-	private sendQueued(pid: string): void {
-		void this.history
-			.hasPending(pid)
-			.then((pending) => {
-				if (pending) this.requestExchange(pid);
-			})
-			.catch(() => undefined);
-	}
 	private requestExchange(pid: string): void {
 		if (!this.attached) return;
 		// A workspace removed or unlinked since stops retrying.
 		if (!this.profiles().some((profile) => profile.id === pid && profile.syncKey)) {
-			const stale = this.retries.get(pid);
-			if (stale?.timer != null) clearTimeout(stale.timer);
-			this.retries.delete(pid);
+			this.retries.settled(pid);
 			return;
 		}
-		const retry = this.retries.get(pid) ?? { timer: null, backoff: 2000 };
-		this.retries.set(pid, retry);
-		if (retry.timer !== null) {
-			clearTimeout(retry.timer);
-			retry.timer = null;
-		}
-		void this.exchange(pid)
-			.then(() => {
-				if (this.retries.get(pid) !== retry) return;
-				if (retry.timer !== null) clearTimeout(retry.timer);
-				retry.timer = null;
-				retry.backoff = 2000;
-			})
-			.catch((error: unknown) => {
-				if (this.retries.get(pid) !== retry || retry.timer !== null) return;
+		this.retries.trying(pid);
+		void this.exchange(pid).then(
+			() => this.retries.succeeded(pid),
+			(error: unknown) => {
 				// A full relay stays full: the next receipt, focus or reconnect tries again.
-				if (error instanceof ReminderStorageFullError) return;
+				if (!this.attached || error instanceof ReminderStorageFullError) return;
 				// Failure retries only. Successful idle streams never fetch on a timer.
-				retry.timer = setTimeout(() => {
-					retry.timer = null;
-					this.requestExchange(pid);
-				}, retry.backoff);
-				retry.backoff = Math.min(retry.backoff * 2, 30_000);
-			});
+				this.retries.failed(pid, () => this.requestExchange(pid));
+			}
+		);
 	}
 	attach(): () => void {
 		this.attached = true;
 		let refreshedAt = -Infinity;
-		// The open workspace catches up; another sends only what it has queued,
-		// such as receipts the service worker recorded while the app was closed.
+		// Every synced workspace catches up: it sends what it has queued, such as
+		// receipts the service worker recorded while the app was closed, and takes in
+		// what other devices handled.
 		const refresh = () => {
 			// Focus and visibility often arrive together when the app comes back.
-			if (Date.now() - refreshedAt < 1000) return;
+			// A clock set back since is not "a moment ago".
+			const elapsed = Date.now() - refreshedAt;
+			if (elapsed >= 0 && elapsed < 1000) return;
 			refreshedAt = Date.now();
 			for (const profile of this.profiles()) {
-				if (!profile.syncKey) continue;
-				if (profile.id === this.activeId()) this.requestExchange(profile.id);
-				else this.sendQueued(profile.id);
+				if (profile.syncKey) this.requestExchange(profile.id);
 			}
 		};
 		const onVisible = () => {
@@ -183,9 +160,6 @@ export class ReminderHistoryClient {
 		refresh();
 		return () => {
 			this.attached = false;
-			for (const retry of this.retries.values()) {
-				if (retry.timer !== null) clearTimeout(retry.timer);
-			}
 			this.retries.clear();
 			window.removeEventListener('online', refresh);
 			window.removeEventListener('focus', refresh);
@@ -198,9 +172,8 @@ export class ReminderHistoryClient {
 export const reminderHistoryClient = new ReminderHistoryClient(
 	reminderHistoryStore,
 	() => syncStore.profiles,
-	() => syncStore.activeId,
 	(profile, body) =>
-		syncStore.authorizedFetch(
+		relay.authorizedFetch(
 			'/api/sync/reminders',
 			{
 				method: 'POST',

@@ -3,6 +3,7 @@ import { createSyncIdentity } from '#lib/syncPairing.js';
 import { applyBoardTemplate, BOARD_TEMPLATES, labelNamed } from './kanbanTemplates';
 import { kanbanStore } from './stores/kanban.svelte';
 import { notesStore } from './stores/notes.svelte';
+import { syncScheduler } from './stores/syncScheduler';
 import { syncStore } from './stores/sync.svelte';
 
 describe('board templates', () => {
@@ -23,13 +24,7 @@ describe('board templates', () => {
 
 	afterEach(async () => {
 		await notesStore.waitForPendingProfileWrites();
-		const internals = notesStore as unknown as {
-			dirty: boolean;
-			syncPushTimer: ReturnType<typeof setTimeout> | null;
-		};
-		if (internals.syncPushTimer) clearTimeout(internals.syncPushTimer);
-		internals.syncPushTimer = null;
-		internals.dirty = false;
+		syncScheduler.reset();
 		syncStore.account = null;
 		syncStore.profiles = [];
 		notesStore.notes = [];

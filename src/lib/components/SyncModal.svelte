@@ -17,9 +17,17 @@
 	import { Progress } from '@ark-ui/svelte/progress';
 	import { createPairingUrl, formatPairingCode, normalizePairingCode } from '#lib/syncPairing.js';
 	import { appLinkBase } from '#lib/serverOrigin.svelte.js';
-	import { syncStore, type StartedDeviceLink } from '#lib/stores/sync.svelte.js';
+	import { syncStore } from '#lib/stores/sync.svelte.js';
+	import {
+		startDeviceLink,
+		startExistingDeviceLink,
+		type StartedDeviceLink
+	} from '#lib/deviceLink.js';
+	import { waitForDeviceLink } from '#lib/deviceLinkWait.js';
+	import type { SyncAccount } from '#lib/relayClient.js';
 	import { profileCoordinator } from '#lib/stores/profiles.svelte.js';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
+	import { syncScheduler } from '#lib/stores/syncScheduler.js';
 	import { buildProfileMarkdownNotes, isLocalWorkspace } from '#lib/profiles.js';
 	import { buildNotesMarkdownZip } from '#lib/notesMarkdownExport.js';
 	import { estimateProfileBytes } from '#lib/db/idb.js';
@@ -63,8 +71,15 @@
 	let qrDataUrl = $state('');
 	let copyFlashTimer: ReturnType<typeof setTimeout> | null = null;
 	let waiting = $state<StartedDeviceLink | null>(null);
+	/**
+	 * The account whose key the link under way hands over. Taken when the link starts:
+	 * the key sent is the one of the workspace it was started for, whichever workspace
+	 * the window shows by the time the other device answers.
+	 */
+	let sharing: SyncAccount | null = null;
 	let now = $state(Date.now());
-	let timer: ReturnType<typeof setTimeout> | null = null;
+	/** Stops the wait for the other device of the link under way. */
+	let watching: AbortController | null = null;
 	let confirmation = $state<'delete' | 'force' | 'remove' | 'new-key' | null>(null);
 	let confirmTarget = $state<string | null>(null);
 	let expandedId = $state<string | null>(null);
@@ -86,20 +101,19 @@
 	// The row that currently owns Escape, so the dialog leaves the key alone.
 	let rowHoldingEscape = $state<string | null>(null);
 
-	const authenticationFailed = $derived(/authentication/i.test(syncStore.lastError ?? ''));
+	const authenticationFailed = $derived(syncStore.issue?.kind === 'sign-in');
 	let syncError = $derived(syncStore.lastError ?? '');
 	const confirmProfile = $derived(
 		syncStore.profiles.find((profile) => profile.id === confirmTarget) ?? syncStore.activeProfile
 	);
 
-	// A running sync must finish before a dataset handover can start.
-	// Background pulls and outbox retries are intentionally silent. They still
-	// block a dataset handover, but only a sync started from this modal owns its
-	// visible "Syncing" state.
+	// Background pulls and outbox retries are silent and hold nothing up: a workspace
+	// change takes over from a sync instead of waiting on the relay. Only a sync
+	// started from this modal owns its visible "Syncing" state.
 	const syncing = $derived(operation === 'sync' || operation === 'force-sync');
-	const busy = $derived(
-		operation !== null || notesStore.syncing || notesStore.importing || profileCoordinator.switching
-	);
+	const busy = $derived(operation !== null || profileCoordinator.switching);
+	// "Sync now" waits on the relay too, so it does not hold a switch up either.
+	const switchBlocked = $derived(busy && operation !== 'sync');
 	const rowOwnsEscape = $derived(rowHoldingEscape !== null || expandedId !== null);
 
 	// Approximate on-device footprint per saved key. Measured when the modal
@@ -122,7 +136,13 @@
 		fallback: string,
 		run: () => Promise<T>
 	): Promise<T | undefined> {
-		if (kind === 'pair' ? operation !== null || profileCoordinator.switching : busy)
+		if (
+			kind === 'pair'
+				? operation !== null || profileCoordinator.switching
+				: kind === 'switch'
+					? switchBlocked
+					: busy
+		)
 			return undefined;
 		operation = kind;
 		try {
@@ -167,16 +187,8 @@
 	}
 
 	function stopWaiting() {
-		if (timer) clearTimeout(timer);
-		timer = null;
-	}
-
-	function schedulePoll(active: StartedDeviceLink) {
-		stopWaiting();
-		timer = setTimeout(() => {
-			timer = null;
-			void pollLink(active);
-		}, 1500);
+		watching?.abort();
+		watching = null;
 	}
 
 	onDestroy(() => {
@@ -304,27 +316,30 @@
 		error = '';
 		info = '';
 		const result = await runOperation('connect', 'Could not start connection', () =>
-			syncStore.startDeviceLink(normalized)
+			startDeviceLink(normalized)
 		);
 		if (!result) return;
 		if (!result.success || !result.link) {
 			error = friendlyError(result.error, 'Could not start connection');
 			return;
 		}
+		sharing = null;
 		waiting = result.link;
 		now = Date.now();
 		mode = 'waiting';
 		void pollLink(result.link);
 	}
 
+	/** Wait for the other device, and finish the link when it answers. */
 	async function pollLink(active: StartedDeviceLink) {
 		if (waiting?.id !== active.id) return;
-		now = Date.now();
+		stopWaiting();
+		const mine = (watching = new AbortController());
 		let result;
 		try {
-			result = await syncStore.pollDeviceLink(active);
+			result = await waitForDeviceLink(active, sharing, mine.signal, () => (now = Date.now()));
 		} catch (err) {
-			if (waiting?.id !== active.id) return;
+			if (mine.signal.aborted || waiting?.id !== active.id) return;
 			stopWaiting();
 			waiting = null;
 			mode = active.role === 'existing' ? 'menu' : 'link';
@@ -334,6 +349,7 @@
 			);
 			return;
 		}
+		if (!result) return;
 		if (waiting?.id !== active.id) return;
 		if (result.linked) {
 			const wasExisting = active.role === 'existing';
@@ -372,22 +388,26 @@
 			waiting = null;
 			mode = active.role === 'existing' ? 'menu' : 'link';
 			error = friendlyError(result.error, 'Connection timed out. Try again on both devices.');
-			return;
 		}
-		schedulePoll(active);
 	}
 
 	async function startExistingConnection() {
 		error = '';
 		info = '';
+		const account = syncStore.account;
+		if (!account) {
+			error = 'Sync is not set up on this device';
+			return;
+		}
 		const result = await runOperation('connect', 'Could not start connection', () =>
-			syncStore.startExistingDeviceLink()
+			startExistingDeviceLink()
 		);
 		if (!result) return;
 		if (!result.success || !result.link) {
 			error = friendlyError(result.error, 'Could not start connection');
 			return;
 		}
+		sharing = account;
 		waiting = result.link;
 		now = Date.now();
 		mode = 'waiting';
@@ -418,7 +438,7 @@
 		error = '';
 		info = '';
 		const renamed = await runOperation('rename', 'Could not rename that workspace', () =>
-			syncStore.renameProfile(id, next)
+			profileCoordinator.rename(id, next)
 		);
 		if (renamed) return true;
 		if (!error) error = 'Could not rename that workspace';
@@ -455,10 +475,14 @@
 	async function syncNow() {
 		error = '';
 		info = '';
+		const account = syncStore.account;
 		const success = await runOperation('sync', 'Sync failed', () =>
-			notesStore.syncWithCloudManual()
+			syncScheduler.request(syncStore.activeId)
 		);
 		if (success === undefined) return;
+		// The window moved to another workspace meanwhile: that sync ended with the
+		// move, and its outcome says nothing about the workspace now open.
+		if (syncStore.account !== account) return;
 		if (!success) {
 			// The handshake found the key retired: go straight to replacing it.
 			if (syncStore.keyRetired) return confirm('new-key', syncStore.activePid);
@@ -670,6 +694,7 @@
 									caption={`${synced ? 'Synced' : 'Only on this device'}${sizeLabel(profile.id) ? ' · ' + sizeLabel(profile.id) : ''}`}
 									{active}
 									disabled={busy}
+									selectDisabled={switchBlocked}
 									expanded={expandedId === profile.id}
 									onselect={() => {
 										if (!active) void switchProfile(profile.id);
@@ -866,7 +891,10 @@
 								{/if}
 							</div>
 						{/if}
-						{#if error || syncError}<p class={syncDanger} role="alert">
+						{#if !error && syncStore.relayUnreachable}<p class={syncMuted} role="status">
+								Saved on this device · Waiting to sync
+							</p>
+						{:else if error || syncError}<p class={syncDanger} role="alert">
 								{error || syncError}
 							</p>{/if}
 						{#if info}<p class={syncMuted} role="status">

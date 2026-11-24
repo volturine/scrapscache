@@ -7,6 +7,7 @@ import {
 	uid,
 	type EditContext
 } from '#lib/model/index.js';
+import { renamePhotoMarkers } from '#lib/photoMarker.js';
 import type { Note } from '#lib/types.js';
 
 /**
@@ -30,6 +31,23 @@ function overCloudCopy(local: Note, cloud: Note | undefined, context: EditContex
 		...body,
 		...(Object.keys(imageTombstones).length ? { imageTombstones } : {})
 	};
+}
+
+/**
+ * A note that returns under a new id has new attachment ids too. Its body's photo
+ * markers follow them, or every chip would read as a missing photo; the body
+ * document goes with the old text and is made again from the new one.
+ */
+function withMarkersFollowing(before: Note, after: Note): Note {
+	const ids = new Map<string, string>();
+	(before.images ?? []).forEach((image, index) => {
+		const next = after.images?.[index]?.id;
+		if (next && next !== image.id) ids.set(image.id, next);
+	});
+	const body = renamePhotoMarkers(after.body ?? '', ids);
+	if (body === (after.body ?? '')) return after;
+	const { bodyDoc: _document, ...rest } = after;
+	return { ...rest, body };
 }
 
 /** Publish the local dataset over the observed cloud version, including field clocks and deletes. */
@@ -69,23 +87,28 @@ export function buildForcePushSnapshot(
 	// Permanent deletes are irrevocable for an ID. Restore local versions under fresh IDs.
 	const cloudNotes = new Map(remote.notes.map((note) => [note.id, note]));
 	const stamp: EditContext = { ...context, now: () => at };
-	const notes = retargetLocalNotes(local.notes, [], remote.tombstones, uid).map((note) =>
-		touchNoteFields(
+	const returned = retargetLocalNotes(local.notes, [], remote.tombstones, uid);
+	const noteIds = new Map(local.notes.map((note, index) => [note.id, returned[index].id]));
+	const notes = returned.map((returnedNote, index) => {
+		const note = withMarkersFollowing(local.notes[index], returnedNote);
+		return touchNoteFields(
 			{
 				...overCloudCopy(note, cloudNotes.get(note.id), stamp),
 				labels: note.labels.map((id) => labelIds.get(id) ?? id)
 			},
 			NOTE_FIELDS,
 			stamp
-		)
-	);
+		);
+	});
 	const boards = local.boards.map((board) => ({
 		...board,
 		id: remote.boardTombstones[board.id] ? uid() : board.id,
 		updatedAt: at,
 		columns: board.columns.map((column) => ({
 			...column,
-			labelId: column.labelId ? (labelIds.get(column.labelId) ?? column.labelId) : null
+			labelId: column.labelId ? (labelIds.get(column.labelId) ?? column.labelId) : null,
+			// Cards follow a note that returned under a new id.
+			order: column.order.map((id) => noteIds.get(id) ?? id)
 		})),
 		backlogFilter: {
 			...board.backlogFilter,

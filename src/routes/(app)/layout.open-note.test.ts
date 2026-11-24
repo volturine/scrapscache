@@ -2,6 +2,7 @@ import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { createRawSnippet } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { notesStore } from '#lib/stores/notes.svelte.js';
+import { syncScheduler } from '#lib/stores/syncScheduler.js';
 import { reminderStore, type ReminderHost } from '#lib/stores/reminders.svelte.js';
 import { TEST_WORKSPACE } from '../../tests/workspace';
 import Layout from './+layout.svelte';
@@ -30,7 +31,7 @@ describe('opening a note from a reminder', () => {
 		});
 		// The layout hands the loaded notes to the reminders once the store has booted.
 		booted = vi.spyOn(reminderStore, 'activateProfile').mockResolvedValue();
-		vi.spyOn(notesStore, 'syncPendingChanges').mockResolvedValue(false);
+		vi.spyOn(syncScheduler, 'flush').mockResolvedValue(false);
 	});
 
 	afterEach(() => {

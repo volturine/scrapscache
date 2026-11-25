@@ -3963,11 +3963,6 @@ export const markdownStyles = css({
 	'& h2': { fontSize: '1.2em', mt: 'md', mb: 'xs' },
 	'& h3': { fontSize: '1.05em', mt: 'sm', mb: '2xs' },
 	'& h4, & h5, & h6': { fontSize: '1em', mt: 'xs', mb: '2xs' },
-	'& p': {
-		my: 'xs',
-		'&:first-child': { mt: 0 },
-		'&:last-child': { mb: 0 }
-	},
 	'& blockquote': {
 		borderLeftWidth: '3px',
 		borderColor: 'scrapscache.accent',

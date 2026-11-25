@@ -253,6 +253,17 @@ test('a checklist line toggles from the body', async ({ page }) => {
 	);
 });
 
+test('a card stacks consecutive plain lines with no gap between them', async ({ page }) => {
+	await openEmptyApp(page);
+	await createNote(page, 'Movies', 'memento\nbasic instinct');
+
+	const lines = noteCard(page, 'Movies').locator('[data-note-body-display] > p');
+	await expect(lines).toHaveCount(2);
+	const first = await lines.first().boundingBox();
+	const second = await lines.last().boundingBox();
+	expect(second!.y - first!.y).toBeCloseTo(first!.height, 0);
+});
+
 test('hiding a preview says what it does, and the card says the preview is hidden', async ({
 	page
 }) => {

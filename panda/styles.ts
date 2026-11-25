@@ -3233,6 +3233,22 @@ export const noteEditorStyles = {
 		transition: 'none'
 	}),
 	subDialogBackdrop: css({ bg: 'scrapscache.backdropSoft', backdropFilter: 'none', zIndex: 60 }),
+	/**
+	 * Over the open note: the reminder, colour and label pickers. Like the pickers over
+	 * the feed, it scrolls from the picker's top when the window is shorter than the
+	 * picker (a phone on its side, a short iPad window); auto margins centre it while it fits.
+	 */
+	subDialogPositioner: css({
+		position: 'fixed',
+		inset: 0,
+		zIndex: 61,
+		display: 'flex',
+		justifyContent: 'center',
+		overflowY: 'auto',
+		overscrollBehavior: 'contain',
+		p: 'lg',
+		'& > *': { my: 'auto' }
+	}),
 	popupContent: css({ outline: 'none' }),
 	rawScroller: css({ touchAction: 'pan-x pan-y' }),
 	reminderButton: css({ minW: 0 }),

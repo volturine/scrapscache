@@ -125,3 +125,34 @@ test('the Reminders view groups what is due and opens a note from its row', asyn
 	await expect(editor(page)).toBeVisible();
 	await expect(editor(page).getByPlaceholder('Title', { exact: true })).toHaveValue('Call the vet');
 });
+
+test('over an open note, the reminder dialog scrolls in a window shorter than it', async ({
+	page
+}) => {
+	// A short iPad window or a phone on its side: the picker is taller than the screen.
+	await page.setViewportSize({ width: 1000, height: 560 });
+	await openEmptyApp(page);
+	await createNote(page, 'Renew the passport');
+
+	await noteCard(page, 'Renew the passport').click();
+	await editor(page).getByRole('button', { name: 'Reminder', exact: true }).click();
+	const picker = page.getByRole('dialog').filter({ hasText: 'Will remind you' });
+	// It opens on its top, the typed field in view, rather than centred with both ends cut.
+	await expect(picker.getByText('Reminder', { exact: true })).toBeInViewport({ ratio: 1 });
+	await expect(picker.getByRole('textbox', { name: 'Type a date or time' })).toBeInViewport({
+		ratio: 1
+	});
+	// A wheel over the dialog's edge, away from the time wheels, brings Save up.
+	const save = picker.getByRole('button', { name: 'Save', exact: true });
+	await expect(save).not.toBeInViewport({ ratio: 1 });
+	const box = await picker.getByText('Reminder', { exact: true }).boundingBox();
+	await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+	await page.mouse.wheel(0, 1000);
+	await expect(save).toBeInViewport({ ratio: 1 });
+	await save.click();
+	await expect(picker).toBeHidden();
+	// The default time is the next hour, which can pass during a run just before it.
+	await expect(
+		editor(page).getByRole('button', { name: /^(?:overdue )?reminder,/i })
+	).toBeVisible();
+});

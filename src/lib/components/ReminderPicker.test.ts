@@ -507,6 +507,22 @@ describe('ReminderPicker typed time', () => {
 		});
 		expect(phone.component.initialFocus()?.tagName).toBe('BUTTON');
 	});
+
+	it('leaves a tablet keyboard down too', () => {
+		const mouseMatchMedia = window.matchMedia;
+		window.matchMedia = (query: string) => ({
+			...mouseMatchMedia(query),
+			matches: query === '(pointer: coarse)'
+		});
+		try {
+			const tablet = render(ReminderPicker, {
+				props: { reminder, onClose: () => {}, forceMode: 'desktop' }
+			});
+			expect(tablet.component.initialFocus()?.tagName).toBe('BUTTON');
+		} finally {
+			window.matchMedia = mouseMatchMedia;
+		}
+	});
 });
 
 describe('ReminderPicker repeat', () => {

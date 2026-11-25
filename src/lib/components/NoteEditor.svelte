@@ -6,7 +6,7 @@
 	} from '$panda/styles';
 	import { cx } from 'styled-system/css';
 	import { dialog, iconButton, input, noteSurface } from 'styled-system/recipes';
-	import { flex, hstack, spacer } from 'styled-system/patterns';
+	import { hstack, spacer } from 'styled-system/patterns';
 	import { Dialog } from '@ark-ui/svelte/dialog';
 	import { flushSync, onMount, tick, untrack } from 'svelte';
 	import { notesStore } from '#lib/stores/notes.svelte.js';
@@ -1000,13 +1000,6 @@
 	const titleField = cx(input({ variant: 'unstyled' }), styles.title);
 	const subDialog = dialog({ size: 'sm' });
 	const dialogBackdrop = cx(subDialog.backdrop, styles.subDialogBackdrop);
-	const dialogPositioner = flex({
-		position: 'fixed',
-		inset: 0,
-		zIndex: 61,
-		align: 'center',
-		justify: 'center'
-	});
 </script>
 
 <svelte:window
@@ -1316,7 +1309,7 @@
 		>
 			<Dialog.Backdrop class={dialogBackdrop} />
 			<Dialog.Positioner
-				class={dialogPositioner}
+				class={styles.subDialogPositioner}
 				data-editor-popup
 				onpointerdown={keepEditorFocused}
 				{@attach pressOnTouchRelease}
@@ -1344,7 +1337,7 @@
 			preventScroll={false}
 		>
 			<Dialog.Backdrop class={dialogBackdrop} />
-			<Dialog.Positioner class={dialogPositioner} data-editor-popup>
+			<Dialog.Positioner class={styles.subDialogPositioner} data-editor-popup>
 				<Dialog.Content class={styles.popupContent}>
 					<ReminderPicker
 						bind:this={reminderPicker}
@@ -1375,7 +1368,7 @@
 		>
 			<Dialog.Backdrop class={dialogBackdrop} />
 			<Dialog.Positioner
-				class={dialogPositioner}
+				class={styles.subDialogPositioner}
 				data-editor-popup
 				onpointerdown={keepEditorFocused}
 				{@attach pressOnTouchRelease}

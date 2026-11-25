@@ -106,6 +106,8 @@
 	let repeatDraft = $state<Omit<ReminderRepeat, 'zone'> | null>(repeat && withoutZone(repeat));
 	let monthYearOpen = $state(false);
 	const phone = new MediaQuery(PHONE_MEDIA, false);
+	/** A touch screen, where focusing a field brings up the on-screen keyboard. */
+	const touch = new MediaQuery('(pointer: coarse)', false);
 	const isMobile = $derived(forceMode ? forceMode === 'mobile' : phone.current);
 
 	function withoutZone({ zone: _zone, ...rest }: ReminderRepeat): Omit<ReminderRepeat, 'zone'> {
@@ -435,12 +437,12 @@
 	let schedulePanel = $state<HTMLElement | null>(null);
 
 	/**
-	 * Where a host dialog puts focus on open: the typed field on a desktop, ready for
-	 * "tomorrow 9am". A phone keeps its keyboard down until the field is tapped, so
-	 * focus goes to the first date control, not a link above it.
+	 * Where a host dialog puts focus on open: the typed field with a mouse or trackpad,
+	 * ready for "tomorrow 9am". A phone or tablet keeps its keyboard down until the field
+	 * is tapped, so focus goes to the first date control, not a link above it.
 	 */
 	export function initialFocus(): HTMLElement | null {
-		if (!isMobile && phraseInput) return phraseInput;
+		if (!isMobile && !touch.current && phraseInput) return phraseInput;
 		return schedulePanel?.querySelector('button') ?? null;
 	}
 

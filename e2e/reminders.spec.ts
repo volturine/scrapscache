@@ -156,3 +156,19 @@ test('over an open note, the reminder dialog scrolls in a window shorter than it
 		editor(page).getByRole('button', { name: /^(?:overdue )?reminder,/i })
 	).toBeVisible();
 });
+
+test.describe('on a tablet', () => {
+	test.use({ viewport: { width: 1180, height: 820 }, hasTouch: true });
+
+	test('the reminder dialog opens on the date controls, not the typed field', async ({ page }) => {
+		await openEmptyApp(page);
+		expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
+		await createNote(page, 'Book the plumber');
+
+		await noteCard(page, 'Book the plumber').click();
+		await editor(page).getByRole('button', { name: 'Reminder', exact: true }).click();
+		const picker = page.getByRole('dialog').filter({ hasText: 'Will remind you' });
+		await expect(picker.getByRole('button', { name: 'Previous day' })).toBeFocused();
+		await expect(picker.getByRole('textbox', { name: 'Type a date or time' })).not.toBeFocused();
+	});
+});

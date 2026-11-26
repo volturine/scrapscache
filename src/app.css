@@ -70,11 +70,47 @@ html.keyboard-open {
 	}
 }
 
-/* An expanded note is a full page: its overlay host escapes the canvas and
- * covers the whole app frame, header and sidebar included, without reflowing
- * the feed underneath. */
-html.editor-expanded .app-canvas {
+/* An open note is the top layer of the app: its overlay host escapes the canvas
+ * and covers the whole app frame, top bar, sidebar and tab bar included, without
+ * reflowing the feed underneath. Nothing in the feed is positioned against the
+ * canvas, so letting go of it moves nothing. */
+html.editor-open .app-canvas {
 	position: static;
+}
+/* The note's scrim dims the frame (see noteEditorStyles.overlay). The bands outside
+ * the frame (the strip under the tab bar, the side insets and iPhone Duo's column
+ * behind its controls) take the same shade, so the whole screen dims as one; a picker
+ * over the note adds its own shade the same way. A full-page note paints those bands
+ * in its own colour (below), so only a picker shades them. */
+html.editor-open body::before {
+	content: '';
+	position: fixed;
+	inset: 0;
+	pointer-events: none;
+}
+html.editor-open:not(.editor-expanded) body::before,
+html.editor-open:not(.editor-expanded) [data-tabbar-safe-area],
+html.editor-expanded:has([data-editor-popup]) body::before {
+	box-shadow: inset 0 0 0 100vmax var(--colors-scrapscache-backdrop-soft);
+}
+html.editor-open:not(.editor-expanded):has([data-editor-popup]) body::before,
+html.editor-open:not(.editor-expanded):has([data-editor-popup]) [data-tabbar-safe-area] {
+	box-shadow:
+		inset 0 0 0 100vmax var(--colors-scrapscache-backdrop-soft),
+		inset 0 0 0 100vmax var(--colors-scrapscache-backdrop-soft);
+}
+/* Installed iOS tints the status bar from the status strip's background colour, which
+ * a shadow does not change, so the strip takes the shaded colour itself: black at 30%
+ * is one backdropSoft layer over the colour beneath, 51% is two. !important beats the
+ * inline theme background set by the UI store. */
+html.editor-open:not(.editor-expanded) [data-status-sample] {
+	background-color: color-mix(in srgb, var(--colors-scrapscache-bg), black 30%) !important;
+}
+html.editor-open:not(.editor-expanded):has([data-editor-popup]) [data-status-sample] {
+	background-color: color-mix(in srgb, var(--colors-scrapscache-bg), black 51%) !important;
+}
+html.editor-expanded:has([data-editor-popup]) [data-status-sample] {
+	background-color: color-mix(in srgb, var(--editor-page-bg), black 30%) !important;
 }
 /* Keep the editor above positioned feed content, including the reminders calendar. */
 html.editor-open .app-float {

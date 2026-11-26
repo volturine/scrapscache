@@ -3066,7 +3066,7 @@ export const noteEditorStyles = {
 					px: { base: 'sm', sm: 'md', md: 'lg' },
 					pt: { base: 'sm', sm: 'md', md: 'lg' },
 					pb: 'var(--app-sheet-pad-bottom)',
-					'@media (min-width: 768px) and (max-height: 45rem)': { py: 'sm' }
+					'@media (min-width: 768px) and (max-height: 45rem)': { pb: 'sm' }
 				}
 			}
 		},

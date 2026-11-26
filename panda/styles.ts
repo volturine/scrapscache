@@ -3040,7 +3040,9 @@ const attachmentPreviewPanel = {
 } as const;
 
 export const noteEditorStyles = {
-	overlay: css({ position: 'fixed', inset: 0, zIndex: 50 }),
+	// Covers the whole app frame, top bar and sidebar included (see .app-canvas in
+	// app.css), and dims it, since nothing behind an open note responds.
+	overlay: css({ position: 'fixed', inset: 0, zIndex: 50, bg: 'scrapscache.backdropSoft' }),
 	// The header's last place: the done check while the keyboard is up, the expand toggle otherwise.
 	whileTyping: css({ display: 'none', 'html.keyboard-open &': { display: 'inline-flex' } }),
 	unlessTyping: css({ 'html.keyboard-open &': { display: 'none' } }),
@@ -3058,10 +3060,13 @@ export const noteEditorStyles = {
 		variants: {
 			expanded: {
 				true: {},
+				// The top bar lies under the note, so the sheet keeps its own margin from
+				// the frame's top as well as its sides.
 				false: {
 					px: { base: 'sm', sm: 'md', md: 'lg' },
+					pt: { base: 'sm', sm: 'md', md: 'lg' },
 					pb: 'var(--app-sheet-pad-bottom)',
-					'@media (min-width: 768px) and (max-height: 45rem)': { pb: 'sm' }
+					'@media (min-width: 768px) and (max-height: 45rem)': { py: 'sm' }
 				}
 			}
 		},
@@ -3078,6 +3083,9 @@ export const noteEditorStyles = {
 					h: 'full',
 					'@media (min-width: 768px) and (min-height: 45.0625rem)': { h: 'max(72%, 32rem)' },
 					maxW: '2xl',
+					// Wide but short (a tablet or foldable on its side): height is what is
+					// scarce, so the note takes more of the width to show more of itself.
+					'@media (min-width: 768px) and (max-height: 45rem)': { maxW: '4xl' },
 					rounded: 'sheet',
 					boxShadow: 'noteSheet'
 				}

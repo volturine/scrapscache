@@ -4424,10 +4424,11 @@ export const reminderAgendaStyles = {
 		display: 'flex',
 		flexDirection: 'column',
 		gap: 'lg',
-		// An open iPhone Duo or a small tablet: the calendar fills the left half.
+		// An open iPhone Duo or a small tablet: the calendar fills the left half, never
+		// narrower than on a wide window (its day buttons would overlap beside a sidebar).
 		mdToLg: {
 			display: 'grid',
-			gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+			gridTemplateColumns: 'minmax(18rem, 1fr) minmax(0, 1fr)',
 			alignItems: 'start',
 			gap: 'xl'
 		},

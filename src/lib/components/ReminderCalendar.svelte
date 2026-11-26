@@ -160,6 +160,8 @@
 	class={[
 		'reminder-calendar',
 		css({
+			display: 'flex',
+			flexDirection: 'column',
 			w: 'full',
 			userSelect: 'none',
 			rounded: 'sheet',
@@ -172,7 +174,7 @@
 	]}
 >
 	<DatePicker.Root
-		class={css({ w: 'full' })}
+		class={css({ display: 'flex', flexDirection: 'column', flex: '1', w: 'full' })}
 		inline
 		timeZone={getLocalTimeZone()}
 		startOfWeek={1}

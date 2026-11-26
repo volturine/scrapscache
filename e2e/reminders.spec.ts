@@ -172,3 +172,34 @@ test.describe('on a tablet', () => {
 		await expect(picker.getByRole('textbox', { name: 'Type a date or time' })).not.toBeFocused();
 	});
 });
+
+test('on an open iPhone Duo or a small tablet, the calendar fills the left half beside the list', async ({
+	page
+}) => {
+	await page.setViewportSize({ width: 900, height: 700 });
+	await openEmptyApp(page);
+	await createNote(page, 'Call the vet');
+	await noteCard(page, 'Call the vet').click();
+	await editor(page).getByRole('button', { name: 'Reminder', exact: true }).click();
+	const picker = page.getByRole('dialog').filter({ hasText: 'Will remind you' });
+	await picker.getByRole('button', { name: 'Next day' }).click();
+	await picker.getByRole('button', { name: 'Save', exact: true }).click();
+	await expect(editor(page).getByRole('button', { name: /^reminder,/i })).toBeVisible();
+	await page.keyboard.press('Escape');
+	await expect(editor(page)).toBeHidden();
+
+	await page.getByRole('button', { name: 'Reminders', exact: true }).click();
+	const row = page.getByRole('listitem').filter({ hasText: 'Call the vet' });
+	await expect(row).toBeVisible();
+	const calendar = (await page.locator('.reminder-calendar').boundingBox())!;
+	const list = (await row.boundingBox())!;
+	const feed = (await page.locator('main.app-feed').boundingBox())!;
+	// Side by side, in two equal columns.
+	expect(calendar.x + calendar.width).toBeLessThan(list.x);
+	expect(Math.abs(calendar.width - list.width)).toBeLessThan(2);
+	// Down to the feed's foot, short of its bottom padding (3xl), and whole in view.
+	expect(Math.abs(calendar.y + calendar.height - (feed.y + feed.height - 32))).toBeLessThan(2);
+	await expect(page.getByRole('button', { name: 'Today', exact: true })).toBeInViewport({
+		ratio: 1
+	});
+});

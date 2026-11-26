@@ -31,7 +31,7 @@
 	);
 </script>
 
-<div class={viewPage}>
+<div class={cx(viewPage, styles.page)} data-reminders-view>
 	<h1 class={viewHeading}>Reminders</h1>
 	<div class={styles.split}>
 		<div class={styles.calendar}>

@@ -193,15 +193,18 @@ test('on an open iPhone Duo or a small tablet, the calendar fills the left half 
 	}
 
 	await page.getByRole('button', { name: 'Reminders', exact: true }).click();
-	const first = page.getByRole('listitem').filter({ hasText: 'Errand 1' });
-	await expect(first).toBeVisible();
+	const rows = page.locator('[data-reminders-view] li');
+	await expect(rows).toHaveCount(titles.length);
+	const first = rows.first();
+	const last = rows.last();
+	const split = (await page.locator('[data-reminders-view] > div').boundingBox())!;
 	const feedEl = page.locator('main.app-feed');
 	const calendar = (await page.locator('.reminder-calendar').boundingBox())!;
 	const list = (await first.boundingBox())!;
 	const feed = (await feedEl.boundingBox())!;
-	// Side by side, in two equal columns.
+	// Side by side, in two equal columns (the gap between them is xl).
 	expect(calendar.x + calendar.width).toBeLessThan(list.x);
-	expect(Math.abs(calendar.width - list.width)).toBeLessThan(2);
+	expect(Math.abs(calendar.width - (split.width - 20) / 2)).toBeLessThan(2);
 	// Down to the feed's foot, short of its bottom padding (3xl), and whole in view.
 	expect(Math.abs(calendar.y + calendar.height - (feed.y + feed.height - 32))).toBeLessThan(2);
 	const today = page.getByRole('button', { name: 'Today', exact: true });
@@ -210,9 +213,9 @@ test('on an open iPhone Duo or a small tablet, the calendar fills the left half 
 	// The feed has nothing to scroll; the list scrolls by itself under the wheel, and
 	// the calendar stays where it was.
 	expect(await feedEl.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1);
+	await expect(last).not.toBeInViewport({ ratio: 1 });
 	await page.mouse.move(list.x + list.width / 2, list.y + list.height / 2);
 	await page.mouse.wheel(0, 2000);
-	const last = page.getByRole('listitem').filter({ hasText: 'Errand 9' });
 	await expect(last).toBeInViewport({ ratio: 1 });
 	await expect(first).not.toBeInViewport();
 	expect(await feedEl.evaluate((el) => el.scrollTop)).toBe(0);

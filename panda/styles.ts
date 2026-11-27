@@ -4442,7 +4442,11 @@ export const reminderAgendaStyles = {
 			display: 'grid',
 			gridTemplateColumns: 'minmax(18rem, 1fr) minmax(0, 1fr)',
 			gap: 'xl',
-			h: 'calc(100cqh - token(spacing.lg) - var(--composer-row, 0px))'
+			h: 'calc(100cqh - token(spacing.lg) - var(--composer-row, 0px))',
+			// The row never outgrows the split, so the list ends at the feed's foot even
+			// where the calendar is taller (a short screen); the feed then scrolls only
+			// the calendar's overflow into view.
+			gridTemplateRows: 'minmax(0, 1fr)'
 		},
 		lg: { flexDirection: 'row', alignItems: 'flex-start', gap: '2xl' }
 	}),
@@ -4466,8 +4470,16 @@ export const reminderAgendaStyles = {
 		maxW: '48rem',
 		mx: 'auto',
 		md: { maxW: 'none', mx: 0 },
-		// Beside the calendar the list is the only thing that scrolls (split).
-		mdToLg: { minH: 0, overflowY: 'auto', overscrollBehavior: 'contain' }
+		// Beside the calendar the list is the only thing that scrolls (split). Its edges
+		// leave room for a row's focus ring, which the scroller would otherwise clip.
+		mdToLg: {
+			minH: 0,
+			overflowY: 'auto',
+			overscrollBehavior: 'contain',
+			px: '2xs',
+			mx: '-2xs',
+			pb: '2xs'
+		}
 	}),
 	group: css({ '& + &': { mt: 'xl' } }),
 	heading: hstack({ gap: 'sm', px: 'sm', mb: 'sm', alignItems: 'baseline' }),

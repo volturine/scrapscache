@@ -3060,11 +3060,11 @@ export const noteEditorStyles = {
 		variants: {
 			expanded: {
 				true: {},
-				// The top bar lies under the note, so the sheet keeps its own margin from
-				// the frame's top as well as its sides.
+				// The note's scrim dims the top bar, but the sheet starts below it, where
+				// the canvas begins, so the search bar stays in sight above the note.
 				false: {
 					px: { base: 'sm', sm: 'md', md: 'lg' },
-					pt: { base: 'sm', sm: 'md', md: 'lg' },
+					pt: 'var(--app-topbar-height)',
 					pb: 'var(--app-sheet-pad-bottom)',
 					'@media (min-width: 768px) and (max-height: 45rem)': { pb: 'sm' }
 				}
@@ -3083,9 +3083,6 @@ export const noteEditorStyles = {
 					h: 'full',
 					'@media (min-width: 768px) and (min-height: 45.0625rem)': { h: 'max(72%, 32rem)' },
 					maxW: '2xl',
-					// Wide but short (a tablet or foldable on its side): height is what is
-					// scarce, so the note takes more of the width to show more of itself.
-					'@media (min-width: 768px) and (max-height: 45rem)': { maxW: '4xl' },
 					rounded: 'sheet',
 					boxShadow: 'noteSheet'
 				}

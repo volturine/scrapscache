@@ -127,6 +127,8 @@ const DRAWER_WIDTH = '18rem';
 
 /** The closed "Take a note…" bar's height, which is all the room it takes in the feed. */
 const COMPOSER_BAR_HEIGHT = '3rem';
+/** The feed's first row, which the closed bar takes on a tablet or wider. */
+const COMPOSER_ROW_MD = `calc(${COMPOSER_BAR_HEIGHT} + token(spacing.lg) + token(spacing.sm))`;
 
 export const appLayout = {
 	shell: css({
@@ -208,6 +210,10 @@ export const appLayout = {
 		// them up over the keys, so it keeps the resting padding and sits still.
 		pb: 'calc(var(--app-keyboard-bottom) + token(spacing.3xl))',
 		'&:has([data-labels-screen])': { pb: '3xl' },
+		// Reminders on an open iPhone Duo or a small tablet size their calendar by the
+		// feed. Only then is the feed a size container: that also makes it the
+		// containing block of anything fixed inside it.
+		'&:has(> :not([hidden]) > [data-reminders-view])': { mdToLg: { containerType: 'size' } },
 		// With the composer, the view starts under the closed bar's row and the dock
 		// spans that row and the view's. An open sheet then lies over the view without
 		// moving it, yet still counts toward the feed's height: a sheet that runs past
@@ -218,8 +224,10 @@ export const appLayout = {
 			gridTemplateColumns: 'minmax(0, 1fr)',
 			gridTemplateRows: {
 				base: `calc(${COMPOSER_BAR_HEIGHT} + token(spacing.sm) * 2) auto`,
-				md: `calc(${COMPOSER_BAR_HEIGHT} + token(spacing.lg) + token(spacing.sm)) auto`
+				md: `${COMPOSER_ROW_MD} auto`
 			},
+			// For a view that fits itself to the feed under that row (the Reminders calendar).
+			md: { '--composer-row': COMPOSER_ROW_MD },
 			alignContent: 'start',
 			// A sheet that outgrows a short feed brings the scrollbar with it; its room is
 			// kept from the start, so the cards do not narrow and reflow when it appears.
@@ -2524,10 +2532,13 @@ export const labelMenuStyles = {
 };
 
 export const datePickerStyles = {
+	// Grows with a parent that gives it room (the Reminders calendar beside the list),
+	// the month's rows sharing the height; elsewhere it keeps its own size.
 	panel: flex({
+		flex: '1',
 		minH: '16.25rem',
 		direction: 'column',
-		'& [data-part="view"]:not([hidden])': column,
+		'& [data-part="view"]:not([hidden])': { ...column, flex: '1' },
 		'& .calendar-table-fill [data-part="table-body"]': { h: '100%' },
 		'& .calendar-table-fill [data-part="table-row"]': { h: 'calc(15rem / 3)' },
 		'& .calendar-table-fill [data-part="table-cell"]': { h: 'inherit', verticalAlign: 'middle' }
@@ -2542,7 +2553,7 @@ export const datePickerStyles = {
 		transition: 'colors 150ms ease',
 		...subtleHover
 	}),
-	table: css({ w: 'full', tableLayout: 'fixed', h: '15rem' }),
+	table: css({ flex: '1', w: 'full', tableLayout: 'fixed', h: '15rem' }),
 	weekHeader: css({ h: '1.5rem', textAlign: 'center', textStyle: 'captionStrong' }),
 	weekRow: css({ textAlign: 'center' }),
 	dayCell: css({
@@ -4415,16 +4426,40 @@ export const multiCursorStyles = {
 // otherwise. A row is a note at one of its times; the open control under it is
 // the keyboard's, the actions at its end sit over it.
 export const reminderAgendaStyles = {
+	// Beside the list the calendar runs to the feed's own bottom padding (calendar).
+	page: css({ mdToLg: { pb: 0 } }),
 	split: css({
 		display: 'flex',
 		flexDirection: 'column',
 		gap: 'lg',
+		// An open iPhone Duo or a small tablet: the calendar fills the left half, never
+		// narrower than on a wide window (its day buttons would overlap beside a sidebar).
+		mdToLg: {
+			display: 'grid',
+			gridTemplateColumns: 'minmax(18rem, 1fr) minmax(0, 1fr)',
+			alignItems: 'start',
+			gap: 'xl'
+		},
 		lg: { flexDirection: 'row', alignItems: 'flex-start', gap: '2xl' }
 	}),
 	calendar: css({
 		w: 'full',
 		maxW: '26rem',
 		mx: 'auto',
+		mdToLg: {
+			maxW: 'none',
+			mx: 0,
+			position: 'sticky',
+			top: 'lg',
+			display: 'flex',
+			flexDirection: 'column',
+			// As tall as the feed (its size container, cqh) under the composer's row, less
+			// the gap above it, so it is whole from the start and stays whole beside the
+			// list as that scrolls. The feed's bottom padding (3xl, plus an overlaid
+			// keyboard) is outside 100cqh; the page adds none of its own here (page).
+			minH: 'calc(100cqh - token(spacing.lg) - var(--composer-row, 0px))',
+			'& > .reminder-calendar': { flex: '1' }
+		},
 		lg: { w: '18rem', flexShrink: 0, mx: 0, position: 'sticky', top: 0 }
 	}),
 	agenda: css({
@@ -4433,7 +4468,7 @@ export const reminderAgendaStyles = {
 		w: 'full',
 		maxW: '48rem',
 		mx: 'auto',
-		lg: { maxW: 'none', mx: 0 }
+		md: { maxW: 'none', mx: 0 }
 	}),
 	group: css({ '& + &': { mt: 'xl' } }),
 	heading: hstack({ gap: 'sm', px: 'sm', mb: 'sm', alignItems: 'baseline' }),

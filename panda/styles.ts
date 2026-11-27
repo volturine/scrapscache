@@ -4426,19 +4426,23 @@ export const multiCursorStyles = {
 // otherwise. A row is a note at one of its times; the open control under it is
 // the keyboard's, the actions at its end sit over it.
 export const reminderAgendaStyles = {
-	// Beside the list the calendar runs to the feed's own bottom padding (calendar).
+	// Beside the list the split runs to the feed's own bottom padding (split).
 	page: css({ mdToLg: { pb: 0 } }),
 	split: css({
 		display: 'flex',
 		flexDirection: 'column',
 		gap: 'lg',
 		// An open iPhone Duo or a small tablet: the calendar fills the left half, never
-		// narrower than on a wide window (its day buttons would overlap beside a sidebar).
+		// narrower than on a wide window (its day buttons would overlap beside a sidebar),
+		// and stands still while the list beside it scrolls on its own (agenda). The split
+		// is as tall as the feed (its size container, cqh) under the composer's row, less
+		// the page's top padding, so the feed itself has nothing to scroll. The feed's
+		// bottom padding (3xl, plus an overlaid keyboard) is outside 100cqh.
 		mdToLg: {
 			display: 'grid',
 			gridTemplateColumns: 'minmax(18rem, 1fr) minmax(0, 1fr)',
-			alignItems: 'start',
-			gap: 'xl'
+			gap: 'xl',
+			h: 'calc(100cqh - token(spacing.lg) - var(--composer-row, 0px))'
 		},
 		lg: { flexDirection: 'row', alignItems: 'flex-start', gap: '2xl' }
 	}),
@@ -4449,15 +4453,8 @@ export const reminderAgendaStyles = {
 		mdToLg: {
 			maxW: 'none',
 			mx: 0,
-			position: 'sticky',
-			top: 'lg',
 			display: 'flex',
 			flexDirection: 'column',
-			// As tall as the feed (its size container, cqh) under the composer's row, less
-			// the gap above it, so it is whole from the start and stays whole beside the
-			// list as that scrolls. The feed's bottom padding (3xl, plus an overlaid
-			// keyboard) is outside 100cqh; the page adds none of its own here (page).
-			minH: 'calc(100cqh - token(spacing.lg) - var(--composer-row, 0px))',
 			'& > .reminder-calendar': { flex: '1' }
 		},
 		lg: { w: '18rem', flexShrink: 0, mx: 0, position: 'sticky', top: 0 }
@@ -4468,7 +4465,9 @@ export const reminderAgendaStyles = {
 		w: 'full',
 		maxW: '48rem',
 		mx: 'auto',
-		md: { maxW: 'none', mx: 0 }
+		md: { maxW: 'none', mx: 0 },
+		// Beside the calendar the list is the only thing that scrolls (split).
+		mdToLg: { minH: 0, overflowY: 'auto', overscrollBehavior: 'contain' }
 	}),
 	group: css({ '& + &': { mt: 'xl' } }),
 	heading: hstack({ gap: 'sm', px: 'sm', mb: 'sm', alignItems: 'baseline' }),

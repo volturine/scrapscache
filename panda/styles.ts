@@ -3065,6 +3065,9 @@ export const noteEditorStyles = {
 				false: {
 					px: { base: 'sm', sm: 'md', md: 'lg' },
 					pt: 'var(--app-topbar-height)',
+					// With the keyboard up every line above the keys counts (as for the
+					// bottom, --app-sheet-pad-bottom), and the search bar can't be used anyway.
+					'html.keyboard-open &': { pt: 'sm' },
 					pb: 'var(--app-sheet-pad-bottom)',
 					'@media (min-width: 768px) and (max-height: 45rem)': { pb: 'sm' }
 				}

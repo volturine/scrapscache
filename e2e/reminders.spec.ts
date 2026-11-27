@@ -221,4 +221,18 @@ test('on an open iPhone Duo or a small tablet, the calendar fills the left half 
 	expect(await feedEl.evaluate((el) => el.scrollTop)).toBe(0);
 	expect(await page.locator('.reminder-calendar').boundingBox()).toEqual(calendar);
 	await expect(today).toBeInViewport({ ratio: 1 });
+
+	// Shorter than the calendar (or with a keyboard up): the calendar scrolls its own
+	// overflow, and the feed and the list stay where they are.
+	await page.setViewportSize({ width: 900, height: 450 });
+	await expect(today).not.toBeInViewport({ ratio: 1 });
+	expect(await feedEl.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1);
+	const agenda = page.locator('[data-reminders-view] > div > div').nth(1);
+	const agendaBox = (await agenda.boundingBox())!;
+	const shortCalendar = (await page.locator('.reminder-calendar').boundingBox())!;
+	await page.mouse.move(shortCalendar.x + 40, shortCalendar.y + 40);
+	await page.mouse.wheel(0, 2000);
+	await expect(today).toBeInViewport({ ratio: 1 });
+	expect(await feedEl.evaluate((el) => el.scrollTop)).toBe(0);
+	expect(await agenda.boundingBox()).toEqual(agendaBox);
 });

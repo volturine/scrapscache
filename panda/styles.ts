@@ -4444,8 +4444,8 @@ export const reminderAgendaStyles = {
 			gap: 'xl',
 			h: 'calc(100cqh - token(spacing.lg) - var(--composer-row, 0px))',
 			// The row never outgrows the split, so the list ends at the feed's foot even
-			// where the calendar is taller (a short screen); the feed then scrolls only
-			// the calendar's overflow into view.
+			// where the calendar is taller (a short screen, or a keyboard up); the
+			// calendar then scrolls its own overflow (calendar).
 			gridTemplateRows: 'minmax(0, 1fr)'
 		},
 		lg: { flexDirection: 'row', alignItems: 'flex-start', gap: '2xl' }
@@ -4459,7 +4459,11 @@ export const reminderAgendaStyles = {
 			mx: 0,
 			display: 'flex',
 			flexDirection: 'column',
-			'& > .reminder-calendar': { flex: '1' }
+			'& > .reminder-calendar': { flex: '1' },
+			// Only where it is taller than the split; the feed never moves (split).
+			minH: 0,
+			overflowY: 'auto',
+			overscrollBehavior: 'contain'
 		},
 		lg: { w: '18rem', flexShrink: 0, mx: 0, position: 'sticky', top: 0 }
 	}),

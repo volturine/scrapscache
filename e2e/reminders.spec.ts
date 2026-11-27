@@ -173,33 +173,66 @@ test.describe('on a tablet', () => {
 	});
 });
 
-test('on an open iPhone Duo or a small tablet, the calendar fills the left half beside the list', async ({
+test('on an open iPhone Duo or a small tablet, the calendar fills the left half and only the list beside it scrolls', async ({
 	page
 }) => {
 	await page.setViewportSize({ width: 900, height: 700 });
 	await openEmptyApp(page);
-	await createNote(page, 'Call the vet');
-	await noteCard(page, 'Call the vet').click();
-	await editor(page).getByRole('button', { name: 'Reminder', exact: true }).click();
-	const picker = page.getByRole('dialog').filter({ hasText: 'Will remind you' });
-	await picker.getByRole('button', { name: 'Next day' }).click();
-	await picker.getByRole('button', { name: 'Save', exact: true }).click();
-	await expect(editor(page).getByRole('button', { name: /^reminder,/i })).toBeVisible();
-	await page.keyboard.press('Escape');
-	await expect(editor(page)).toBeHidden();
+	// More reminders than the column holds, so the list has to scroll.
+	const titles = Array.from({ length: 9 }, (_, i) => `Errand ${i + 1}`);
+	for (const title of titles) {
+		await createNote(page, title);
+		await noteCard(page, title).click();
+		await editor(page).getByRole('button', { name: 'Reminder', exact: true }).click();
+		const picker = page.getByRole('dialog').filter({ hasText: 'Will remind you' });
+		await picker.getByRole('button', { name: 'Next day' }).click();
+		await picker.getByRole('button', { name: 'Save', exact: true }).click();
+		await expect(editor(page).getByRole('button', { name: /^reminder,/i })).toBeVisible();
+		await page.keyboard.press('Escape');
+		await expect(editor(page)).toBeHidden();
+	}
 
 	await page.getByRole('button', { name: 'Reminders', exact: true }).click();
-	const row = page.getByRole('listitem').filter({ hasText: 'Call the vet' });
-	await expect(row).toBeVisible();
+	const rows = page.locator('[data-reminders-view] li');
+	await expect(rows).toHaveCount(titles.length);
+	const first = rows.first();
+	const last = rows.last();
+	const split = (await page.locator('[data-reminders-view] > div').boundingBox())!;
+	const feedEl = page.locator('main.app-feed');
 	const calendar = (await page.locator('.reminder-calendar').boundingBox())!;
-	const list = (await row.boundingBox())!;
-	const feed = (await page.locator('main.app-feed').boundingBox())!;
-	// Side by side, in two equal columns.
+	const list = (await first.boundingBox())!;
+	const feed = (await feedEl.boundingBox())!;
+	// Side by side, in two equal columns (the gap between them is xl).
 	expect(calendar.x + calendar.width).toBeLessThan(list.x);
-	expect(Math.abs(calendar.width - list.width)).toBeLessThan(2);
+	expect(Math.abs(calendar.width - (split.width - 20) / 2)).toBeLessThan(2);
 	// Down to the feed's foot, short of its bottom padding (3xl), and whole in view.
 	expect(Math.abs(calendar.y + calendar.height - (feed.y + feed.height - 32))).toBeLessThan(2);
-	await expect(page.getByRole('button', { name: 'Today', exact: true })).toBeInViewport({
-		ratio: 1
-	});
+	const today = page.getByRole('button', { name: 'Today', exact: true });
+	await expect(today).toBeInViewport({ ratio: 1 });
+
+	// The feed has nothing to scroll; the list scrolls by itself under the wheel, and
+	// the calendar stays where it was.
+	expect(await feedEl.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1);
+	await expect(last).not.toBeInViewport({ ratio: 1 });
+	await page.mouse.move(list.x + list.width / 2, list.y + list.height / 2);
+	await page.mouse.wheel(0, 2000);
+	await expect(last).toBeInViewport({ ratio: 1 });
+	await expect(first).not.toBeInViewport();
+	expect(await feedEl.evaluate((el) => el.scrollTop)).toBe(0);
+	expect(await page.locator('.reminder-calendar').boundingBox()).toEqual(calendar);
+	await expect(today).toBeInViewport({ ratio: 1 });
+
+	// Shorter than the calendar (or with a keyboard up): the calendar scrolls its own
+	// overflow, and the feed and the list stay where they are.
+	await page.setViewportSize({ width: 900, height: 450 });
+	await expect(today).not.toBeInViewport({ ratio: 1 });
+	expect(await feedEl.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1);
+	const agenda = page.locator('[data-reminders-view] > div > div').nth(1);
+	const agendaBox = (await agenda.boundingBox())!;
+	const shortCalendar = (await page.locator('.reminder-calendar').boundingBox())!;
+	await page.mouse.move(shortCalendar.x + 40, shortCalendar.y + 40);
+	await page.mouse.wheel(0, 2000);
+	await expect(today).toBeInViewport({ ratio: 1 });
+	expect(await feedEl.evaluate((el) => el.scrollTop)).toBe(0);
+	expect(await agenda.boundingBox()).toEqual(agendaBox);
 });

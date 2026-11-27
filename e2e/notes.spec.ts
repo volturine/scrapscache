@@ -1576,3 +1576,26 @@ test.describe('in iPhone Duo’s side column', () => {
 		});
 	});
 });
+
+for (const { name, width, height } of [
+	{ name: 'a phone', width: 390, height: 844 },
+	{ name: 'a short wide screen', width: 1000, height: 703 }
+]) {
+	test(`on ${name} an open note starts below the search bar and stays card-wide`, async ({
+		page
+	}) => {
+		await page.setViewportSize({ width, height });
+		await openEmptyApp(page);
+		await createNote(page, 'Packing list');
+		await noteCard(page, 'Packing list').click();
+		await expect(editor(page)).toBeVisible();
+		// The top bar (the page's first header): under the open note it is out of the
+		// accessibility tree.
+		const bar = (await page.locator('header').first().boundingBox())!;
+		expect(bar.height).toBe(width < 640 ? 56 : 64);
+		const sheet = (await editor(page).boundingBox())!;
+		expect(sheet.y).toBeGreaterThanOrEqual(bar.y + bar.height);
+		// Never wider than a card sheet (2xl), however short the screen.
+		expect(sheet.width).toBeLessThanOrEqual(672);
+	});
+}
